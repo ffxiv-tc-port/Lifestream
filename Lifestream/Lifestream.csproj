@@ -1,9 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <Authors>NightmareXIV</Authors>
-        <Version>2.5.1.13</Version>
+        <Authors>NightmareXIV, Lother</Authors>
+        <RepoUrl>https://github.com/Lother/Lifestream</RepoUrl>
+        <IconUrl>https://raw.githubusercontent.com/Lother/DalamudPluginsTC/main/icons/Lifestream.png</IconUrl>
+        <BuildNumberFile>$(MSBuildProjectDirectory)\BuildNumber.txt</BuildNumberFile>
+        <_PreviousBuildNumber Condition="Exists('$(BuildNumberFile)')">$([System.IO.File]::ReadAllText('$(BuildNumberFile)').Trim())</_PreviousBuildNumber>
+        <_PreviousBuildNumber Condition="'$(_PreviousBuildNumber)' == ''">0</_PreviousBuildNumber>
+        <BuildNumber>$([MSBuild]::Add($(_PreviousBuildNumber), 1))</BuildNumber>
+        <VersionPrefix>7.15.0</VersionPrefix>
+        <Version>$(VersionPrefix).$(BuildNumber)</Version>
+        <AssemblyVersion>$(Version)</AssemblyVersion>
+        <FileVersion>$(Version)</FileVersion>
     </PropertyGroup>
+    <Target Name="PersistBuildNumber" AfterTargets="Build">
+        <WriteLinesToFile File="$(BuildNumberFile)" Lines="$(BuildNumber)" Overwrite="true" />
+    </Target>
 
     <PropertyGroup>
         <TargetFramework>net9.0-windows7.0</TargetFramework>
@@ -26,7 +38,7 @@
     </PropertyGroup>
 
     <PropertyGroup>
-        <DalamudLibPath>$(appdata)\XIVLauncher\addon\Hooks\dev\</DalamudLibPath>
+        <DalamudLibPath>$(appdata)\FFXIVSimpleLauncher\Dalamud\Injector\</DalamudLibPath>
     </PropertyGroup>
 
     <ItemGroup>
