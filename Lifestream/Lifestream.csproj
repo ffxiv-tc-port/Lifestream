@@ -25,6 +25,7 @@
         <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
         <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
         <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <AppendPlatformToOutputPath>false</AppendPlatformToOutputPath>
         <OutputPath>bin\$(Configuration)\</OutputPath>
         <NoWarn>CS1591;IDE0052</NoWarn>
         <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
