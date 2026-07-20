@@ -4,8 +4,8 @@ internal static class UIServiceAccount
 {
     internal static void Draw()
     {
-        ImGuiEx.TextWrapped($"If you own more than 1 service accounts, you must assign each character to the correct service account.\nTo make character appear in this list, please log into it.");
-        ImGui.Checkbox($"Get service account data from AutoRetainer", ref C.UseAutoRetainerAccounts);
+        ImGuiEx.TextWrapped($"若你擁有超過 1 個服務帳號，必須為每個角色指定正確的服務帳號。\n要讓角色出現在此清單中，請先登入該角色。");
+        ImGui.Checkbox($"從 AutoRetainer 取得服務帳號資料", ref C.UseAutoRetainerAccounts);
         List<string> ManagedByAR = [];
         if(P.AutoRetainerApi?.Ready == true && C.UseAutoRetainerAccounts)
         {
@@ -18,22 +18,22 @@ internal static class UIServiceAccount
                     var name = $"{data.Name}@{data.World}";
                     ManagedByAR.Add(name);
                     ImGui.SetNextItemWidth(150f.Scale());
-                    if(ImGui.BeginCombo($"{name}", data.ServiceAccount == -1 ? "Not selected" : $"Service account {data.ServiceAccount + 1}"))
+                    if(ImGui.BeginCombo($"{name}", data.ServiceAccount == -1 ? "尚未選擇" : $"服務帳號 {data.ServiceAccount + 1}"))
                     {
                         for(var i = 0; i < 10; i++)
                         {
-                            if(ImGui.Selectable($"Service account {i + 1}"))
+                            if(ImGui.Selectable($"服務帳號 {i + 1}"))
                             {
                                 C.ServiceAccounts[name] = i;
                                 data.ServiceAccount = i;
                                 P.AutoRetainerApi.WriteOfflineCharacterData(data);
-                                Notify.Info($"Setting saved to AutoRetainer");
+                                Notify.Info($"設定已儲存至 AutoRetainer");
                             }
                         }
                         ImGui.EndCombo();
                     }
                     ImGui.SameLine();
-                    ImGuiEx.Text(ImGuiColors.DalamudRed, $"Managed by AutoRetainer");
+                    ImGuiEx.Text(ImGuiColors.DalamudRed, $"由 AutoRetainer 管理");
                 }
             }
         }
@@ -41,16 +41,16 @@ internal static class UIServiceAccount
         {
             if(ManagedByAR.Contains(x.Key)) continue;
             ImGui.SetNextItemWidth(150f.Scale());
-            if(ImGui.BeginCombo($"{x.Key}", x.Value == -1 ? "Not selected" : $"Service account {x.Value + 1}"))
+            if(ImGui.BeginCombo($"{x.Key}", x.Value == -1 ? "尚未選擇" : $"服務帳號 {x.Value + 1}"))
             {
                 for(var i = 0; i < 10; i++)
                 {
-                    if(ImGui.Selectable($"Service account {i + 1}")) C.ServiceAccounts[x.Key] = i;
+                    if(ImGui.Selectable($"服務帳號 {i + 1}")) C.ServiceAccounts[x.Key] = i;
                 }
                 ImGui.EndCombo();
             }
             ImGui.SameLine();
-            if(ImGui.Button("Delete"))
+            if(ImGui.Button("刪除"))
             {
                 new TickScheduler(() => C.ServiceAccounts.Remove(x.Key));
             }

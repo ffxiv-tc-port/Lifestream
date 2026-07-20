@@ -12,7 +12,7 @@ public class PaissaImporter
 {
     private static Guid CurrentDrag = Guid.Empty;
     private string ID;
-    private string folderText = "No folder yet...";
+    private string folderText = "尚無資料夾...";
     private bool buttonDisabled = false;
     private bool textToCopy = false;
     private DateTime disableEndTime;
@@ -38,7 +38,7 @@ public class PaissaImporter
         var isDisabled = buttonDisabled;
         if(isDisabled) ImGui.BeginDisabled();
 
-        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Download, "Import from PaissaDB", enabled: Player.Available))
+        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Download, "從 PaissaDB 匯入", enabled: Player.Available))
         {
             PluginLog.Debug("PaissaDB import process initiated!");
             buttonDisabled = true;
@@ -83,17 +83,17 @@ public class PaissaImporter
     {
         if(book.Entries.Count == 0)
         {
-            ImGuiEx.Text("No houses are currently available for bidding!");
+            ImGuiEx.Text("目前沒有可供競標的房屋！");
         }
         else if(ImGui.BeginTable($"##addressbook", 7, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit))
         {
-            ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("Size");
-            ImGui.TableSetupColumn("Bids");
-            ImGui.TableSetupColumn("Allowed Tenants");
-            ImGui.TableSetupColumn("World");
-            ImGui.TableSetupColumn("Ward");
-            ImGui.TableSetupColumn("Plot");
+            ImGui.TableSetupColumn("名稱", ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn("大小");
+            ImGui.TableSetupColumn("競標數");
+            ImGui.TableSetupColumn("允許入住對象");
+            ImGui.TableSetupColumn("世界");
+            ImGui.TableSetupColumn("房區");
+            ImGui.TableSetupColumn("房號");
             List<(Vector2 RowPos, Action AcceptDraw)> MoveCommands = [];
             ImGui.TableHeadersRow();
 
@@ -140,24 +140,24 @@ public class PaissaImporter
                 }
                 if(ImGui.BeginPopup($"ABMenu {entry.GUID}"))
                 {
-                    if(ImGui.MenuItem("Copy chat-friendly name to clipboard"))
+                    if(ImGui.MenuItem("複製適合聊天欄使用的名稱到剪貼簿"))
                     {
                         Copy(entry.GetAddressString());
                     }
                     ImGui.Separator();
-                    if(ImGui.MenuItem("Export to Clipboard"))
+                    if(ImGui.MenuItem("匯出到剪貼簿"))
                     {
                         Copy(EzConfig.DefaultSerializationFactory.Serialize(entry, false));
                     }
                     if(entry.Alias != "")
                     {
-                        ImGui.MenuItem($"Enable Alias: {entry.Alias}", null, ref entry.AliasEnabled);
+                        ImGui.MenuItem($"啟用別名：{entry.Alias}", null, ref entry.AliasEnabled);
                     }
-                    if(ImGui.MenuItem("Edit..."))
+                    if(ImGui.MenuItem("編輯..."))
                     {
                         InputWardDetailDialog.Entry = entry;
                     }
-                    if(ImGui.MenuItem("Delete"))
+                    if(ImGui.MenuItem("刪除"))
                     {
                         if(ImGuiEx.Ctrl)
                         {
@@ -165,10 +165,10 @@ public class PaissaImporter
                         }
                         else
                         {
-                            Svc.Toasts.ShowError($"Hold CTRL and click to delete an entry");
+                            Svc.Toasts.ShowError($"按住 CTRL 並點擊以刪除項目");
                         }
                     }
-                    ImGuiEx.Tooltip($"Hold CTRL and click to delete");
+                    ImGuiEx.Tooltip($"按住 CTRL 並點擊以刪除");
                     ImGui.EndPopup();
                 }
                 if(ImGui.BeginDragDropSource())
@@ -178,11 +178,11 @@ public class PaissaImporter
                     InternalLog.Verbose($"DragDropSource = {entry.GUID}");
                     if(book.SortMode == SortMode.Manual)
                     {
-                        ImGui.SetTooltip("Reorder or move to other folder");
+                        ImGui.SetTooltip("重新排序或移動至其他資料夾");
                     }
                     else
                     {
-                        ImGui.SetTooltip("Move to other folder");
+                        ImGui.SetTooltip("移動至其他資料夾");
                     }
                     ImGui.EndDragDropSource();
                 }
@@ -235,7 +235,7 @@ public class PaissaImporter
 
                 ImGuiEx.Text($"{PaissaUtils.GetSizeString(entry.Size)}");
                 ImGui.SameLine();
-                ImGuiEx.Tooltip("Size");
+                ImGuiEx.Tooltip("大小");
 
                 ImGui.TableNextColumn();
 
@@ -243,7 +243,7 @@ public class PaissaImporter
 
                 ImGuiEx.Text($"{entry.Bids}");
                 ImGui.SameLine();
-                ImGuiEx.Tooltip("Bids");
+                ImGuiEx.Tooltip("競標數");
 
                 ImGui.TableNextColumn();
 
@@ -251,7 +251,7 @@ public class PaissaImporter
 
                 ImGuiEx.Text($"{PaissaUtils.GetAllowedTenantsStringFromPurchaseSystem(entry.AllowedTenants)}");
                 ImGui.SameLine();
-                ImGuiEx.Tooltip("Allowed Tenants");
+                ImGuiEx.Tooltip("允許入住對象");
 
                 ImGui.TableNextColumn();
 
@@ -282,7 +282,7 @@ public class PaissaImporter
                 if(entry.PropertyType == PropertyType.House)
                 {
                     ImGuiEx.Text(Colors.TabGreen, Lang.SymbolPlot);
-                    ImGuiEx.Tooltip("Plot");
+                    ImGuiEx.Tooltip("房號");
                     ImGui.SameLine(0, 0);
                     ImGuiEx.Text($"{entry.Plot.FancyDigits()}");
                 }
@@ -291,12 +291,12 @@ public class PaissaImporter
                     if(!entry.ApartmentSubdivision)
                     {
                         ImGuiEx.Text(Colors.TabYellow, Lang.SymbolApartment);
-                        ImGuiEx.Tooltip("Apartment");
+                        ImGuiEx.Tooltip("公寓");
                     }
                     else
                     {
                         ImGuiEx.Text(Colors.TabYellow, Lang.SymbolSubdivision);
-                        ImGuiEx.Tooltip("Subdivision Apartment");
+                        ImGuiEx.Tooltip("分租公寓");
                     }
                     ImGui.SameLine(0, 0);
                     ImGuiEx.Text($"{entry.Apartment.FancyDigits()}");
