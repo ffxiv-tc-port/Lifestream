@@ -2,6 +2,7 @@
 using ECommons.Automation;
 using ECommons.Automation.UIInput;
 using ECommons.GameHelpers;
+using Callback = ECommons.Automation.Callback;
 using ECommons.Throttlers;
 using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -64,7 +65,7 @@ public static unsafe class TaskGoToResidentialDistrict
     {
         if(TryGetAddonByName<AtkUnitBase>("HousingSelectBlock", out var addon) && IsAddonReady(addon))
         {
-            var button = addon->GetButtonNodeById(34);
+            var button = addon->GetComponentButtonById(34);
             if(button->IsEnabled)
             {
                 if(EzThrottler.Throttle("HousingSelectBlockConfirm"))

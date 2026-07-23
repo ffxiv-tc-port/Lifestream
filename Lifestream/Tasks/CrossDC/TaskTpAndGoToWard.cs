@@ -2,6 +2,7 @@
 using Dalamud.Game.ClientState.Objects.Enums;
 using ECommons.Automation;
 using ECommons.GameHelpers;
+using Callback = ECommons.Automation.Callback;
 using ECommons.Throttlers;
 using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.UI;
