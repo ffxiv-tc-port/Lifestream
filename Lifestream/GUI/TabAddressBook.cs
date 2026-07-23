@@ -12,24 +12,24 @@ public static unsafe class TabAddressBook
 {
     public static readonly Dictionary<ResidentialAetheryteKind, string> ResidentialNames = new()
     {
-        [ResidentialAetheryteKind.Gridania] = "薰衣草苗圃",
-        [ResidentialAetheryteKind.Limsa] = "海霧村",
-        [ResidentialAetheryteKind.Uldah] = "高塔庭園",
-        [ResidentialAetheryteKind.Kugane] = "白銀鄉",
-        [ResidentialAetheryteKind.Foundation] = "穹樓街",
+        [ResidentialAetheryteKind.Gridania] = "Lavender Beds".Loc(),
+        [ResidentialAetheryteKind.Limsa] = "Mist".Loc(),
+        [ResidentialAetheryteKind.Uldah] = "Goblet".Loc(),
+        [ResidentialAetheryteKind.Kugane] = "Shirogane".Loc(),
+        [ResidentialAetheryteKind.Foundation] = "Empyreum".Loc(),
     };
 
     public static readonly Dictionary<SortMode, string> SortModeNames = new()
     {
-        [SortMode.Manual] = "手動（拖曳排序）",
-        [SortMode.Name] = "名稱（A-Z）",
-        [SortMode.NameReversed] = "名稱（Z-A）",
-        [SortMode.World] = "世界（A-Z）",
-        [SortMode.WorldReversed] = "世界（Z-A）",
-        [SortMode.Plot] = "房號（1-9）",
-        [SortMode.PlotReversed] = "房號（9-1）",
-        [SortMode.Ward] = "房區（1-9）",
-        [SortMode.WardReversed] = "房區（9-1）",
+        [SortMode.Manual] = "Manual (drag and drop)".Loc(),
+        [SortMode.Name] = "Name (A-Z)".Loc(),
+        [SortMode.NameReversed] = "Name (Z-A)".Loc(),
+        [SortMode.World] = "World (A-Z)".Loc(),
+        [SortMode.WorldReversed] = "World (Z-A)".Loc(),
+        [SortMode.Plot] = "Plot (1-9)".Loc(),
+        [SortMode.PlotReversed] = "Plot (9-1)".Loc(),
+        [SortMode.Ward] = "Ward (1-9)".Loc(),
+        [SortMode.WardReversed] = "Ward (9-1)".Loc(),
     };
     private static Guid CurrentDrag = Guid.Empty;
 
@@ -42,7 +42,7 @@ public static unsafe class TabAddressBook
         if(C.AddressBookFolders.Count == 0)
         {
             var book = new AddressBookFolder() { IsDefault = true };
-            S.AddressBookFileSystemManager.FileSystem.Create(book, "預設通訊錄", out _);
+            S.AddressBookFileSystemManager.FileSystem.Create(book, "Default Book", out _);
         }
         if(ImGui.BeginChild("Child"))
         {
@@ -57,7 +57,7 @@ public static unsafe class TabAddressBook
                 {
                     selector.SelectByValue(value);
                 }
-                ImGuiEx.TextWrapped($"要開始使用，請先選擇一個通訊錄。");
+                ImGuiEx.TextWrapped("To begin, select an address book to use.".Loc());
             }
         }
         ImGui.EndChild();
@@ -102,7 +102,7 @@ public static unsafe class TabAddressBook
         {
             ImGuiEx.LineCentered(() =>
             {
-                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "新增"))
+                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add New".Loc()))
                 {
                     var h = HousingManager.Instance();
                     var entry = GetNewAddressBookEntry();
@@ -110,7 +110,7 @@ public static unsafe class TabAddressBook
                     InputWardDetailDialog.Entry = entry;
                 }
                 ImGui.SameLine();
-                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Paste, "貼上"))
+                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Paste, "Paste".Loc()))
                 {
                     try
                     {
@@ -119,7 +119,7 @@ public static unsafe class TabAddressBook
                         {
                             if(!entry.IsValid(out var error))
                             {
-                                Notify.Error($"無法從剪貼簿貼上：\n{error}");
+                                Notify.Error("Could not paste from clipboard:\n??".Loc(error));
                             }
                             else
                             {
@@ -128,7 +128,7 @@ public static unsafe class TabAddressBook
                         }
                         else
                         {
-                            Notify.Error($"無法從剪貼簿貼上");
+                            Notify.Error("Could not paste from clipboard".Loc());
                         }
                     }
                     catch(Exception e)
@@ -139,32 +139,32 @@ public static unsafe class TabAddressBook
                         }
                         else
                         {
-                            Notify.Error($"無法從剪貼簿貼上：\n{e.Message}");
+                            Notify.Error("Could not paste from clipboard:\n??".Loc(e.Message));
                         }
                     }
                 }
                 ImGui.SameLine();
                 ImGui.SetNextItemWidth(100f.Scale());
                 ImGuiEx.EnumCombo("##sort", ref book.SortMode, SortModeNames);
-                ImGuiEx.Tooltip($"選擇此通訊錄的排序模式");
+                ImGuiEx.Tooltip("Select sort mode for this address book".Loc());
                 ImGui.SameLine();
-                if(ImGui.Checkbox($"預設", ref book.IsDefault))
+                if(ImGui.Checkbox("Default".Loc(), ref book.IsDefault))
                 {
                     if(book.IsDefault)
                     {
                         C.AddressBookFolders.Where(z => z != book).Each(z => z.IsDefault = false);
                     }
                 }
-                ImGuiEx.Tooltip($"預設通訊錄會在每次遊戲工作階段第一次開啟外掛時自動開啟。");
+                ImGuiEx.Tooltip("Default book automatically opens when you open plugin first time in a game session.".Loc());
             });
         }
 
         if(ImGui.BeginTable($"##addressbook", 4, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit))
         {
-            ImGui.TableSetupColumn("名稱", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("世界");
-            ImGui.TableSetupColumn("房區");
-            ImGui.TableSetupColumn("房號");
+            ImGui.TableSetupColumn("Name".Loc(), ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn("World".Loc());
+            ImGui.TableSetupColumn("Ward".Loc());
+            ImGui.TableSetupColumn("Plot".Loc());
             List<(Vector2 RowPos, Action AcceptDraw)> MoveCommands = [];
             ImGui.TableHeadersRow();
 
@@ -211,24 +211,24 @@ public static unsafe class TabAddressBook
                 }
                 if(ImGui.BeginPopup($"ABMenu {entry.GUID}"))
                 {
-                    if(ImGui.MenuItem("複製適合聊天欄使用的名稱到剪貼簿"))
+                    if(ImGui.MenuItem("Copy chat-friendly name to clipboard".Loc()))
                     {
                         Copy(entry.GetAddressString());
                     }
                     ImGui.Separator();
-                    if(ImGui.MenuItem("匯出到剪貼簿"))
+                    if(ImGui.MenuItem("Export to Clipboard".Loc()))
                     {
                         Copy(EzConfig.DefaultSerializationFactory.Serialize(entry, false));
                     }
                     if(entry.Alias != "")
                     {
-                        ImGui.MenuItem($"啟用別名：{entry.Alias}", null, ref entry.AliasEnabled);
+                        ImGui.MenuItem("Enable Alias: ??".Loc(entry.Alias), null, ref entry.AliasEnabled);
                     }
-                    if(ImGui.MenuItem("編輯..."))
+                    if(ImGui.MenuItem("Edit...".Loc()))
                     {
                         InputWardDetailDialog.Entry = entry;
                     }
-                    if(ImGui.MenuItem("刪除"))
+                    if(ImGui.MenuItem("Delete".Loc()))
                     {
                         if(ImGuiEx.Ctrl)
                         {
@@ -236,10 +236,10 @@ public static unsafe class TabAddressBook
                         }
                         else
                         {
-                            Svc.Toasts.ShowError($"按住 CTRL 並點擊以刪除項目");
+                            Svc.Toasts.ShowError("Hold CTRL and click to delete an entry".Loc());
                         }
                     }
-                    ImGuiEx.Tooltip($"按住 CTRL 並點擊以刪除");
+                    ImGuiEx.Tooltip("Hold CTRL and click to delete".Loc());
                     ImGui.EndPopup();
                 }
                 if(ImGui.BeginDragDropSource())
@@ -249,11 +249,11 @@ public static unsafe class TabAddressBook
                     InternalLog.Verbose($"DragDropSource = {entry.GUID}");
                     if(book.SortMode == SortMode.Manual)
                     {
-                        ImGui.SetTooltip("重新排序或移動至其他資料夾");
+                        ImGui.SetTooltip("Reorder or move to other folder".Loc());
                     }
                     else
                     {
-                        ImGui.SetTooltip("移動至其他資料夾");
+                        ImGui.SetTooltip("Move to other folder".Loc());
                     }
                     ImGui.EndDragDropSource();
                 }
@@ -330,7 +330,7 @@ public static unsafe class TabAddressBook
                 if(entry.PropertyType == PropertyType.House)
                 {
                     ImGuiEx.Text(Colors.TabGreen, Lang.SymbolPlot);
-                    ImGuiEx.Tooltip("房號");
+                    ImGuiEx.Tooltip("Plot".Loc());
                     ImGui.SameLine(0, 0);
                     ImGuiEx.Text($"{entry.Plot.FancyDigits()}");
                 }
@@ -339,12 +339,12 @@ public static unsafe class TabAddressBook
                     if(!entry.ApartmentSubdivision)
                     {
                         ImGuiEx.Text(Colors.TabYellow, Lang.SymbolApartment);
-                        ImGuiEx.Tooltip("公寓");
+                        ImGuiEx.Tooltip("Apartment".Loc());
                     }
                     else
                     {
                         ImGuiEx.Text(Colors.TabYellow, Lang.SymbolSubdivision);
-                        ImGuiEx.Tooltip("分租公寓");
+                        ImGuiEx.Tooltip("Subdivision Apartment".Loc());
                     }
                     ImGui.SameLine(0, 0);
                     ImGuiEx.Text($"{entry.Apartment.FancyDigits()}");

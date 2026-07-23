@@ -21,11 +21,11 @@ public static unsafe class UIHouseReg
     {
         if(Player.Available)
         {
-            NuiTools.ButtonTabs([[new("私人宅邸", DrawPrivate), new("部隊宅邸", DrawFC), new("自訂宅邸", DrawCustom), new("總覽", DrawOverview)]]);
+            NuiTools.ButtonTabs([[new("Private House".Loc(), DrawPrivate), new("Free Company House".Loc(), DrawFC), new("Custom House".Loc(), DrawCustom), new("Overview".Loc(), DrawOverview)]]);
         }
         else
         {
-            ImGuiEx.TextWrapped("請先登入以建立與編輯註冊資料。");
+            ImGuiEx.TextWrapped("Please log in to be able to create and edit registrations. ".Loc());
             DrawOverview();
         }
     }
@@ -37,7 +37,7 @@ public static unsafe class UIHouseReg
     {
         DisplayCurrent = true,
         ShouldHideWorld = (x) => !C.HousePathDatas.Any(s => Utils.GetWorldFromCID(s.CID) == ExcelWorldHelper.GetName(x)),
-        EmptyName = "所有世界",
+        EmptyName = "All Worlds".Loc(),
         DefaultAllOpen = true,
     };
 
@@ -45,7 +45,7 @@ public static unsafe class UIHouseReg
     {
         ImGuiEx.InputWithRightButtonsArea(() =>
         {
-            ImGui.InputTextWithHint("##search", "搜尋...", ref Search, 50);
+            ImGui.InputTextWithHint("##search", "Search...".Loc(), ref Search, 50);
         }, () =>
         {
             ImGui.SetNextItemWidth(200f.Scale());
@@ -57,7 +57,7 @@ public static unsafe class UIHouseReg
             charaDatas.Add((x, C.HousePathDatas.FirstOrDefault(z => z.IsPrivate && z.CID == x), C.HousePathDatas.FirstOrDefault(z => !z.IsPrivate && z.CID == x)));
         }
         DragDropPathData.Begin();
-        if(ImGuiEx.BeginDefaultTable("##charaTable", ["##move", "~名稱或 CID", "私人宅邸", "##privateCtl", "##privateCtl2", "##privateDlm", "部隊宅邸", "##FCCtl", "工房", "##workshopCtl", "##fcCtl", "##fcCtl2"]))
+        if(ImGuiEx.BeginDefaultTable("##charaTable", ["##move", "~" + "Name or CID".Loc(), "Private".Loc(), "##privateCtl", "##privateCtl2", "##privateDlm", "FC".Loc(), "##FCCtl", "Workshop".Loc(), "##workshopCtl", "##fcCtl", "##fcCtl2"]))
         {
             for(var i = 0; i < charaDatas.Count; i++)
             {
@@ -81,13 +81,13 @@ public static unsafe class UIHouseReg
                 {
                     NuiTools.RenderResidentialIcon((uint)priv.ResidentialDistrict.GetResidentialTerritory());
                     ImGui.SameLine();
-                    ImGuiEx.Text($"W{priv.Ward + 1}, P{priv.Plot + 1}{(priv.PathToEntrance.Count > 0 ? "\uff0c+\u8def\u5f91" : "")}");
+                    ImGuiEx.Text($"W{priv.Ward + 1}, P{priv.Plot + 1}{(priv.PathToEntrance.Count > 0 ? ", +path".Loc() : "")}");
                     ImGui.TableNextColumn();
                     if(ImGuiEx.IconButton((FontAwesomeIcon)'\ue50b', "DelePrivate", enabled: ImGuiEx.Ctrl))
                     {
                         new TickScheduler(() => C.HousePathDatas.RemoveAll(z => z.IsPrivate && z.CID == charaData.CID));
                     }
-                    ImGuiEx.Tooltip("\u79fb\u9664\u79c1\u4eba\u5b85\u90b8\u8a3b\u518a\u8cc7\u6599\u3002\u6309\u4f4f CTRL \u4e26\u9ede\u64ca\u3002");
+                    ImGuiEx.Tooltip("Remove private house registration. Hold CTRL and click.".Loc());
                     if(priv.PathToEntrance.Count > 0)
                     {
                         ImGui.SameLine();
@@ -95,7 +95,7 @@ public static unsafe class UIHouseReg
                         {
                             priv.PathToEntrance.Clear();
                         }
-                        ImGuiEx.Tooltip("\u79fb\u9664\u524d\u5f80\u79c1\u4eba\u5b85\u90b8\u7684\u8def\u5f91\u3002\u6309\u4f4f CTRL \u4e26\u9ede\u64ca\u3002");
+                        ImGuiEx.Tooltip("Remove path to private house. Hold CTRL and click.".Loc());
                     }
 
                     ImGui.SameLine();
@@ -103,12 +103,12 @@ public static unsafe class UIHouseReg
                     {
                         Copy(EzConfig.DefaultSerializationFactory.Serialize(priv)!);
                     }
-                    ImGuiEx.Tooltip("\u8907\u88fd\u79c1\u4eba\u5b85\u90b8\u8a3b\u518a\u8cc7\u6599\u5230\u526a\u8cbc\u7c3f");
+                    ImGuiEx.Tooltip("Copy private registration data to clipboard".Loc());
                     ImGui.SameLine();
                 }
                 else
                 {
-                    ImGuiEx.TextV(ImGuiColors.DalamudGrey3, "\u5c1a\u672a\u8a3b\u518a");
+                    ImGuiEx.TextV(ImGuiColors.DalamudGrey3, "Not registered".Loc());
                     ImGui.TableNextColumn();
                 }
 
@@ -118,7 +118,7 @@ public static unsafe class UIHouseReg
                 {
                     ImportFromClipboard(charaData.CID, true);
                 }
-                ImGuiEx.Tooltip("\u5f9e\u526a\u8cbc\u7c3f\u8cbc\u4e0a\u79c1\u4eba\u5b85\u90b8\u8a3b\u518a\u8cc7\u6599");
+                ImGuiEx.Tooltip("Paste private registration data from clipboard".Loc());
 
                 ImGui.TableNextColumn();
                 //delimiter
@@ -129,13 +129,13 @@ public static unsafe class UIHouseReg
                 {
                     NuiTools.RenderResidentialIcon((uint)fc.ResidentialDistrict.GetResidentialTerritory());
                     ImGui.SameLine();
-                    ImGuiEx.Text($"W{fc.Ward + 1}, P{fc.Plot + 1}{(fc.PathToEntrance.Count > 0 ? "\uff0c+\u8def\u5f91" : "")}");
+                    ImGuiEx.Text($"W{fc.Ward + 1}, P{fc.Plot + 1}{(fc.PathToEntrance.Count > 0 ? ", +path".Loc() : "")}");
                     ImGui.TableNextColumn();
                     if(ImGuiEx.IconButton((FontAwesomeIcon)'\ue50b', "DeleFc", enabled: ImGuiEx.Ctrl))
                     {
                         new TickScheduler(() => C.HousePathDatas.RemoveAll(z => !z.IsPrivate && z.CID == charaData.CID));
                     }
-                    ImGuiEx.Tooltip("\u79fb\u9664\u90e8\u968a\u5b85\u90b8\u8a3b\u518a\u8cc7\u6599\u3002\u6309\u4f4f CTRL \u4e26\u9ede\u64ca\u3002");
+                    ImGuiEx.Tooltip("Remove FC house registration. Hold CTRL and click.".Loc());
                     if(fc.PathToEntrance.Count > 0)
                     {
                         ImGui.SameLine();
@@ -143,30 +143,30 @@ public static unsafe class UIHouseReg
                         {
                             fc.PathToEntrance.Clear();
                         }
-                        ImGuiEx.Tooltip("\u79fb\u9664\u524d\u5f80\u90e8\u968a\u5b85\u90b8\u7684\u8def\u5f91\u3002\u6309\u4f4f CTRL \u4e26\u9ede\u64ca\u3002");
+                        ImGuiEx.Tooltip("Remove path to FC house. Hold CTRL and click.".Loc());
                     }
                 }
                 else
                 {
-                    ImGuiEx.TextV(ImGuiColors.DalamudGrey3, "\u5c1a\u672a\u8a3b\u518a");
+                    ImGuiEx.TextV(ImGuiColors.DalamudGrey3, "Not registered".Loc());
                     ImGui.TableNextColumn();
                 }
 
                 ImGui.TableNextColumn();
                 if(fc == null || fc.PathToWorkshop.Count == 0)
                 {
-                    ImGuiEx.TextV(ImGuiColors.DalamudGrey3, "\u5c1a\u672a\u8a3b\u518a");
+                    ImGuiEx.TextV(ImGuiColors.DalamudGrey3, "Not registered".Loc());
                     ImGui.TableNextColumn();
                 }
                 else
                 {
-                    ImGuiEx.TextV($"{fc.PathToWorkshop.Count} \u500b\u5ea7\u6a19\u9ede");
+                    ImGuiEx.TextV("?? points".Loc(fc.PathToWorkshop.Count));
                     ImGui.TableNextColumn();
                     if(ImGuiEx.IconButton((FontAwesomeIcon)'\ue566', "DeleFcWorkshopPath", enabled: ImGuiEx.Ctrl))
                     {
                         fc.PathToWorkshop.Clear();
                     }
-                    ImGuiEx.Tooltip("\u79fb\u9664\u524d\u5f80\u5de5\u623f\u7684\u8def\u5f91\u3002\u6309\u4f4f CTRL \u4e26\u9ede\u64ca\u3002");
+                    ImGuiEx.Tooltip("Remove path to workshop. Hold CTRL and click.".Loc());
                 }
 
                 ImGui.TableNextColumn();
@@ -177,7 +177,7 @@ public static unsafe class UIHouseReg
                     {
                         Copy(EzConfig.DefaultSerializationFactory.Serialize(fc)!);
                     }
-                    ImGuiEx.Tooltip("\u8907\u88fd\u90e8\u968a\u5b85\u90b8\u8a3b\u518a\u8cc7\u6599\u5230\u526a\u8cbc\u7c3f");
+                    ImGuiEx.Tooltip("Copy free company registration data to clipboard".Loc());
                     ImGui.SameLine();
                 }
 
@@ -186,7 +186,7 @@ public static unsafe class UIHouseReg
                 {
                     ImportFromClipboard(charaData.CID, false);
                 }
-                ImGuiEx.Tooltip("\u5f9e\u526a\u8cbc\u7c3f\u8cbc\u4e0a\u90e8\u968a\u5b85\u90b8\u8a3b\u518a\u8cc7\u6599");
+                ImGuiEx.Tooltip("Paste free company registration data from clipboard".Loc());
                 ImGui.PopID();
             }
 
@@ -226,7 +226,7 @@ public static unsafe class UIHouseReg
                 }
                 else
                 {
-                    Notify.Error($"此角色已註冊了不同的{(isPrivate ? "私人宅邸房號" : "部隊宅邸房號")}。若要覆蓋，請按住 CTRL 並點擊貼上按鈕。");
+                    Notify.Error("A different ?? is already registered for this character. If you want to override it, hold CTRL and click paste button.".Loc((isPrivate ? "private house plot" : "FC house plot").Loc()));
                 }
             }
             catch(Exception e)
@@ -255,14 +255,14 @@ public static unsafe class UIHouseReg
         {
             if(C.HousePathDatas.TryGetFirst(x => x.ResidentialDistrict == kind && x.Ward == ward && x.Plot == plot, out var regData))
             {
-                ImGuiEx.TextWrapped($"這棟宅邸已被角色 {Utils.GetCharaName(regData.CID)} 註冊為{(regData.IsPrivate ? "私人宅邸" : "部隊宅邸")}，無法再註冊為自訂宅邸。");
+                ImGuiEx.TextWrapped("This house is already registered as ?? for character ?? and can not be registered as a custom house.".Loc((regData.IsPrivate ? "private house" : "FC house").Loc(), Utils.GetCharaName(regData.CID)));
             }
             else
             {
                 var data = C.CustomHousePathDatas.FirstOrDefault(x => x.Ward == ward && x.Plot == plot && x.ResidentialDistrict == kind);
                 if(data == null)
                 {
-                    if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "將此宅邸註冊為自訂宅邸"))
+                    if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Register this house as custom house".Loc()))
                     {
                         C.CustomHousePathDatas.Add(new()
                         {
@@ -274,7 +274,7 @@ public static unsafe class UIHouseReg
                 }
                 else
                 {
-                    if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "取消註冊此宅邸", ImGuiEx.Ctrl))
+                    if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "Unregister this house".Loc(), ImGuiEx.Ctrl))
                     {
                         new TickScheduler(() => C.CustomHousePathDatas.Remove(data));
                     }
@@ -284,7 +284,7 @@ public static unsafe class UIHouseReg
         }
         else
         {
-            ImGuiEx.TextWrapped($"請前往該房號以將其註冊為自訂宅邸。註冊自訂宅邸後，其路徑可用於共用宅邸傳送與通訊錄傳送。");
+            ImGuiEx.TextWrapped("Please navigate to the plot to register it as custom house. Registering custom house will allow it's path to be used for shared estate teleports and address book teleports.".Loc());
         }
     }
 
@@ -293,10 +293,10 @@ public static unsafe class UIHouseReg
         var plotDataAvailable = TryGetCurrentPlotInfo(out var kind, out var ward, out var plot);
         if(data == null)
         {
-            ImGuiEx.Text($"找不到資料。");
+            ImGuiEx.Text("No data found. ".Loc());
             if(plotDataAvailable && Player.IsInHomeWorld)
             {
-                if(ImGui.Button($"將 {kind.GetName()} 第 {ward + 1} 區第 {plot + 1} 號註冊為{(isPrivate ? "私人" : "部隊")}宅邸。"))
+                if(ImGui.Button("Register ??, ward ??, plot ?? as ?? house.".Loc(kind.GetName(), ward + 1, plot + 1, (isPrivate ? "private" : "free company").Loc())))
                 {
                     var newData = new HousePathData()
                     {
@@ -311,17 +311,17 @@ public static unsafe class UIHouseReg
             }
             else
             {
-                ImGuiEx.Text($"請前往你的房號以註冊資料。");
+                ImGuiEx.Text("Go to your plot to register the data.".Loc());
             }
         }
         else
         {
-            ImGuiEx.TextWrapped(ImGuiColors.ParsedGreen, $"{data.ResidentialDistrict.GetName()} 第 {data.Ward + 1} 區第 {data.Plot + 1} 號已註冊為{(data.IsPrivate ? "私人" : "部隊")}宅邸。");
-            if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "移除註冊", ImGuiEx.Ctrl))
+            ImGuiEx.TextWrapped(ImGuiColors.ParsedGreen, "??, Ward ??, Plot ?? is registered as ?? house.".Loc(data.ResidentialDistrict.GetName(), data.Ward + 1, data.Plot + 1, (data.IsPrivate ? "private" : "free company").Loc()));
+            if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "Remove registration".Loc(), ImGuiEx.Ctrl))
             {
                 C.HousePathDatas.Remove(data);
             }
-            ImGui.Checkbox("覆蓋傳送行為", ref data.EnableHouseEnterModeOverride);
+            ImGui.Checkbox("Override teleport behavior".Loc(), ref data.EnableHouseEnterModeOverride);
             if(data.EnableHouseEnterModeOverride)
             {
                 ImGui.SameLine();
@@ -340,10 +340,10 @@ public static unsafe class UIHouseReg
             {
                 var path = data.PathToEntrance;
                 new NuiBuilder()
-                    .Section("前往宅邸的路徑")
+                    .Section("Path to house".Loc())
                     .Widget(() =>
                     {
-                        ImGuiEx.TextWrapped($"建立從房號入口到宅邸入口的路徑。路徑的第一個點應該稍微位於你的房號範圍內，讓你在傳送後可以直線跑到該點；最後一個點則應位於宅邸入口旁，讓你可以從該處進入宅邸。");
+                        ImGuiEx.TextWrapped("Create path from plot entrance to house entrance. A path should have it's first point slightly inside your plot to which you can run in a straight line after teleporting and last point next to house entrance from where you can enter the house.".Loc());
 
                         ImGui.PushID($"path{isPrivate}");
                         DrawPathEditor(path, data);
@@ -355,10 +355,10 @@ public static unsafe class UIHouseReg
             {
                 var path = data.PathToWorkshop;
                 new NuiBuilder()
-                    .Section("前往工房的路徑")
+                    .Section("Path to workshop".Loc())
                     .Widget(() =>
                     {
-                        ImGuiEx.TextWrapped($"建立從宅邸入口到工房／私人房間入口的路徑。");
+                        ImGuiEx.TextWrapped("Create path from house entrance to workshop/private chambers entrance.".Loc());
 
                         ImGui.PushID($"workshop");
                         DrawPathEditor(path, data);
@@ -368,12 +368,12 @@ public static unsafe class UIHouseReg
             }
             else
             {
-                ImGuiEx.TextWrapped("請前往已註冊的房號以編輯路徑");
+                ImGuiEx.TextWrapped("Go to registered plot to edit path".Loc());
             }
         }
         else
         {
-            ImGuiEx.TextWrapped("請前往已註冊的房號以編輯路徑");
+            ImGuiEx.TextWrapped("Go to registered plot to edit path".Loc());
         }
     }
 
@@ -381,15 +381,15 @@ public static unsafe class UIHouseReg
     {
         if(!TerritoryWatcher.IsDataReliable())
         {
-            ImGuiEx.Text(EColor.RedBright, $"目前無法編輯宅邸路徑。\n請退出並重新進入你的宅邸。");
+            ImGuiEx.Text(EColor.RedBright, "You can not edit house path right now. \nPlease exit and enter your house.".Loc());
             return;
         }
-        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "新增至清單末端"))
+        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add to the end of the list".Loc()))
         {
             path.Add(Player.Position);
         }
         ImGui.SameLine();
-        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "新增至清單開頭"))
+        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add to the beginning of the list".Loc()))
         {
             path.Insert(0, Player.Position);
         }
@@ -399,22 +399,18 @@ public static unsafe class UIHouseReg
             if(entryPoint != null)
             {
                 ImGui.SameLine();
-                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Play, "測試", data.ResidentialDistrict.GetResidentialTerritory() == P.Territory && Vector3.Distance(Player.Position, entryPoint.Value) < 10f))
+                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Play, "Test".Loc(), data.ResidentialDistrict.GetResidentialTerritory() == P.Territory && Vector3.Distance(Player.Position, entryPoint.Value) < 10f))
                 {
                     P.FollowPath.Move(data.PathToEntrance, true);
                 }
                 ImGui.SameLine();
-                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Play, "測試工房路徑", data.PathToWorkshop.Count > 0 && Utils.IsInsideHouse()))
+                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Play, "Test Workshop".Loc(), data.PathToWorkshop.Count > 0 && Utils.IsInsideHouse()))
                 {
                     P.FollowPath.Move(data.PathToWorkshop, true);
                 }
                 if(ImGui.IsItemHovered())
                 {
-                    ImGuiEx.Tooltip($"""
-                        住宅區地圖：{data.ResidentialDistrict.GetResidentialTerritory()}
-                        玩家所在地圖：{P.Territory}
-                        距入口點的距離：{Vector3.Distance(Player.Position, entryPoint.Value)}
-                        """);
+                    ImGuiEx.Tooltip("ResidentialDistrict territory: ??\nPlayer territory: ??\nDistance to entry point: ??".Loc(data.ResidentialDistrict.GetResidentialTerritory(), P.Territory, Vector3.Distance(Player.Position, entryPoint.Value)));
                 }
             }
         }
@@ -423,7 +419,7 @@ public static unsafe class UIHouseReg
         {
             ImGui.TableSetupColumn("##num");
             ImGui.TableSetupColumn("##move");
-            ImGui.TableSetupColumn("座標", ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn("Coords".Loc(), ImGuiTableColumnFlags.WidthStretch);
             ImGui.TableSetupColumn("##control");
             ImGui.TableHeadersRow();
 
@@ -431,7 +427,7 @@ public static unsafe class UIHouseReg
             ImGui.TableNextColumn();
             ImGui.TableNextColumn();
             ImGui.TableNextColumn();
-            ImGuiEx.Text($"房號入口");
+            ImGuiEx.Text("Entrance to plot".Loc());
 
             for(var i = 0; i < path.Count; i++)
             {
@@ -450,13 +446,13 @@ public static unsafe class UIHouseReg
                 Visualise();
 
                 ImGui.TableNextColumn();
-                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.MapPin, "移至我的位置"))
+                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.MapPin, "To my position".Loc()))
                 {
                     path[i] = Player.Position;
                 }
                 Visualise();
                 ImGui.SameLine();
-                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "刪除", ImGuiEx.Ctrl))
+                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "Delete".Loc(), ImGuiEx.Ctrl))
                 {
                     var toRem = i;
                     new TickScheduler(() => path.RemoveAt(toRem));
@@ -482,7 +478,7 @@ public static unsafe class UIHouseReg
             ImGui.TableNextColumn();
             ImGui.TableNextColumn();
             ImGui.TableNextColumn();
-            ImGuiEx.Text($"宅邸入口");
+            ImGuiEx.Text("Entrance to the house".Loc());
 
             ImGui.EndTable();
         }

@@ -75,10 +75,10 @@ public unsafe class SearchHelperOverlay : Window
 
         var additionalDescriptions = new Dictionary<string, string>
         {
-            ["help"] = "顯示指令說明",
-            ["?"] = "顯示指令說明",
-            ["commands"] = "顯示指令說明",
-            ["stop"] = "停止所有任務"
+            ["help"] = "Show command help".Loc(),
+            ["?"] = "Show command help".Loc(),
+            ["commands"] = "Show command help".Loc(),
+            ["stop"] = "Stop all tasks".Loc()
         };
 
         foreach(var kvp in additionalDescriptions)
@@ -108,7 +108,7 @@ public unsafe class SearchHelperOverlay : Window
         {
             var description = CommandDescriptions.TryGetValue(cmd, out var desc)
                 ? desc
-                : "內建指令";
+                : "Built-in command".Loc();
             AddUniqueSuggestion(cmd, "Built-in", description);
         }
 
@@ -125,8 +125,8 @@ public unsafe class SearchHelperOverlay : Window
         {
             var stepCount = alias.Commands?.Count ?? 0;
             var desc = stepCount > 0
-                ? $"包含 {stepCount} 個步驟的自訂序列"
-                : "自訂別名";
+                ? (stepCount != 1 ? "Custom sequence with ?? steps".Loc(stepCount) : "Custom sequence with ?? step".Loc(stepCount))
+                : "Custom alias".Loc();
             AddUniqueSuggestion(alias.Alias, "Custom Alias", desc);
         }
 
@@ -142,7 +142,7 @@ public unsafe class SearchHelperOverlay : Window
         {
             foreach(var world in S.Data.DataStore.Worlds)
             {
-                AddUniqueSuggestion(world, "World", $"前往 {world}");
+                AddUniqueSuggestion(world, "World", "Travel to ??".Loc(world));
             }
         }
 
@@ -150,7 +150,7 @@ public unsafe class SearchHelperOverlay : Window
         {
             foreach(var world in S.Data.DataStore.DCWorlds)
             {
-                AddUniqueSuggestion(world, "DC World", $"前往 {world}（跨資料中心）");
+                AddUniqueSuggestion(world, "DC World", "Travel to ?? (cross-DC)".Loc(world));
             }
         }
     }
@@ -221,13 +221,13 @@ public unsafe class SearchHelperOverlay : Window
         if(FilteredSuggestions.Count == 0)
         {
             ImGui.PushStyleColor(ImGuiCol.Text, 0xFF808080);
-            ImGui.Text("找不到符合的指令");
+            ImGui.Text("No matching commands found".Loc());
             ImGui.PopStyleColor();
             return;
         }
 
         ImGui.PushStyleColor(ImGuiCol.Text, 0xFFFFFFFF);
-        ImGui.Text($"Lifestream 指令{(string.IsNullOrEmpty(FilterText) ? "" : $"（符合「{FilterText}」）")}：");
+        ImGui.Text(string.IsNullOrEmpty(FilterText) ? "Lifestream Commands:".Loc() : "Lifestream Commands matching '??':".Loc(FilterText));
         ImGui.PopStyleColor();
         ImGui.Separator();
 
@@ -281,7 +281,7 @@ public unsafe class SearchHelperOverlay : Window
 
         ImGui.Separator();
         ImGui.PushStyleColor(ImGuiCol.Text, 0xFF808080);
-        ImGui.Text("點擊以完成輸入");
+        ImGui.Text("Click to complete".Loc());
         ImGui.PopStyleColor();
         WindowSize = ImGui.GetWindowSize();
     }
