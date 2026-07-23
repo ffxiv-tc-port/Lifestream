@@ -37,7 +37,7 @@ public static unsafe class TabAddressBook
     {
         InputWardDetailDialog.Draw();
         var selector = S.AddressBookFileSystemManager.FileSystem.Selector;
-        selector.Draw();
+        selector.Draw(150f.Scale());
         ImGui.SameLine();
         if(C.AddressBookFolders.Count == 0)
         {

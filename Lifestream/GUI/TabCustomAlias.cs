@@ -16,7 +16,7 @@ public static class TabCustomAlias
     public static void Draw()
     {
         var selector = S.CustomAliasFileSystemManager.FileSystem.Selector;
-        selector.Draw();
+        selector.Draw(150f);
         ImGui.SameLine();
         if(ImGui.BeginChild("Child"))
         {
