@@ -4,7 +4,7 @@
     "InternalName": "Lifestream",
     "Description": "- 一鍵傳送至任何世界或以太之光目的地\n- 點擊區域地圖上的以太之光即可傳送過去",
     "ApplicableVersion": "any",
-    "Punchline": "加速以太之光移動與跨世界旅行的外掛。",
+    "Punchline": "加速以太之光移動與跨世界旅行的插件。",
     "RepoUrl": "https://github.com/Lother/Lifestream",
     "AcceptsFeedback": false,
     "IconUrl": "https://raw.githubusercontent.com/Lother/DalamudPluginsTC/main/icons/Lifestream.png",
