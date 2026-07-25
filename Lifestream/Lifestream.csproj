@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <Authors>NightmareXIV, Lother</Authors>
+        <Authors>NightmareXIV</Authors>
         <RepoUrl>https://github.com/Lother/Lifestream</RepoUrl>
         <IconUrl>https://raw.githubusercontent.com/Lother/DalamudPluginsTC/main/icons/Lifestream.png</IconUrl>
         <BuildNumberFile>$(MSBuildProjectDirectory)\BuildNumber.txt</BuildNumberFile>
