@@ -18,12 +18,25 @@ public class FollowPath : IDisposable
 
     public FollowPath()
     {
+        Svc.ClientState.Login += OnLogin;
     }
 
     public void Dispose()
     {
+        Svc.ClientState.Login -= OnLogin;
         _camera.Dispose();
         _movement.Dispose();
+    }
+
+    // Update() returns early while Player.Available is false (login/relog transition),
+    // skipping the waypoint-clear branch below - so a path left over from an interrupted
+    // task (e.g. a timed-out Walk_to_door) survives the transition and resumes immediately
+    // toward a stale destination the instant the new character's Player becomes available,
+    // fighting the player's own input right at login.
+    private void OnLogin()
+    {
+        Stop();
+        _movement.Enabled = _camera.Enabled = false;
     }
 
     public void UpdateTimeout(int seconds) => TimeoutAt = Environment.TickCount64 + seconds * 1000;
