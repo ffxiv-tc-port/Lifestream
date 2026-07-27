@@ -117,6 +117,6 @@ public unsafe class OverrideMovement : IDisposable
     private void UpdateLegacyMode()
     {
         _legacyMode = Svc.GameConfig.UiControl.TryGetUInt("MoveMode", out var mode) && mode == 1;
-        PluginLog.Information($"Legacy mode is now {(_legacyMode ? "enabled" : "disabled")}");
+        PluginLog.Debug($"Legacy mode is now {(_legacyMode ? "enabled" : "disabled")}");
     }
 }
