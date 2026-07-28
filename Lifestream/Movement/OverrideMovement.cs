@@ -108,7 +108,7 @@ public unsafe class OverrideMovement : IDisposable
 
         var activeCamera = _legacyMode && CameraManager.Instance() != null ? CameraManager.Instance()->GetActiveCamera() : null;
         var refDir = activeCamera != null
-            ? ((CameraEx*)activeCamera)->DirH.Radians() + 180.Degrees()
+            ? activeCamera->DirH.Radians() + 180.Degrees()
             : player.Rotation.Radians();
         return (dirH - refDir, dirV);
     }
