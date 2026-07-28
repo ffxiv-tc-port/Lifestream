@@ -2,6 +2,7 @@
 using Dalamud.Game.Gui.Dtr;
 using ECommons.Automation;
 using ECommons.Automation.NeoTaskManager;
+using Callback = ECommons.Automation.Callback;
 using ECommons.ChatMethods;
 using ECommons.Configuration;
 using ECommons.Events;

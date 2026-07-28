@@ -10,13 +10,13 @@ using Lifestream.Enums;
 using Lifestream.Systems.Residential;
 using Lifestream.Tasks.SameWorld;
 using Lumina.Excel.Sheets;
-using PInvoke;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using FXWindows = TerraFX.Interop.Windows.Windows;
 
 namespace Lifestream.Services;
 public unsafe class MapHanderService : IDisposable
@@ -51,7 +51,7 @@ public unsafe class MapHanderService : IDisposable
             {
                 if(isLeftClicked)
                 {
-                    if(!Bitmask.IsBitSet(User32.GetKeyState((int)Keys.ControlKey), 15) && !Bitmask.IsBitSet(User32.GetKeyState((int)Keys.LControlKey), 15) && !Bitmask.IsBitSet(User32.GetKeyState((int)Keys.RControlKey), 15))
+                    if(!Bitmask.IsBitSet(FXWindows.GetKeyState((int)Keys.ControlKey), 15) && !Bitmask.IsBitSet(FXWindows.GetKeyState((int)Keys.LControlKey), 15) && !Bitmask.IsBitSet(FXWindows.GetKeyState((int)Keys.RControlKey), 15))
                     {
                         if(TryGetAddonByName<AtkUnitBase>("Tooltip", out var addonTooltip) && IsAddonReady(addonTooltip) && addonTooltip->IsVisible)
                         {

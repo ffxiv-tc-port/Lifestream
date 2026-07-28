@@ -1,4 +1,5 @@
-﻿using ECommons.EzIpcManager;
+﻿using ECommons;
+using ECommons.EzIpcManager;
 using ECommons.GameHelpers;
 using Lifestream.Data;
 using Lifestream.Enums;
@@ -15,7 +16,9 @@ public class IPCProvider
 {
     private IPCProvider()
     {
-        EzIPC.Init(this, reducedLogging: true);
+        ECommonsMain.ReducedLogging = true;
+        EzIPC.Init(this);
+        ECommonsMain.ReducedLogging = false;
     }
 
     [EzIPC]

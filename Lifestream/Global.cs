@@ -11,7 +11,7 @@ global using ECommons.ImGuiMethods;
 global using ECommons.LanguageHelpers;
 global using ECommons.Logging;
 global using ECommons.Schedulers;
-global using ImGuiNET;
+global using Dalamud.Bindings.ImGui;
 global using Lifestream.CSExtensions;
 global using System;
 global using System.Collections.Generic;
