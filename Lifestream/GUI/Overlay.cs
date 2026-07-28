@@ -201,7 +201,7 @@ public class Overlay : Window
 
         if(P.ActiveAetheryte.Value.ID == 70 && C.Firmament)
         {
-            var name = "Firmament";
+            var name = "Firmament".Loc();
             ResizeButton($"{Pad}{name}");
             if(ImGui.Button($"{Pad}{name}", ButtonSizeAetheryte))
             {
@@ -300,15 +300,15 @@ public class Overlay : Window
         }
         if(ImGui.BeginPopup($"LifestreamPopup{x.ID}"))
         {
-            if(ImGuiEx.CollectionCheckbox("Favorite", x.ID, C.Favorites))
+            if(ImGuiEx.CollectionCheckbox("Favorite".Loc(), x.ID, C.Favorites))
             {
                 PluginLog.Debug($"Rebuilding data store");
                 S.Data.DataStore = new();
                 EzConfig.Save();
             }
-            if(ImGuiEx.CollectionCheckbox("Hidden", x.ID, C.Hidden)) EzConfig.Save();
+            if(ImGuiEx.CollectionCheckbox("Hidden".Loc(), x.ID, C.Hidden)) EzConfig.Save();
             var newName = C.Renames.TryGetValue(x.ID, out var value) ? value : "";
-            ImGuiEx.Text($"Rename:");
+            ImGuiEx.Text("Rename:".Loc());
             ImGui.SetNextItemWidth(200f.Scale());
             if(ImGui.InputText($"##LifestreamRename", ref newName, 100))
             {

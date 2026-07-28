@@ -15,7 +15,7 @@ public class SelectWorldWindow : Window
         var worlds = S.Data.DataStore.DCWorlds.Concat(S.Data.DataStore.Worlds).Select(x => ExcelWorldHelper.Get(x)).OrderBy(x => x?.Name.ToString());
         if(!worlds.Any())
         {
-            ImGuiEx.Text($"No available destinations");
+            ImGuiEx.Text("No available destinations".Loc());
             return;
         }
         var datacenters = worlds.Select(x => x?.DataCenter).DistinctBy(x => x?.RowId).OrderBy(x => x.Value.ValueNullable?.Region).ToArray();

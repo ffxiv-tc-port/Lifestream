@@ -498,7 +498,7 @@ internal static unsafe partial class Utils
                 point = worldPos;
             }
             ImGui.BeginTooltip();
-            ImGuiEx.Text($"Point: {point:F2}\nLeft-click to finish");
+            ImGuiEx.Text("Point: ??\nLeft-click to finish".Loc(point.ToString("F2")));
             ImGui.EndTooltip();
             if(IsKeyPressed((int)Keys.LButton))
             {
@@ -528,7 +528,7 @@ internal static unsafe partial class Utils
                 point = worldPos.ToVector2();
             }
             ImGui.BeginTooltip();
-            ImGuiEx.Text($"Point: {point:F2}\nLeft-click to finish");
+            ImGuiEx.Text("Point: ??\nLeft-click to finish".Loc(point.ToString("F2")));
             ImGui.EndTooltip();
             if(IsKeyPressed((int)Keys.LButton))
             {
@@ -573,20 +573,20 @@ internal static unsafe partial class Utils
         {
             value = Player.Position.ToVector2();
         }
-        ImGuiEx.Tooltip("To player positon");
+        ImGuiEx.Tooltip("To player positon".Loc());
         ImGui.SameLine();
         if(ImGuiEx.IconButton(FontAwesomeIcon.Crosshairs, $"target{id}", enabled: Svc.Targets.Target != null))
         {
             value = Svc.Targets.Target.Position.ToVector2();
         }
-        ImGuiEx.Tooltip("To target positon");
+        ImGuiEx.Tooltip("To target positon".Loc());
         ImGui.SameLine();
         if(ImGuiEx.IconButton(FontAwesomeIcon.MousePointer, $"target{id}", enabled: Player.Interactable))
         {
             BeginScreenToWorldSelection(id, value);
         }
         ScreenToWorldSelector(id, ref value);
-        ImGuiEx.Tooltip("Select with mouse");
+        ImGuiEx.Tooltip("Select with mouse".Loc());
         ImGui.SameLine();
         if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && AgentMap.Instance()->FlagMarkerCount > 0))
         {
@@ -594,7 +594,7 @@ internal static unsafe partial class Utils
             value = new(marker.XFloat, marker.YFloat);
         }
         ScreenToWorldSelector(id, ref value);
-        ImGuiEx.Tooltip("To map flag");
+        ImGuiEx.Tooltip("To map flag".Loc());
     }
 
     public static void DrawVector3Selector(string id, ref Vector3 value)
@@ -606,20 +606,20 @@ internal static unsafe partial class Utils
         {
             value = Player.Position;
         }
-        ImGuiEx.Tooltip("To player positon");
+        ImGuiEx.Tooltip("To player positon".Loc());
         ImGui.SameLine();
         if(ImGuiEx.IconButton(FontAwesomeIcon.Crosshairs, $"target{id}", enabled: Svc.Targets.Target != null))
         {
             value = Svc.Targets.Target.Position;
         }
-        ImGuiEx.Tooltip("To target positon");
+        ImGuiEx.Tooltip("To target positon".Loc());
         ImGui.SameLine();
         if(ImGuiEx.IconButton(FontAwesomeIcon.MousePointer, $"target{id}", enabled: Player.Interactable))
         {
             BeginScreenToWorldSelection(id, value);
         }
         ScreenToWorldSelector(id, ref value);
-        ImGuiEx.Tooltip("Select with mouse");
+        ImGuiEx.Tooltip("Select with mouse".Loc());
         ImGui.SameLine();
         if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && AgentMap.Instance()->FlagMarkerCount > 0))
         {
@@ -627,7 +627,7 @@ internal static unsafe partial class Utils
             value = new(marker.XFloat, 0, marker.YFloat);
         }
         ScreenToWorldSelector(id, ref value);
-        ImGuiEx.Tooltip("To map flag");
+        ImGuiEx.Tooltip("To map flag".Loc());
     }
 
     public static IEnumerable<uint> GetAllRegisteredAethernetDestinations()
