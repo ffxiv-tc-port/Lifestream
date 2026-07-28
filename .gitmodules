@@ -6,7 +6,7 @@
 	url = https://github.com/Limiana/ClickLib
 [submodule "AutoRetainerAPI"]
 	path = AutoRetainerAPI
-	url = https://github.com/PunishXIV/AutoRetainerAPI
+	url = https://github.com/ffxiv-tc-port/AutoRetainerAPI.git
 [submodule "OtterGui"]
 	path = OtterGui
 	url = https://github.com/ffxiv-tc-port/OtterGui.git
@@ -18,4 +18,4 @@
 	url = https://github.com/NightmareXIV/NightmareUI.OtterGuiWrapper
 [submodule "FFXIVClientStructs"]
 	path = FFXIVClientStructs
-	url = https://github.com/Limiana/FFXIVClientStructs
+	url = https://github.com/ffxiv-tc-port/FFXIVClientStructs.git
