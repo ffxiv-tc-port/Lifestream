@@ -44,9 +44,25 @@ public static unsafe class TaskTpAndGoToWard
         if(C.WaitForScreenReady) P.TaskManager.Enqueue(Utils.WaitForScreen);
         P.TaskManager.Enqueue(() =>
         {
-            if(P.Territory != residentialArtheryte.GetTerritory() || (!Utils.ApproachConditionIsMet() && P.ActiveAetheryte?.IsAetheryte != true))
+            if(P.Territory != residentialArtheryte.GetTerritory())
             {
                 TaskTpToResidentialAetheryte.Insert(residentialArtheryte);
+            }
+            else if(P.ActiveAetheryte?.IsAetheryte != true)
+            {
+                if(Utils.GetReachableAetheryte(x => x.IsAetheryte()) != null && S.Data.DataStore.Aetherytes.Keys.TryGetFirst(a => a.ID == (uint)residentialArtheryte, out var rootAetheryte))
+                {
+                    P.TaskManager.InsertStack(() =>
+                    {
+                        TaskAethernetTeleport.Enqueue(rootAetheryte);
+                        P.TaskManager.Enqueue(Utils.WaitForScreenFalse);
+                        P.TaskManager.Enqueue(Utils.WaitForScreen);
+                    });
+                }
+                else
+                {
+                    TaskTpToResidentialAetheryte.Insert(residentialArtheryte);
+                }
             }
         }, "TaskTpToResidentialAetheryteIfNeeded");
         P.TaskManager.Enqueue(() => Utils.GetReachableAetheryte(x => x.ObjectKind == ObjectKind.Aetheryte) != null, "WaitUntilReachableAetheryteExists");
