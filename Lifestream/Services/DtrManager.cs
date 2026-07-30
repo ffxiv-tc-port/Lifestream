@@ -1,6 +1,7 @@
 ﻿using Dalamud.Game.Gui.Dtr;
 using Dalamud.Game.Text.SeStringHandling;
-using ECommons.EzEventManager;
+using Dalamud.Plugin.Services;
+using ECommons.Throttlers;
 
 namespace Lifestream.Services;
 public class DtrManager : IDisposable
@@ -19,33 +20,42 @@ public class DtrManager : IDisposable
     };
     public static string Name = "LifestreamInstance";
     public IDtrBarEntry Entry;
+    private int lastShownInstance = -1;
+
     private DtrManager()
     {
         Entry = Svc.DtrBar.Get(Name);
         Entry.Shown = false;
-        new EzTerritoryChanged(OnTerritoryChanged);
+        Svc.Framework.Update += OnUpdate;
         Refresh();
     }
 
-    public void Refresh() => OnTerritoryChanged(Svc.ClientState.TerritoryType);
+    public void Refresh() => lastShownInstance = -1;
 
-    private void OnTerritoryChanged(ushort obj)
+    private void OnUpdate(IFramework framework)
     {
-        Entry.Shown = false;
-        if(C.EnableDtrBar && S.InstanceHandler.GetInstance() > 0)
+        if(!EzThrottler.Throttle("LifestreamDtrRefresh", 500)) return;
+        // 上游 bug 修正:原本以 territory id 當 key 查 1–9 的分線圖示字典,DTR 永遠不會顯示;
+        // 且同地圖切換分線不會觸發 TerritoryChanged,故改為輪詢分線編號。
+        var instance = C.EnableDtrBar ? S.InstanceHandler.GetInstance() : 0;
+        if(instance == lastShownInstance) return;
+        lastShownInstance = instance;
+        var str = InstanceNumbers.SafeSelect(instance);
+        if(instance > 0 && str != null)
         {
-            var str = InstanceNumbers.SafeSelect(obj);
-            if(str != null)
-            {
-                Entry.Text = str;
-                Entry.Tooltip = $"You are in instance {obj}";
-                Entry.Shown = true;
-            }
+            Entry.Text = str;
+            Entry.Tooltip = $"You are in instance {instance}";
+            Entry.Shown = true;
+        }
+        else
+        {
+            Entry.Shown = false;
         }
     }
 
     public void Dispose()
     {
+        Svc.Framework.Update -= OnUpdate;
         Entry.Remove();
         Entry = null;
     }
