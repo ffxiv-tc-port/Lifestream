@@ -34,6 +34,7 @@ using Lifestream.Tasks.CrossDC;
 using Lifestream.Tasks.CrossWorld;
 using Lifestream.Tasks.SameWorld;
 using Lifestream.Tasks.Shortcuts;
+using Lifestream.Tasks.Utility;
 using Lumina.Excel.Sheets;
 using NotificationMasterAPI;
 using GrandCompany = ECommons.ExcelServices.GrandCompany;
@@ -319,6 +320,39 @@ public unsafe class Lifestream : IDalamudPlugin
                         ProcessAdditionalCommand(additionalCommand);
                     }
                 }
+            }
+        }
+        else if(arguments.EqualsIgnoreCase("goto") || arguments.StartsWith("goto ", StringComparison.OrdinalIgnoreCase))
+        {
+            // 自訂座標地點:傳送至該區最近以太之光 + vnavmesh 走路(安全版,非瞬移)
+            var destName = arguments.Length > 5 ? arguments[5..].Trim() : "";
+            if(destName == "")
+            {
+                if(C.CustomDestinations.Count == 0)
+                {
+                    DuoLog.Warning("No custom destinations saved. Add them on the Destinations tab.".Loc());
+                }
+                else
+                {
+                    ChatPrinter.Green($"[Lifestream] {"Saved destinations:".Loc()} {C.CustomDestinations.Select(d => d.Name).Print(", ")}");
+                }
+            }
+            else if(!P.TaskManager.IsBusy && Player.Interactable)
+            {
+                var dest = C.CustomDestinations.FirstOrDefault(d => d.Name.EqualsIgnoreCase(destName))
+                    ?? C.CustomDestinations.FirstOrDefault(d => d.Name.Contains(destName, StringComparison.OrdinalIgnoreCase));
+                if(dest == null)
+                {
+                    DuoLog.Error($"Destination not found: {destName}");
+                }
+                else
+                {
+                    TaskGotoDestination.Enqueue(dest);
+                }
+            }
+            else
+            {
+                DuoLog.Error("Lifestream is busy");
             }
         }
         else if(Utils.TryParseAddressBookEntry(arguments, out var entry))

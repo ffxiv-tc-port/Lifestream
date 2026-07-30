@@ -75,6 +75,7 @@ public class Config : IEzConfig
     public int RetryWorldVisitInterval = 30;
     public int RetryWorldVisitIntervalDelta = 10;
     public List<CustomAlias> CustomAliases = [];
+    public List<CustomDestination> CustomDestinations = [];
     public bool UseGuestWorldTravel = false;
     public bool AllowDCTravelFromCharaSelect = true;
     public List<TravelBanInfo> TravelBans = [];

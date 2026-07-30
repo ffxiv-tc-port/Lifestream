@@ -11,6 +11,7 @@ internal static unsafe class MainGui
             ("Address Book".Loc(), TabAddressBook.Draw, null, true),
             ("House Registration".Loc(), UIHouseReg.Draw, null, true),
             ("Custom Alias".Loc(), TabCustomAlias.Draw, null, true),
+            ("Destinations".Loc(), TabDestinations.Draw, null, true),
             ("Utility".Loc(), TabUtility.Draw, null, true),
             ("Settings".Loc(), UISettings.Draw, null, true),
             ("Help".Loc(), DrawHelp, null, true),
