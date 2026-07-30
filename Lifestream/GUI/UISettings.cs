@@ -324,6 +324,8 @@ internal static unsafe class UISettings
         .Checkbox("Enabled".Loc(), () => ref C.ShowInstanceSwitcher)
         .Checkbox("Retry on failure".Loc(), () => ref C.InstanceSwitcherRepeat)
         .Checkbox("Return to the ground when flying before changing instance".Loc(), () => ref C.EnableFlydownInstance)
+        .Checkbox("Teleport to the zone's aetheryte first if none is nearby".Loc(), () => ref C.InstanceTpToAetheryte)
+        .Checkbox("Summon mount again after changing instance".Loc(), () => ref C.InstanceRemount)
         .Widget("Display instance number in Server Info Bar".Loc(), (x) =>
         {
             if(ImGui.Checkbox(x, ref C.EnableDtrBar))

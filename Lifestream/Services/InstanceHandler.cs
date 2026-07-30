@@ -24,7 +24,9 @@ public unsafe class InstanceHandler : IDisposable
 
     public bool CanChangeInstance()
     {
-        return C.ShowInstanceSwitcher && !Utils.IsDisallowedToUseAethernet() && !P.TaskManager.IsBusy && !IsOccupied() && S.InstanceHandler.GetInstance() != 0 && TaskChangeInstance.GetAetheryte() != null;
+        // 開啟「先傳送至本區以太之光」時,即使附近沒有水晶、只要本區有已解鎖的以太之光也允許切線
+        return C.ShowInstanceSwitcher && !Utils.IsDisallowedToUseAethernet() && !P.TaskManager.IsBusy && !IsOccupied() && S.InstanceHandler.GetInstance() != 0
+            && (TaskChangeInstance.GetAetheryte() != null || (C.InstanceTpToAetheryte && TaskChangeInstance.GetZoneAetheryteId() != 0));
     }
 
     private void OnPostUpdate(AddonEvent type, AddonArgs args)

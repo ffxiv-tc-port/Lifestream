@@ -52,6 +52,8 @@ public class Config : IEzConfig
     public Dictionary<uint, int> PublicInstances = [];
     public bool ShowInstanceSwitcher = true;
     public bool InstanceSwitcherRepeat = true;
+    public bool InstanceTpToAetheryte = false;
+    public bool InstanceRemount = false;
     public int InstanceButtonHeight = 10;
     public bool UseSprintPeloton = true;
     public bool UsePeloton = true;
