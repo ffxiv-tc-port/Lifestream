@@ -282,13 +282,19 @@ public class Overlay : Window
         }
         else
         {
-            ImGuiEx.Text($"""
-                Instances available, 
-                but not initialized.
-
-                To initialize instances, 
-                access aetheryte once.
-                """);
+            // 上游這裡只留一句「請先手動點一次以太之光」的死路提示;
+            // 改為附一鍵按鈕自動跑同一套合法流程(互動水晶→讀分線清單→關閉選單)。
+            ImGuiEx.TextWrapped("Instance count unknown - the game only reveals it in the aetheryte's instance menu.".Loc());
+            var name = "Read instance list".Loc();
+            ResizeButton(name);
+            if(ImGuiEx.Button($"{Pad}{name}", ButtonSizeInstance, TaskInitInstanceData.CanInitialize()))
+            {
+                TaskInitInstanceData.EnqueueWithTeleport();
+            }
+            if(!TaskInitInstanceData.CanInitialize())
+            {
+                ImGuiEx.Text(ImGuiColors.DalamudGrey, "Stand near an aetheryte.".Loc());
+            }
         }
     }
 

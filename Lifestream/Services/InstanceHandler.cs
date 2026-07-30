@@ -40,24 +40,51 @@ public unsafe class InstanceHandler : IDisposable
             && (m.Entries.Any(x => x.Text.ContainsAny(Lang.TravelToInstancedArea)) || m.Text == Lang.ToReduceCongestion)
             )
         {
-            var inst = *S.Memory.MaxInstances;
+            // 分線數量優先「數選單裡的分線項目」——這是遊戲實際列出來的清單,
+            // 比上游只讀靜態位址 (*S.Memory.MaxInstances) 可靠(上游會偶發 "Instance count is wrong")。
+            var inst = CountInstanceEntries(m);
             if(inst < 2 || inst > 9)
             {
-                if(EzThrottler.Throttle("InstanceWarning", 5000)) PluginLog.Warning($"Instance count is wrong, received {inst}, please report to developer");
-            }
-            else
-            {
-                if(C.PublicInstances.TryGetValue(P.Territory, out var value) && value == inst)
+                var fallback = *S.Memory.MaxInstances;
+                if(fallback >= 2 && fallback <= 9)
                 {
-                    //
+                    inst = fallback;
                 }
                 else
                 {
-                    C.PublicInstances[P.Territory] = inst;
-                    EzConfig.Save();
+                    if(EzThrottler.Throttle("InstanceWarning", 5000)) PluginLog.Warning($"Instance count is wrong, entries {inst} / static {fallback}, please report to developer");
+                    return;
+                }
+            }
+
+            if(!(C.PublicInstances.TryGetValue(P.Territory, out var value) && value == inst))
+            {
+                C.PublicInstances[P.Territory] = inst;
+                EzConfig.Save();
+                PluginLog.Information($"Instance count for territory {P.Territory} initialized: {inst}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 數選單中帶有分線編號字形( ~ )的項目數 = 該區分線總數。
+    /// </summary>
+    private static int CountInstanceEntries(AddonMaster.SelectString m)
+    {
+        var count = 0;
+        foreach(var e in m.Entries)
+        {
+            var text = e.Text;
+            for(var i = 1; i <= 9; i++)
+            {
+                if(text.Contains(TaskChangeInstance.InstanceNumbers[i]))
+                {
+                    count++;
+                    break;
                 }
             }
         }
+        return count;
     }
 
     public int GetInstance()
@@ -69,6 +96,23 @@ public unsafe class InstanceHandler : IDisposable
     {
         return C.PublicInstances.TryGetValue(P.Territory, out maxInstances);
     }
+
+    /// <summary>
+    /// 目前「可安全得知」的分線數:已記錄值,或至少等於自己所在的分線編號
+    /// (身處第 N 分線即證明至少存在 N 個,不需要任何額外記憶體讀取)。
+    /// 回傳 0 表示連自己的分線都讀不到(不在分線區)。
+    /// </summary>
+    public int GetKnownInstanceCount()
+    {
+        var current = GetInstance();
+        C.PublicInstances.TryGetValue(P.Territory, out var known);
+        return Math.Max(known, current);
+    }
+
+    /// <summary>
+    /// 分線數是否已由選單清單確認過(而非僅由所在分線推得的下限)。
+    /// </summary>
+    public bool IsInstanceCountConfirmed() => C.PublicInstances.ContainsKey(P.Territory);
 
     public void Dispose()
     {
