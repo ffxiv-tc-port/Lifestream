@@ -2,6 +2,7 @@
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Plugin.Services;
 using ECommons.Throttlers;
+using Lifestream.Tasks.SameWorld;
 
 namespace Lifestream.Services;
 public class DtrManager : IDisposable
@@ -26,8 +27,23 @@ public class DtrManager : IDisposable
     {
         Entry = Svc.DtrBar.Get(Name);
         Entry.Shown = false;
+        Entry.OnClick = OnDtrClick;
         Svc.Framework.Update += OnUpdate;
         Refresh();
+    }
+
+    /// <summary>
+    /// 左鍵:開/關分線快捷選單(尚無分線資料時,選單裡直接提供初始化按鈕);
+    /// 右鍵:若還沒有分線資料就直接執行初始化,否則開選單。
+    /// </summary>
+    private void OnDtrClick(DtrInteractionEvent ev)
+    {
+        if(ev.ClickType == MouseClickType.Right && !S.InstanceHandler.IsInstanceCountConfirmed() && TaskInitInstanceData.CanInitialize())
+        {
+            TaskInitInstanceData.EnqueueWithTeleport();
+            return;
+        }
+        S.Gui.InstanceSwitcherWindow.IsOpen ^= true;
     }
 
     public void Refresh() => lastShownInstance = -1;
@@ -44,12 +60,13 @@ public class DtrManager : IDisposable
         if(instance > 0 && str != null)
         {
             Entry.Text = str;
-            Entry.Tooltip = $"You are in instance {instance}";
+            Entry.Tooltip = $"{"You are in instance ??".Loc(instance)}\n{"Click to switch instance".Loc()}";
             Entry.Shown = true;
         }
         else
         {
             Entry.Shown = false;
+            if(S.Gui.InstanceSwitcherWindow != null) S.Gui.InstanceSwitcherWindow.IsOpen = false;
         }
     }
 

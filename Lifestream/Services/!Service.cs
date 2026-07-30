@@ -22,6 +22,7 @@ public static class Service
     public static class Gui
     {
         public static SelectWorldWindow SelectWorldWindow;
+        public static InstanceSwitcherWindow InstanceSwitcherWindow;
         public static Overlay Overlay;
         public static ProgressOverlay ProgressOverlay;
     }
