@@ -15,7 +15,7 @@ public static class TabDestinations
 
     public static void Draw()
     {
-        ImGuiEx.TextWrapped("Save named map positions and travel to them with \"/li goto <name>\". Lifestream teleports to the aetheryte closest to the saved point, then walks there via vnavmesh. If vnavmesh is not installed, the point is flagged on the map instead. This is teleport + navigation, not position writing.".Loc());
+        ImGuiEx.TextWrapped("Save named map positions and travel to them with \"/li goto <name>\". Lifestream picks the closest travel point to the saved position - including city aethernet shards, not just the main aetheryte - then walks the rest via vnavmesh. If vnavmesh is not installed, the point is flagged on the map instead. This is teleport + navigation, not position writing.".Loc());
         ImGui.Separator();
 
         ImGui.SetNextItemWidth(200f.Scale());
