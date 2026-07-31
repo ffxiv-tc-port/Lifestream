@@ -364,7 +364,9 @@ public unsafe class Lifestream : IDalamudPlugin
         {
             if(command.EqualsIgnoreCase("/lifestream") && arguments == "")
             {
-                EzConfigGui.Open();
+                // 用 Toggle 不用 Open：再下一次指令會關閉視窗，跟大多數外掛主指令的慣例一致。
+                // vnavmesh 的 DTR 右鍵就是呼叫這個指令，用 Open 的話「右鍵關閉」不會有反應。
+                EzConfigGui.Toggle();
             }
             else
             {
