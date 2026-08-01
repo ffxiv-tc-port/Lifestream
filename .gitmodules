@@ -12,10 +12,10 @@
 	url = https://github.com/ffxiv-tc-port/OtterGui.git
 [submodule "NightmareUI"]
 	path = NightmareUI
-	url = https://github.com/NightmareXIV/NightmareUI
+	url = https://github.com/ffxiv-tc-port/NightmareUI.git
 [submodule "NightmareUI.OtterGuiWrapper"]
 	path = NightmareUI.OtterGuiWrapper
-	url = https://github.com/NightmareXIV/NightmareUI.OtterGuiWrapper
+	url = https://github.com/ffxiv-tc-port/NightmareUI.OtterGuiWrapper.git
 [submodule "FFXIVClientStructs"]
 	path = FFXIVClientStructs
 	url = https://github.com/ffxiv-tc-port/FFXIVClientStructs.git
