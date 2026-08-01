@@ -30,7 +30,17 @@ public static unsafe class TaskGotoDestination
 
     public static void Enqueue(CustomDestination dest)
     {
-        if(TryFindAethernetRoute(dest, out var root, out var shard))
+        var hasAethernetRoute = TryFindAethernetRoute(dest, out var root, out var shard);
+
+        // 先驗證目的地可達再排任務:走不到就在聊天欄講清楚,不丟例外。
+        // (已在目的區域時不需要傳送點,TeleportToDestinationZone 會直接回 true)
+        if(!hasAethernetRoute && P.Territory != dest.Territory && FindClosestUnlockedAetheryte(dest) == 0)
+        {
+            ChatPrinter.Red($"[Lifestream] {"Cannot reach destination - no unlocked aetheryte in target zone:".Loc()} {dest.Name} ({ExcelTerritoryHelper.GetName(dest.Territory)})");
+            return;
+        }
+
+        if(hasAethernetRoute)
         {
             PluginLog.Information($"[Goto] {dest.Name}: using aethernet route {root.Name}({root.ID}) -> {shard.Name}({shard.ID})");
             // 既有且已驗證的流程:需要的話先傳送到主水晶,再互動並用以太之光網路跳到目標小以太之光
@@ -67,7 +77,14 @@ public static unsafe class TaskGotoDestination
         if(Svc.Condition[ConditionFlag.BetweenAreas] || Svc.Condition[ConditionFlag.BetweenAreas51] || Svc.Condition[ConditionFlag.Casting]) return false;
         if(!Player.Interactable) return false;
         var id = FindClosestUnlockedAetheryte(dest);
-        if(id == 0) throw new InvalidOperationException($"No unlocked aetheryte in destination zone {ExcelTerritoryHelper.GetName(dest.Territory)}");
+        if(id == 0)
+        {
+            // Enqueue 已預先驗證過,理論上到不了這裡;真的發生(狀態在途中改變)也不丟例外,
+            // 印聊天欄錯誤並整條中止,免得後續的導航步驟在錯的區域亂走。
+            ChatPrinter.Red($"[Lifestream] {"Cannot reach destination - no unlocked aetheryte in target zone:".Loc()} {dest.Name} ({ExcelTerritoryHelper.GetName(dest.Territory)})");
+            P.TaskManager.Abort();
+            return true;
+        }
         if(EzThrottler.Throttle("GotoTeleport", 5000))
         {
             S.TeleportService.TeleportToAetheryte(id);
@@ -141,19 +158,32 @@ public static unsafe class TaskGotoDestination
         return uiState != null && uiState->IsAetheryteUnlocked(aetheryteId);
     }
 
+    /// <summary>
+    /// ECommons 的 <see cref="ECommons.GameHelpers.Map.AetherytePosition(uint)"/> 對沒有 Level 資料的
+    /// 乙太之光會全表掃描 MapMarker,而 TeleportToDestinationZone 是逐幀重試的任務,
+    /// 每幀掃全表太浪費。座標是靜態遊戲資料,永久快取(null=解析不到,也快取避免重複丟例外)。
+    /// </summary>
+    private static readonly Dictionary<uint, Vector3?> AetherytePositionCache = [];
+
     private static bool TryGetDistanceToDestination(uint aetheryteId, CustomDestination dest, out float distance)
     {
         distance = float.MaxValue;
-        try
+        if(!AetherytePositionCache.TryGetValue(aetheryteId, out var pos))
         {
-            distance = DistanceXZ(ECommons.GameHelpers.Map.AetherytePosition(aetheryteId), dest.Position);
-            return true;
+            try
+            {
+                pos = ECommons.GameHelpers.Map.AetherytePosition(aetheryteId);
+            }
+            catch(Exception e)
+            {
+                PluginLog.Debug($"[Goto] Could not resolve position of aetheryte {aetheryteId}: {e.Message}");
+                pos = null;
+            }
+            AetherytePositionCache[aetheryteId] = pos;
         }
-        catch(Exception e)
-        {
-            PluginLog.Debug($"[Goto] Could not resolve position of aetheryte {aetheryteId}: {e.Message}");
-            return false;
-        }
+        if(pos == null) return false;
+        distance = DistanceXZ(pos.Value, dest.Position);
+        return true;
     }
 
     /// <summary>
