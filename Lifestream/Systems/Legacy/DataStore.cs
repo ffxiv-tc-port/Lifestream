@@ -114,9 +114,24 @@ public class DataStore
 
     internal void BuildWorlds(uint dc)
     {
-        Worlds = [.. Svc.Data.GetExcelSheet<World>().Where(x => x.DataCenter.Value.RowId == dc && x.IsPublic()).Select(x => x.Name.ToString()).Order()];
+        // 台服例外:八個正式世界的 World.IsPublic 全是 False,走一般路徑會得到空清單。
+        var playerWorld = Player.Object;
+        if(dc == PublicWorlds.TaiwanDataCenterId
+            || playerWorld != null
+            && (PublicWorlds.IsTaiwanWorld(playerWorld.CurrentWorld.RowId)
+                || PublicWorlds.IsTaiwanWorld(playerWorld.HomeWorld.RowId)))
+        {
+            Worlds = [.. PublicWorlds.GetTaiwanWorlds()
+                .Select(x => x.Name.ToString())
+                .Order()];
+            DCWorlds = [];
+            PluginLog.Debug($"Built Taiwan worlds: {Worlds.Print()}");
+            return;
+        }
+
+        Worlds = [.. Svc.Data.GetExcelSheet<World>().Where(x => x.DataCenter.Value.RowId == dc && PublicWorlds.IsPublic(x)).Select(x => x.Name.ToString()).Order()];
         PluginLog.Debug($"Built worlds: {Worlds.Print()}");
-        DCWorlds = Svc.Data.GetExcelSheet<World>().Where(x => x.DataCenter.Value.RowId != dc && x.IsPublic() && (x.DataCenter.Value.Region == Player.Object.HomeWorld.Value.DataCenter.Value.Region || x.DataCenter.Value.Region == 4)).Select(x => x.Name.ToString()).ToArray();
+        DCWorlds = Svc.Data.GetExcelSheet<World>().Where(x => x.DataCenter.Value.RowId != dc && PublicWorlds.IsPublic(x) && (x.DataCenter.Value.Region == Player.Object.HomeWorld.Value.DataCenter.Value.Region || x.DataCenter.Value.Region == 4)).Select(x => x.Name.ToString()).ToArray();
         PluginLog.Debug($"Built DCworlds: {DCWorlds.Print()}");
     }
 

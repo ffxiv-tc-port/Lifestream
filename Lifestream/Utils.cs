@@ -422,17 +422,17 @@ internal static unsafe partial class Utils
 
     public static void DrawWorldSelector(ICollection<int> worldList)
     {
-        ImGuiEx.CollectionCheckbox("All", ExcelWorldHelper.GetPublicWorlds().Select(x => (int)x.RowId), worldList);
+        ImGuiEx.CollectionCheckbox("All", PublicWorlds.Get().Select(x => (int)x.RowId), worldList);
         ImGui.Indent();
         var regions = Enum.GetValues<ExcelWorldHelper.Region>();
         foreach(var r in regions)
         {
-            ImGuiEx.CollectionCheckbox(r.ToString(), ExcelWorldHelper.GetPublicWorlds(r).Select(x => (int)x.RowId), worldList);
+            ImGuiEx.CollectionCheckbox(r.ToString(), PublicWorlds.Get(r).Select(x => (int)x.RowId), worldList);
             var dc = ExcelWorldHelper.GetDataCenters(r);
             ImGui.Indent();
             foreach(var d in dc)
             {
-                var worlds = ExcelWorldHelper.GetPublicWorlds(d.RowId);
+                var worlds = PublicWorlds.Get(d.RowId);
                 ImGuiEx.CollectionCheckbox(d.Name.ToString(), worlds.Select(x => (int)x.RowId), worldList);
                 ImGui.Indent();
                 foreach(var w in worlds.OrderBy(x => x.Name.ToString()))
@@ -668,11 +668,11 @@ internal static unsafe partial class Utils
     public static List<World> GetVisitableWorldsFrom(World source)
     {
         var ret = new List<World>();
-        foreach(var x in ExcelWorldHelper.GetPublicWorlds(source.GetRegion()))
+        foreach(var x in PublicWorlds.Get(source.GetRegion()))
         {
             ret.Add(x);
         }
-        foreach(var x in ExcelWorldHelper.GetPublicWorlds(ExcelWorldHelper.Region.OC))
+        foreach(var x in PublicWorlds.Get(ExcelWorldHelper.Region.OC))
         {
             if(!ret.Contains(x)) ret.Add(x);
         }
@@ -764,7 +764,7 @@ internal static unsafe partial class Utils
             if(x.RowId == 0 || x.Name == "") continue;
             if(x.Name.GetText().StartsWith(s, StringComparison.OrdinalIgnoreCase))
             {
-                var worlds = ExcelWorldHelper.GetPublicWorlds(x.RowId);
+                var worlds = PublicWorlds.Get(x.RowId);
                 if(worlds.Length > 0)
                 {
                     world = worlds[Random.Shared.Next(worlds.Length)].Name.ToString();
@@ -852,7 +852,7 @@ internal static unsafe partial class Utils
     public static string ReplaceAddressBookRegex(string str)
     {
         var cities = "goblet|the goblet|lavender beds|the lavender beds|lavender|lb|empy|empyreum|shiro|shirogane|mist";
-        var worlds = ExcelWorldHelper.GetPublicWorlds().Select(x => x.Name.ToString()).Join("|") + "|[a-z]{3,30}";
+        var worlds = PublicWorlds.Get().Select(x => x.Name.ToString()).Join("|") + "|[a-z]{3,30}";
         return str.Replace("%worlds", worlds)
             .Replace("%delimiter", @"[\s\.\,\-\(\)\t]{1,10}")
             .Replace("%optDelimiter", @"[\s\.\,\-\(\)\t]{0,10}")
@@ -866,7 +866,7 @@ internal static unsafe partial class Utils
         var world = ExcelWorldHelper.Get(worldStr, true);
         if(world == null)
         {
-            foreach(var x in ExcelWorldHelper.GetPublicWorlds())
+            foreach(var x in PublicWorlds.Get())
             {
                 if(x.Name.ToString().StartsWith(worldStr, StringComparison.OrdinalIgnoreCase))
                 {
