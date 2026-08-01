@@ -14,6 +14,13 @@ internal static class TaskAetheryteAethernetTeleport
     private const uint FirmamentRootAetheryteTerritoryId = 418;
     private const string Firmament = "The Firmament";
 
+    // Special values for Sinus Ardorum (渴望灣, Cosmic Exploration) — 比照蒼天街:
+    // 嘆息海「最佳威兔洞」乙太之光(175)的選單有直達渴望灣的選項。
+    internal const uint SinusArdorumRootAetheryteId = 175;
+    internal const uint SinusArdorumAethernetId = uint.MaxValue - 1;
+    private const uint SinusArdorumRootAetheryteTerritoryId = 959;
+    private const string SinusArdorum = "Sinus Ardorum";
+
     internal static void Enqueue(uint rootAetheryteId, uint aethernetId)
     {
         if(aethernetId == FirmamentAethernetId)
@@ -23,6 +30,16 @@ internal static class TaskAetheryteAethernetTeleport
                 throw new Exception($"Special firmament aethernet {FirmamentAethernetId} must be teleported from root aetheryte {FirmamentRootAetheryteId}");
             }
             EnqueueInner(FirmamentRootAetheryteId, FirmamentRootAetheryteTerritoryId, Firmament);
+            return;
+        }
+
+        if(aethernetId == SinusArdorumAethernetId)
+        {
+            if(rootAetheryteId != SinusArdorumRootAetheryteId)
+            {
+                throw new Exception($"Special Sinus Ardorum aethernet {SinusArdorumAethernetId} must be teleported from root aetheryte {SinusArdorumRootAetheryteId}");
+            }
+            EnqueueInner(SinusArdorumRootAetheryteId, SinusArdorumRootAetheryteTerritoryId, SinusArdorum);
             return;
         }
 
@@ -97,6 +114,15 @@ internal static class TaskAetheryteAethernetTeleport
         {
             P.TaskManager.Enqueue(() => Utils.TrySelectSpecificEntry(Lang.TravelToFirmament, () => EzThrottler.Throttle("SelectString")),
                 "SelectTravelToFirmament");
+            return;
+        }
+
+        // If we're going to Sinus Ardorum, select its menu option (+ optional instance pick).
+        if(aethernetName == SinusArdorum)
+        {
+            P.TaskManager.Enqueue(() => Utils.TrySelectSpecificEntry(Lang.TravelToSinusArdorum, () => EzThrottler.Throttle("SelectString")),
+                "SelectTravelToSinusArdorum");
+            TaskSinusArdorumTeleport.EnqueueSelectAnyInstance();
             return;
         }
 

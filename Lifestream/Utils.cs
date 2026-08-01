@@ -195,6 +195,15 @@ internal static unsafe partial class Utils
                     {
                         dict[TaskAetheryteAethernetTeleport.FirmamentAethernetId] = "Firmament";
                     }
+                    if(x.Key.ID == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId)
+                    {
+                        // 175 沒有 AethernetName(master 名稱是空字串),改用地名;並比照蒼天街掛上渴望灣
+                        if(dict[x.Key.ID] == "")
+                        {
+                            dict[x.Key.ID] = Svc.Data.GetExcelSheet<Aetheryte>().GetRowOrDefault(x.Key.ID)?.PlaceName.ValueNullable?.Name.GetText() ?? x.Key.ID.ToString();
+                        }
+                        dict[TaskAetheryteAethernetTeleport.SinusArdorumAethernetId] = "Sinus Ardorum";
+                    }
                 }
                 foreach(var x in S.Data.ResidentialAethernet.ZoneInfo)
                 {

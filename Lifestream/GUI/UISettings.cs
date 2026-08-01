@@ -45,6 +45,7 @@ internal static unsafe class UISettings
                 ImGui.Unindent();
             }
             ImGui.Checkbox("Add firmament location into Foundation aetheryte".Loc(), ref C.Firmament);
+            ImGui.Checkbox("Add Sinus Ardorum location into Bestways Burrow aetheryte".Loc(), ref C.SinusArdorum);
             ImGui.Checkbox("Automatically leave non cross-world party upon changing world".Loc(), ref C.LeavePartyBeforeWorldChange);
             ImGui.Checkbox("Show teleport destination in chat".Loc(), ref C.DisplayChatTeleport);
             ImGui.Checkbox("Show teleport destination in popup notifications".Loc(), ref C.DisplayPopupNotifications);

@@ -110,6 +110,49 @@ internal static class Lang
     //0	TEXT_AETHERYTEISHGARD_HWD_WARP	<Gui(69)/> Azurée
     internal static readonly string[] TravelToFirmament = ["Travel to the Firmament.", "蒼天街転送", "Himmelsstadt", "Azurée", "传送到天穹街", "傳送到蒼天街", "창천 거리 이동"];
 
+    //transport/AetheryteBestwaysBurrow	1	TEXT_AETHERYTEBESTWAYSBURROW_SYSTEM_C1W1	<Gui(69)/> 前往渴望灣 (TC 7.20 離線 dump 實測)
+    //比照蒼天街:嘆息海「最佳威兔洞」乙太之光(175)的選單有直達渴望灣的選項。
+    //顯示文字執行期從表解析(語言無關);寫死的只是表讀不到時的最後防線。
+    internal static string[] TravelToSinusArdorum
+    {
+        get
+        {
+            field ??= BuildSheetMatchers(
+                () => Svc.Data.GetExcelSheet<ECommons.ExcelServices.Sheets.QuestDialogueText>(name: "transport/AetheryteBestwaysBurrow").GetRowOrDefault(1)?.Value.ExtractText(),
+                "前往渴望灣");
+            return field;
+        }
+    }
+
+    //Addon#2091	隨意（自動選擇） — 「前往渴望灣」之後可能出現的副本區選擇選單的自動選項
+    internal static string[] AnyInstance
+    {
+        get
+        {
+            field ??= BuildSheetMatchers(
+                () => Svc.Data.GetExcelSheet<Addon>().GetRowOrDefault(2091)?.Text.ExtractText(),
+                "隨意（自動選擇）");
+            return field;
+        }
+    }
+
+    private static string[] BuildSheetMatchers(Func<string> resolver, params string[] fallbacks)
+    {
+        try
+        {
+            var resolved = resolver()?.Trim();
+            if(resolved != null && resolved != "")
+            {
+                return [resolved, .. fallbacks.Where(x => x != resolved)];
+            }
+        }
+        catch(Exception e)
+        {
+            e.Log();
+        }
+        return fallbacks;
+    }
+
     //2	TEXT_AETHERYTE_HOUSING_WARP	<Gui(69)/> Residential District Aethernet.
     //2	TEXT_AETHERYTE_HOUSING_WARP	<Gui(69)/> 冒険者居住区転送
     //2	TEXT_AETHERYTE_HOUSING_WARP	<Gui(69)/> Wohngebiet

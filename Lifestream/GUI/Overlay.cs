@@ -173,14 +173,18 @@ public class Overlay : Window
         if(!C.Hidden.Contains(master.ID))
         {
             var name = (C.Favorites.Contains(master.ID) ? "★ " : "") + (C.Renames.TryGetValue(master.ID, out var value) ? value : master.Name);
-            ResizeButton($"{Pad}{name}");
-            var md = P.ActiveAetheryte == master;
-            if(ImGuiEx.Button($"{Pad}{name}", ButtonSizeAetheryte, !md))
+            // 「最佳威兔洞」(175)這類沒有 AethernetName 的 master 名稱是空字串,不畫空按鈕
+            if(name != "")
             {
-                TaskRemoveAfkStatus.Enqueue();
-                TaskAethernetTeleport.Enqueue(master);
+                ResizeButton($"{Pad}{name}");
+                var md = P.ActiveAetheryte == master;
+                if(ImGuiEx.Button($"{Pad}{name}", ButtonSizeAetheryte, !md))
+                {
+                    TaskRemoveAfkStatus.Enqueue();
+                    TaskAethernetTeleport.Enqueue(master);
+                }
+                Popup(master);
             }
-            Popup(master);
         }
 
         foreach(var x in S.Data.DataStore.Aetherytes[master])
@@ -207,6 +211,18 @@ public class Overlay : Window
             {
                 TaskRemoveAfkStatus.Enqueue();
                 TaskFirmanentTeleport.Enqueue();
+            }
+        }
+
+        // 比照蒼天街:站在「最佳威兔洞」(175)旁時提供渴望灣按鈕
+        if(P.ActiveAetheryte.Value.ID == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId && C.SinusArdorum)
+        {
+            var name = "Sinus Ardorum".Loc();
+            ResizeButton($"{Pad}{name}");
+            if(ImGui.Button($"{Pad}{name}", ButtonSizeAetheryte))
+            {
+                TaskRemoveAfkStatus.Enqueue();
+                TaskSinusArdorumTeleport.Enqueue();
             }
         }
     }
