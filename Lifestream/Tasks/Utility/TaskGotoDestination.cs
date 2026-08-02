@@ -42,22 +42,9 @@ public static unsafe class TaskGotoDestination
 
         if(hasAethernetRoute)
         {
-            // 2.0 的城市各有兩張地圖(例如利姆薩上/下層甲板、烏爾達哈娜爾神殿/太陽神草原、
-            // 格里達尼亞新/舊街),兩張圖都在同一個以太之光網路上。人在同城另一張圖時,
-            // 附近本來就有城內以太之光可以直接開整個網路的選單 —— 沒必要先傳送回主水晶。
-            // TaskAetheryteAethernetTeleport 內建的「已在主水晶那張圖就不傳送」判斷只比對
-            // 主水晶自己的 territory,所以同城另一張圖會落在條件外而白傳送一次。
-            if(TryUseNearbyAethernetShard(root, shard))
-            {
-                PluginLog.Information($"[Goto] {dest.Name}: same aethernet network and a shard is reachable here, using it directly -> {shard.Name}({shard.ID})");
-                TaskAethernetTeleport.Enqueue(shard);
-            }
-            else
-            {
-                PluginLog.Information($"[Goto] {dest.Name}: using aethernet route {root.Name}({root.ID}) -> {shard.Name}({shard.ID})");
-                // 既有且已驗證的流程:需要的話先傳送到主水晶,再互動並用以太之光網路跳到目標小以太之光
-                TaskAetheryteAethernetTeleport.Enqueue(root.ID, shard.ID);
-            }
+            PluginLog.Information($"[Goto] {dest.Name}: using aethernet route {root.Name}({root.ID}) -> {shard.Name}({shard.ID})");
+            // 既有且已驗證的流程:需要的話先傳送到主水晶,再互動並用以太之光網路跳到目標小以太之光
+            TaskAetheryteAethernetTeleport.Enqueue(root.ID, shard.ID);
             // 以太之光網路移動也會過一次讀取畫面。等不到就繼續往下走(退回「從目前位置走過去」),
             // 不要讓整條佇列中斷 —— 最差情況等同修正前的行為,不會比原本更糟。
             P.TaskManager.Enqueue(
@@ -113,37 +100,6 @@ public static unsafe class TaskGotoDestination
     /// 另外也順帶修好「該區只有城內以太之光、沒有主水晶」的區域(例如格里達尼亞舊街、
     /// 烏爾達哈太陽神草原側),那些區域原本會直接丟出 InvalidOperationException。
     /// </summary>
-    /// <summary>
-    /// 目前這張圖上是否已經有「同一個以太之光網路」的節點可以互動？有的話就不必先傳送回主水晶。
-    ///
-    /// 適用情境:2.0 的城市各有兩張地圖(利姆薩上/下層甲板、烏爾達哈娜爾神殿/太陽神草原、
-    /// 格里達尼亞新/舊街),兩張圖屬於同一個以太之光網路。人在同城另一張圖時,身邊的城內
-    /// 以太之光就能開整個網路的選單直接跳過去,先傳送回主水晶是多餘的一次讀取畫面。
-    ///
-    /// ⚠️ 條件刻意設嚴:必須「真的有一個可互動(reachable)的節點」才回 true。
-    /// 只是「同一張圖上存在某個節點」不夠 —— 人可能離它很遠,那樣 TaskAethernetTeleport 的
-    /// TargetValidAetheryte 會找不到目標而卡住。判斷不過就退回原本的主水晶流程,
-    /// 最差情況等同修正前的行為。
-    /// </summary>
-    private static bool TryUseNearbyAethernetShard(TinyAetheryte root, TinyAetheryte shard)
-    {
-        if(!Player.Available) return false;
-        // 目標就在腳下這張圖的話不需要走網路(呼叫端另有「已經比較近就直接走過去」的判斷)
-        if(shard.TerritoryType == 0) return false;
-
-        // 目前這張圖必須屬於同一個網路:主水晶本身,或它底下任何一個子節點。
-        if(!S.Data.DataStore.Aetherytes.TryGetValue(root, out var children)) return false;
-        var sameNetworkHere = root.TerritoryType == P.Territory
-            || children.Any(x => x.TerritoryType == P.Territory && !x.Invisible && IsAetheryteUnlocked(x.ID));
-        if(!sameNetworkHere) return false;
-
-        // 而且身邊真的要有一個構得到、且屬於這個網路的以太之光/水晶可以互動。
-        return Utils.GetReachableAetheryte(x =>
-            Utils.TryGetTinyAetheryteFromIGameObject(x, out var ae)
-            && ae.HasValue
-            && (ae.Value.ID == root.ID || children.Any(c => c.ID == ae.Value.ID))) != null;
-    }
-
     internal static bool TryFindAethernetRoute(CustomDestination dest, out TinyAetheryte root, out TinyAetheryte shard)
     {
         root = default;
