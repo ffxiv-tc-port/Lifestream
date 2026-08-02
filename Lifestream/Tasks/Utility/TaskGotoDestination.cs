@@ -110,6 +110,11 @@ public static unsafe class TaskGotoDestination
     ///   「同網路的任一節點」。20 秒內走不到(卡地形、或其實距離超出自動移動可靠範圍)就放棄這條
     ///   捷徑,一樣退回 <see cref="InsertMasterAetheryteFallback"/>——不讓佇列卡住,最差情況等同
     ///   完全不做這個最佳化時的行為。
+    ///
+    /// ⚠️ 走到的節點可能是主水晶,也可能是城內以太之光(子節點),兩者互動後開的視窗不同:主水晶會先跳
+    /// 一層 SelectString(要選「以太之光網路」),子節點則直接開 TelepotTown 目的地清單。所以互動之後
+    /// 排的是 <see cref="WorldChange.SelectAethernetIfNeeded"/> 而不是 <see cref="WorldChange.SelectAethernet"/>
+    /// ——後者在子節點上永遠找不到那一項,這正是 v7.20.0.19「走到了、互動了、卻不選目標」的原因。
     /// </summary>
     private static void EnqueueAethernetRoute(TinyAetheryte root, TinyAetheryte shard)
     {
@@ -147,7 +152,10 @@ public static unsafe class TaskGotoDestination
                     {
                         P.TaskManager.InsertMulti(
                             new(WorldChange.InteractWithTargetedAetheryte),
-                            new(WorldChange.SelectAethernet),
+                            // 走到的可能是主水晶,也可能是城內以太之光(子節點)——兩者互動後開的視窗不一樣,
+                            // 子節點沒有「以太之光網路」這一層選單。所以這裡不能直接排 SelectAethernet
+                            // (那正是 .19 卡住的原因),要用會看實際視窗決定的版本。
+                            new(WorldChange.SelectAethernetIfNeeded),
                             new DelayTask(C.SlowTeleport ? C.SlowTeleportThrottle : 0),
                             new(() => WorldChange.TeleportToAethernetDestination(shard.Name), nameof(WorldChange.TeleportToAethernetDestination))
                             );
@@ -205,7 +213,10 @@ public static unsafe class TaskGotoDestination
                 }
             }, "FallbackConditionalLockonTask"),
             new(WorldChange.InteractWithTargetedAetheryte),
-            new(WorldChange.SelectAethernet),
+            // 這條退路鎖定的是主水晶(TargetReachableMasterAetheryte 只認 IsAetheryte=true),照理一定有
+            // 「以太之光網路」選單;仍然用會看實際視窗的版本,是因為它在主水晶情境下行為完全相同,
+            // 而萬一鎖到的不是主水晶就不會靜默卡死,還會把當下的選單內容寫進 log。
+            new(WorldChange.SelectAethernetIfNeeded),
             new DelayTask(C.SlowTeleport ? C.SlowTeleportThrottle : 0),
             new(() => WorldChange.TeleportToAethernetDestination(shard.Name), nameof(WorldChange.TeleportToAethernetDestination))
             );
