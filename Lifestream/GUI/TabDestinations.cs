@@ -67,11 +67,6 @@ public static class TabDestinations
                     TaskGotoDestination.Enqueue(dest);
                 }
                 ImGui.SameLine();
-                if(ImGuiEx.Button("Flag".Loc(), Player.Interactable))
-                {
-                    TaskGotoDestination.SetFlag(dest);
-                }
-                ImGui.SameLine();
                 if(ImGuiEx.IconButton(FontAwesomeIcon.Trash, enabled: ImGuiEx.Ctrl))
                 {
                     CustomDestinationRemove = dest;
