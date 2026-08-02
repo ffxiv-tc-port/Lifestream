@@ -433,10 +433,13 @@ internal static unsafe partial class Utils
     {
         ImGuiEx.CollectionCheckbox("All", PublicWorlds.Get().Select(x => (int)x.RowId), worldList);
         ImGui.Indent();
-        var regions = Enum.GetValues<ExcelWorldHelper.Region>();
+        // 用 PublicWorlds.AllRegions() 而不是 Enum.GetValues<Region>()：ECommons 的列舉沒有台服的 8，
+        // 直接迭代列舉會讓陸行鳥資料中心與其底下的世界整組消失——而同一個畫面上方的
+        // PublicWorlds.Get()（全部聚合）是含台服的，兩者會不一致。
+        var regions = PublicWorlds.AllRegions();
         foreach(var r in regions)
         {
-            ImGuiEx.CollectionCheckbox(r.ToString(), PublicWorlds.Get(r).Select(x => (int)x.RowId), worldList);
+            ImGuiEx.CollectionCheckbox(PublicWorlds.RegionDisplayName(r), PublicWorlds.Get(r).Select(x => (int)x.RowId), worldList);
             var dc = ExcelWorldHelper.GetDataCenters(r);
             ImGui.Indent();
             foreach(var d in dc)

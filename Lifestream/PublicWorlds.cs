@@ -49,6 +49,22 @@ internal static class PublicWorlds
         => world.IsPublic
             || IsTaiwanWorld(world);
 
+    // ECommons 的 ExcelWorldHelper.Region 列舉只有 JP=1/NA=2/EU=3/OC=4，沒有台服的 8
+    // （陸行鳥 WorldDCGroupType(151).Region == 8）。GetRegion() 是把該欄位直接轉型回來的，
+    // 所以 (Region)8 在執行期拿得到、只是沒有名字 —— 任何用 Enum.GetValues<Region>()
+    // 迭代地區的 UI 都會完全漏掉台服（見 Utils.DrawWorldSelector）。
+    internal const byte TaiwanRegionByte = 8;
+
+    internal static ExcelWorldHelper.Region TaiwanRegion => (ExcelWorldHelper.Region)TaiwanRegionByte;
+
+    /// <summary>所有實際存在世界的地區，含 ECommons 列舉裡沒有的台服。</summary>
+    internal static ExcelWorldHelper.Region[] AllRegions()
+        => [.. Enum.GetValues<ExcelWorldHelper.Region>(), TaiwanRegion];
+
+    /// <summary>地區的顯示名稱；未命名的台服地區 ToString() 只會印出裸數字 "8"，這裡補上名稱。</summary>
+    internal static string RegionDisplayName(ExcelWorldHelper.Region region)
+        => (byte)region == TaiwanRegionByte ? "Taiwan" : region.ToString();
+
     internal static World[] Get(ExcelWorldHelper.Region? region = null)
         => [.. Svc.Data.GetExcelSheet<World>()
             .Where(world => IsPublic(world)
