@@ -286,7 +286,9 @@ public unsafe class Lifestream : IDalamudPlugin
                     P.TPAndChangeWorld(Player.HomeWorld, !Player.IsInHomeDC, null, true, null, false, false);
                 }
                 P.TaskManager.Enqueue(() => Player.Interactable && Player.IsInHomeWorld && IsScreenReady());
-                StaticAlias.CosmicExploration.Enqueue(true);
+                // 走乙太之光 175 的「前往渴望灣」選單項,不再騎馬跑去找入口物件。
+                // 失敗時 TaskCosmicShortcut 會自己退回舊的 StaticAlias.CosmicExploration 流程。
+                TaskCosmicShortcut.Enqueue();
             }
             else
             {

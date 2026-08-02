@@ -18,12 +18,12 @@ internal static class TaskAetheryteAethernetTeleport
     // 嘆息海「最佳威兔洞」乙太之光(175)的選單有直達渴望灣的選項。
     internal const uint SinusArdorumRootAetheryteId = 175;
     internal const uint SinusArdorumAethernetId = uint.MaxValue - 1;
-    private const uint SinusArdorumRootAetheryteTerritoryId = 959;
+    internal const uint SinusArdorumRootAetheryteTerritoryId = 959;
     private const string SinusArdorum = "Sinus Ardorum";
 
     // 目的地區域本身沒有乙太之光,要靠「鄰近區域某座乙太之光的選單項」才進得去的區域。
     private const uint FirmamentTerritoryId = 886;
-    private const uint SinusArdorumTerritoryId = 1237;
+    internal const uint SinusArdorumTerritoryId = 1237;
 
     /// <summary>
     /// 目的地區域 → 進得去它的「玄關乙太之光 + 專用選單項」。
