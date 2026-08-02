@@ -102,6 +102,8 @@ internal static unsafe class WorldChange
         {
             var entries = Utils.GetEntries(addon);
             if(entries.Any(x => x.EqualsAny(Lang.Aethernet))) return SelectAethernet();
+            // 選單已開但選項還沒填進去(開窗的那一兩幀)——當作還沒開,繼續等,不要誤判成「沒有這一項」。
+            if(entries.Count == 0) return false;
             if(EzThrottler.Throttle("AethernetMenuMismatchLog", 5000))
             {
                 PluginLog.Information($"[Aethernet] SelectString is open but none of its entries is the aethernet option. Looked for [{Lang.Aethernet.Print(" | ")}], menu shows [{entries.Print(" | ")}]. Passing through to destination selection. ({DescribeActiveAetheryte()})");
