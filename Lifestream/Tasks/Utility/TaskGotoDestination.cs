@@ -34,9 +34,18 @@ public static unsafe class TaskGotoDestination
     {
         var hasAethernetRoute = TryFindAethernetRoute(dest, out var root, out var shard);
 
+        // 蒼天街、渴望灣這類區域沒有自己的乙太之光,是靠鄰近區域某座乙太之光的選單項進去的。
+        // 對它們 FindClosestUnlockedAetheryte 永遠回 0,修正前會直接回報「目標區域沒有已解鎖的
+        // 乙太之光」就放棄——但 Lifestream 其實早就把這兩條路建模好了(只是只有別名/浮動視窗在用)。
+        uint gatewayRoot = 0;
+        uint gatewayAethernet = 0;
+        var hasGatewayRoute = !hasAethernetRoute
+            && P.Territory != dest.Territory
+            && TaskAetheryteAethernetTeleport.TryGetGatewayRoute(dest.Territory, out gatewayRoot, out gatewayAethernet);
+
         // 先驗證目的地可達再排任務:走不到就在聊天欄講清楚,不丟例外。
         // (已在目的區域時不需要傳送點,TeleportToDestinationZone 會直接回 true)
-        if(!hasAethernetRoute && P.Territory != dest.Territory && FindClosestUnlockedAetheryte(dest) == 0)
+        if(!hasAethernetRoute && !hasGatewayRoute && P.Territory != dest.Territory && FindClosestUnlockedAetheryte(dest) == 0)
         {
             ChatPrinter.Red($"[Lifestream] {"Cannot reach destination - no unlocked aetheryte in target zone:".Loc()} {dest.Name} ({ExcelTerritoryHelper.GetName(dest.Territory)})");
             return;
@@ -53,6 +62,20 @@ public static unsafe class TaskGotoDestination
             P.TaskManager.Enqueue(
                 () => Svc.Condition[ConditionFlag.BetweenAreas] || Svc.Condition[ConditionFlag.BetweenAreas51],
                 "GotoWaitAethernetTransition", new(timeLimitMS: 15000, abortOnTimeout: false));
+            P.TaskManager.Enqueue(Utils.WaitForScreen);
+        }
+        else if(hasGatewayRoute)
+        {
+            PluginLog.Information($"[Goto] {dest.Name}: {ExcelTerritoryHelper.GetName(dest.Territory)} has no aetheryte of its own, entering through the menu of aetheryte {gatewayRoot}.");
+            // 沿用既有的「傳送到玄關乙太之光 → 互動 → 選專用選單項」整套流程
+            // (蒼天街走「傳送到蒼天街」,渴望灣走「前往渴望灣」+ 需要時再選副本區)。
+            // 這裡用 Enqueue 排到佇列尾端是對的:此刻佇列裡還沒有這條路線的後續步驟,
+            // 下面的等待與導航都是接在它之後才排進去的。
+            TaskAetheryteAethernetTeleport.Enqueue(gatewayRoot, gatewayAethernet);
+            // 進去是一整段區域轉場(可能還夾一個副本區選單),要等真的抵達目的區域再往下走。
+            // ⚠️ 這一步刻意讓逾時中止整條佇列:沒到對的區域就開始導航,會在錯的地圖上亂走。
+            P.TaskManager.Enqueue(() => P.Territory == dest.Territory && Player.Interactable && !Svc.Condition[ConditionFlag.BetweenAreas],
+                "GotoWaitGatewayArrival", new(timeLimitMS: 120000));
             P.TaskManager.Enqueue(Utils.WaitForScreen);
         }
         else

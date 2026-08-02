@@ -21,6 +21,47 @@ internal static class TaskAetheryteAethernetTeleport
     private const uint SinusArdorumRootAetheryteTerritoryId = 959;
     private const string SinusArdorum = "Sinus Ardorum";
 
+    // 目的地區域本身沒有乙太之光,要靠「鄰近區域某座乙太之光的選單項」才進得去的區域。
+    private const uint FirmamentTerritoryId = 886;
+    private const uint SinusArdorumTerritoryId = 1237;
+
+    /// <summary>
+    /// 目的地區域 → 進得去它的「玄關乙太之光 + 專用選單項」。
+    ///
+    /// ⚠️ 這份對應在遊戲資料裡沒有現成來源 —— 2026-08-03 用台服 7.20 全量 EXD 逐一查證過:
+    /// <list type="bullet">
+    /// <item><c>TerritoryType.Aetheryte</c> 看起來像,但它是「該區域的所屬乙太之光」而不是「玄關」:
+    ///   蒼天街(886) 剛好是 70(對的),渴望灣(1237) 卻指到 174(嘆息海的主水晶),
+    ///   而真正有「前往渴望灣」那一項的是 175(最佳威兔洞)。用它會傳送到錯的地方。</item>
+    /// <item><c>Warp</c> 表只有蒼天街那一筆(#131342, TerritoryType=886),指的還是另一個入口物件、
+    ///   文字也不一樣(「前往蒼天街」vs 乙太之光選單的「傳送到蒼天街」);渴望灣整張表都沒有。</item>
+    /// <item><c>Level</c> 表查不到這兩座乙太之光的 Type=12 記錄,<c>TerritoryAethernet</c> 表是空的。</item>
+    /// </list>
+    /// 所以只能沿用本檔既有的建模(選單「文字」本身仍然是執行期從表解析的,見 Lang,不是寫死的字串)。
+    ///
+    /// ⚠️ 涵蓋範圍只有上面兩個區域。其他沒有自己乙太之光的區域(優雷卡三區、南方博茲雅、扎杜諾爾、
+    /// 新月島…)進去的方式是任務搜尋器而不是乙太之光選單,不在此列;那些區域的行為維持原樣
+    /// ——<c>/li goto</c> 照舊回報「目標區域沒有已解鎖的乙太之光」後放棄,不會崩也不會走到錯的地圖。
+    /// </summary>
+    internal static bool TryGetGatewayRoute(uint destinationTerritory, out uint rootAetheryteId, out uint aethernetId)
+    {
+        if(destinationTerritory == FirmamentTerritoryId)
+        {
+            rootAetheryteId = FirmamentRootAetheryteId;
+            aethernetId = FirmamentAethernetId;
+            return true;
+        }
+        if(destinationTerritory == SinusArdorumTerritoryId)
+        {
+            rootAetheryteId = SinusArdorumRootAetheryteId;
+            aethernetId = SinusArdorumAethernetId;
+            return true;
+        }
+        rootAetheryteId = 0;
+        aethernetId = 0;
+        return false;
+    }
+
     internal static void Enqueue(uint rootAetheryteId, uint aethernetId)
     {
         if(aethernetId == FirmamentAethernetId)
