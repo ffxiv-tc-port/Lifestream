@@ -1,3 +1,4 @@
+using ECommons.Automation.NeoTaskManager.Tasks;
 using ECommons.ChatMethods;
 using ECommons.ExcelServices;
 using ECommons.GameHelpers;
@@ -5,6 +6,7 @@ using ECommons.Throttlers;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using Lifestream.Data;
+using Lifestream.Schedulers;
 using Lifestream.Systems.Legacy;
 using Lifestream.Tasks.SameWorld;
 using Lumina.Excel.Sheets;
@@ -43,8 +45,9 @@ public static unsafe class TaskGotoDestination
         if(hasAethernetRoute)
         {
             PluginLog.Information($"[Goto] {dest.Name}: using aethernet route {root.Name}({root.ID}) -> {shard.Name}({shard.ID})");
-            // 既有且已驗證的流程:需要的話先傳送到主水晶,再互動並用以太之光網路跳到目標小以太之光
-            TaskAetheryteAethernetTeleport.Enqueue(root.ID, shard.ID);
+            // 需要的話先接近可用的以太之光節點(優先用身邊摸得到的同網路節點,見 EnqueueAethernetRoute),
+            // 再互動並用以太之光網路跳到目標小以太之光。
+            EnqueueAethernetRoute(root, shard);
             // 以太之光網路移動也會過一次讀取畫面。等不到就繼續往下走(退回「從目前位置走過去」),
             // 不要讓整條佇列中斷 —— 最差情況等同修正前的行為,不會比原本更糟。
             P.TaskManager.Enqueue(
@@ -90,6 +93,122 @@ public static unsafe class TaskGotoDestination
             S.TeleportService.TeleportToAetheryte(id);
         }
         return false;
+    }
+
+    /// <summary>
+    /// 走以太之光網路前往 <paramref name="shard"/>。2.0 的城市各有兩張地圖(利姆薩上/下層甲板、
+    /// 烏爾達哈娜爾神殿/太陽神草原、格里達尼亞新/舊街),兩張圖共用同一個以太之光網路,但只有
+    /// 其中一張有主水晶本體。人站在「沒有主水晶」的那張圖時,身邊還是摸得到城內以太之光,直接
+    /// 走過去用它開選單就好,不必先傳送到另一張圖的主水晶——省掉一次讀取畫面。
+    ///
+    /// 執行時(不是排入佇列的當下,因為人可能還沒真的走到)先用
+    /// <see cref="Utils.GetReachableAethernetNetworkNode"/> 找身邊摸得到(50y 內——刻意比主水晶版
+    /// 走位用的 30y 寬,因為這裡多了實際走過去的步驟,見該方法的註解)的同網路節點:
+    /// - 摸不到:照舊傳送到主水晶(<see cref="InsertMasterAetheryteFallback"/>)。
+    /// - 摸得到:鎖定→開自動移動→走到後互動,沿用
+    ///   <see cref="TaskAetheryteAethernetTeleport"/> 走位到主水晶的同一套結構,只是目標放寬成
+    ///   「同網路的任一節點」。20 秒內走不到(卡地形、或其實距離超出自動移動可靠範圍)就放棄這條
+    ///   捷徑,一樣退回 <see cref="InsertMasterAetheryteFallback"/>——不讓佇列卡住,最差情況等同
+    ///   完全不做這個最佳化時的行為。
+    /// </summary>
+    private static void EnqueueAethernetRoute(TinyAetheryte root, TinyAetheryte shard)
+    {
+        TaskRemoveAfkStatus.Enqueue();
+        P.TaskManager.Enqueue(() =>
+        {
+            if(Utils.GetReachableAethernetNetworkNode(root) == null)
+            {
+                // 身邊摸不到這個網路的任何節點(不同城市,或距離超出可靠走位範圍)——照舊傳送到主水晶。
+                InsertMasterAetheryteFallback(root, shard);
+                return;
+            }
+
+            P.TaskManager.InsertMulti(
+                new(() => WorldChange.TargetReachableAethernetNetworkNode(root), "ApproachTargetNetworkNode"),
+                new(() =>
+                {
+                    if(!Utils.IsActiveAetheryteInNetwork(root))
+                    {
+                        P.TaskManager.InsertMulti(
+                            new(WorldChange.LockOn),
+                            new(WorldChange.EnableAutomove),
+                            // 50y 以內正常步行時間遠低於 20 秒,逾時多半是卡地形。abortOnTimeout:false
+                            // 讓它只放棄這一步(接著仍會關自動移動),不牽連後面的收尾或整條佇列。
+                            new(() => Utils.IsActiveAetheryteInNetwork(root), "WaitArriveAtNetworkNode",
+                                new(timeLimitMS: 20000, abortOnTimeout: false)),
+                            new(WorldChange.DisableAutomove),
+                            new FrameDelayTask(10)
+                            );
+                    }
+                }, "ApproachConditionalLockon"),
+                new(() =>
+                {
+                    if(Utils.IsActiveAetheryteInNetwork(root))
+                    {
+                        P.TaskManager.InsertMulti(
+                            new(WorldChange.InteractWithTargetedAetheryte),
+                            new(WorldChange.SelectAethernet),
+                            new DelayTask(C.SlowTeleport ? C.SlowTeleportThrottle : 0),
+                            new(() => WorldChange.TeleportToAethernetDestination(shard.Name), nameof(WorldChange.TeleportToAethernetDestination))
+                            );
+                    }
+                    else
+                    {
+                        // 沒能在時限內走到——放棄這條捷徑,退回傳送到主水晶的完整流程,不讓佇列卡住。
+                        PluginLog.Information($"[Goto] Could not reach nearby aethernet network node for {root.Name}, falling back to teleporting to root aetheryte.");
+                        InsertMasterAetheryteFallback(root, shard);
+                    }
+                }, "ApproachCheckArrival")
+                );
+        }, "ApproachAethernetNetworkNode");
+    }
+
+    /// <summary>
+    /// 退路:傳送到主水晶再走以太之光網路,跟 <see cref="TaskAetheryteAethernetTeleport"/> 一般情形
+    /// (非天穹街/渴望灣特例)的步驟完全同一套,只是照抄成本地方法而不是直接呼叫它。
+    /// 不能直接呼叫 <see cref="TaskAetheryteAethernetTeleport.Enqueue(uint, uint)"/>,因為它用
+    /// Enqueue 把步驟排到佇列尾端——而這個退路是在佇列「執行途中」才觸發
+    /// (<see cref="EnqueueAethernetRoute"/> 呼叫它的當下,呼叫端已經先排了
+    /// GotoWaitAethernetTransition/WaitForScreen 在後面),用 Enqueue 會讓退路的步驟排到那些之後,
+    /// 變成還沒傳送到目的地就先跑完「等讀取畫面」跟後面的導航/標旗。改用 InsertMulti 插到佇列
+    /// 最前面即可保留正確順序——這正是上一版被卡住的根因沒有的東西(接近步驟本身),這裡確保
+    /// 就算接近失敗,也不多花一秒地退回原本可靠的行為。
+    /// </summary>
+    private static void InsertMasterAetheryteFallback(TinyAetheryte root, TinyAetheryte shard)
+    {
+        P.TaskManager.InsertMulti(
+            new(() =>
+            {
+                if(Svc.ClientState.TerritoryType != root.TerritoryType
+                    || Utils.GetReachableAetheryte(x => Utils.TryGetTinyAetheryteFromIGameObject(x, out var ae) && ae.Value.ID == root.ID) == null)
+                {
+                    P.TaskManager.InsertMulti(
+                        new(() => S.TeleportService.TeleportToAetheryte(root.ID), "TeleportToRootAetheryte"),
+                        new(Utils.WaitForScreenFalse),
+                        new(Utils.WaitForScreen)
+                        );
+                }
+            }, "FallbackConditionalTeleportToRootAetheryte"),
+            new FrameDelayTask(10),
+            new(WorldChange.TargetReachableMasterAetheryte),
+            new(() =>
+            {
+                if(P.ActiveAetheryte == null)
+                {
+                    P.TaskManager.InsertMulti(
+                        new(WorldChange.LockOn),
+                        new(WorldChange.EnableAutomove),
+                        new(WorldChange.WaitUntilMasterAetheryteExists),
+                        new(WorldChange.DisableAutomove),
+                        new FrameDelayTask(10)
+                        );
+                }
+            }, "FallbackConditionalLockonTask"),
+            new(WorldChange.InteractWithTargetedAetheryte),
+            new(WorldChange.SelectAethernet),
+            new DelayTask(C.SlowTeleport ? C.SlowTeleportThrottle : 0),
+            new(() => WorldChange.TeleportToAethernetDestination(shard.Name), nameof(WorldChange.TeleportToAethernetDestination))
+            );
     }
 
     /// <summary>

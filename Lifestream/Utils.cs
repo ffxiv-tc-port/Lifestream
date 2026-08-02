@@ -1191,6 +1191,49 @@ internal static unsafe partial class Utils
         return null;
     }
 
+    /// <summary>
+    /// 「值得嘗試鎖定+自動移動走過去用」的距離上限。刻意比 <see cref="GetReachableAetheryte"/>
+    /// 預設的 30y 寬:那個門檻是給「已經在互動範圍附近,頂多再修正幾步」的情境用的,
+    /// 而這裡是「要不要為了省一次傳送,花最多 20 秒鎖定+自動移動走過去」——使用者實測回報過
+    /// 「有一小段距離的也不會嘗試,而是直接傳送」,30y 對這個用途太保守。50y 是一般可鎖定
+    /// 目標的距離量級,而走位本身有 20 秒時限兜底(見 TaskGotoDestination.EnqueueAethernetRoute 的
+    /// WaitArriveAtNetworkNode),逾時就退回傳送,不會有「卡住」的風險。
+    /// </summary>
+    private const float AethernetNetworkNodeApproachRange = 50f;
+
+    /// <summary>
+    /// 找出「屬於指定以太之光網路」且摸得到的節點——主水晶本身,或它底下任一個子節點(城內以太之光)。
+    /// 用途:2.0 的城市各有兩張地圖(利姆薩上/下層甲板、烏爾達哈娜爾神殿/太陽神草原、格里達尼亞
+    /// 新/舊街),兩張圖屬於同一個以太之光網路,但只有其中一張圖上有主水晶本體。人站在沒有主水晶
+    /// 的那張圖時,<see cref="GetReachableMasterAetheryte"/> 永遠摸不到東西;這個方法改成只要是
+    /// 同一個網路的任何節點都算,身邊摸得到就能直接互動、不必先傳送到另一張圖的主水晶。
+    /// </summary>
+    internal static IGameObject GetReachableAethernetNetworkNode(TinyAetheryte root)
+    {
+        if(!Player.Available) return null;
+        if(!S.Data.DataStore.Aetherytes.TryGetValue(root, out var children)) return null;
+        var a = Svc.Objects.OrderBy(x => Vector3.DistanceSquared(Player.Object.Position, x.Position))
+            .FirstOrDefault(x => Utils.TryGetTinyAetheryteFromIGameObject(x, out var ae)
+                && (ae.Value.ID == root.ID || children.Any(c => c.ID == ae.Value.ID)));
+        if(a != null && a.IsTargetable && Vector3.Distance(a.Position, Player.Object.Position) < AethernetNetworkNodeApproachRange)
+        {
+            return a;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 目前 <see cref="Lifestream.ActiveAetheryte"/>(每幀依 <see cref="GetValidAetheryte"/> 更新,
+    /// 只在真的站到節點旁邊才會設值)是否已經是指定以太之光網路裡的節點——主水晶本身或任一子節點。
+    /// 用來判斷「走到能互動的節點了嗎」,不管走到的是主水晶還是網路裡的哪一個城內以太之光。
+    /// </summary>
+    internal static bool IsActiveAetheryteInNetwork(TinyAetheryte root)
+    {
+        if(P.ActiveAetheryte == null) return false;
+        if(P.ActiveAetheryte.Value.ID == root.ID) return true;
+        return S.Data.DataStore.Aetherytes.TryGetValue(root, out var children) && children.Any(c => c.ID == P.ActiveAetheryte.Value.ID);
+    }
+
     internal static bool IsDisallowedToChangeWorld()
     {
         return Svc.Condition[ConditionFlag.WaitingToVisitOtherWorld]
