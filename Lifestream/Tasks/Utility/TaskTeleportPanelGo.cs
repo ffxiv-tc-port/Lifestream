@@ -63,7 +63,21 @@ public static unsafe class TaskTeleportPanelGo
             // 城內乙太之光。TaskAetheryteAethernetTeleport.Enqueue 是排到佇列尾端的，
             // 而落點步驟是在這行之後才排進去的,所以順序正確(這正是 TaskGotoDestination
             // 註解裡提醒過的 Enqueue/InsertMulti 陷阱,這裡是「可以用 Enqueue」的那一側)。
-            TaskAetheryteAethernetTeleport.Enqueue(entry.MasterId, entry.Id);
+            //
+            // 它在找不到主水晶/子節點時會丟例外。我們的 MasterId 直接來自 DataStore 的鍵，
+            // 照理不會發生;但這是從 ImGui 的繪製回呼呼叫進來的 —— 這裡丟例外會打斷整個視窗的繪製,
+            // 所以降級成聊天欄錯誤,並中止已經排進去的步驟,不要留下半條佇列。
+            try
+            {
+                TaskAetheryteAethernetTeleport.Enqueue(entry.MasterId, entry.Id);
+            }
+            catch(Exception e)
+            {
+                PluginLog.Error($"[TeleportPanel] Could not enqueue aethernet teleport to {entry.Id} via {entry.MasterId}: {e.Message}");
+                DuoLog.Error($"Could not reach {entry.DisplayName}");
+                P.TaskManager.Abort();
+                return;
+            }
             P.TaskManager.Enqueue(
                 () => Svc.Condition[ConditionFlag.BetweenAreas] || Svc.Condition[ConditionFlag.BetweenAreas51],
                 "TeleportPanelWaitTransition", new(timeLimitMS: 15000, abortOnTimeout: false));
