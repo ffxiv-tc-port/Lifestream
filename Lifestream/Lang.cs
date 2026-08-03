@@ -58,6 +58,8 @@ internal static class Lang
         "",
         "/li cosmic → go to Sinus Ardorum, alias: /li cosmic|moon|ardorum".Loc(),
         "/li island → go to Island Sanctuary".Loc(),
+        "/li goto <name> → go to a saved custom destination (teleport + navigation)".Loc(),
+        "/li panel → open the teleport panel (search, favorites, remarks, map preview)".Loc(),
         "/li w → open world travel window, alias: /li w|world|open|select".Loc(),
         "/lifestream → open plugin configuration".Loc(),
     });
