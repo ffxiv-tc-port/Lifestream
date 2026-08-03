@@ -1,4 +1,5 @@
-﻿using ECommons.Automation.NeoTaskManager.Tasks;
+﻿using ECommons.Automation.NeoTaskManager;
+using ECommons.Automation.NeoTaskManager.Tasks;
 using ECommons.GameHelpers;
 using ECommons.Throttlers;
 using Lifestream.Schedulers;
@@ -62,6 +63,19 @@ internal static class TaskAetheryteAethernetTeleport
         return false;
     }
 
+    /// <summary>
+    /// 等「讀取畫面結束」的組態。比照 <see cref="Shortcuts.TaskCosmicShortcut"/> 既有的做法:
+    /// 60 秒、<c>abortOnTimeout: false</c>。
+    ///
+    /// 讀取畫面一旦開始,傳送就已經成立,剩下的只是這台機器載入要多久;預設的 30 秒逾時會把整條佇列
+    /// 清掉,結果是「傳送到了玄關乙太之光,但接下來的乙太網傳送整段靜默消失」。載入慢不是失敗訊號,
+    /// 所以逾時只丟掉這一步,後面每一步本來就各有自己的等待條件。
+    ///
+    /// ⚠️ 前一步的 <see cref="Utils.WaitForScreenFalse"/> 刻意維持「逾時即中止」:它等的是讀取畫面
+    /// 「開始」,逾時代表詠唱被打斷、傳送根本沒發生。那時候放行會讓後面幾步在錯誤的區域執行。
+    /// </summary>
+    private static TaskManagerConfiguration WaitForLoadingScreen => new(timeLimitMS: 60000, abortOnTimeout: false);
+
     internal static void Enqueue(uint rootAetheryteId, uint aethernetId)
     {
         if(aethernetId == FirmamentAethernetId)
@@ -99,7 +113,7 @@ internal static class TaskAetheryteAethernetTeleport
                 P.TaskManager.InsertMulti(
                     new(() => S.TeleportService.TeleportToAetheryte(rootAetheryteId), "TeleportToRootAetheryte"),
                     new(Utils.WaitForScreenFalse),
-                    new(Utils.WaitForScreen)
+                    new(Utils.WaitForScreen, nameof(Utils.WaitForScreen), WaitForLoadingScreen)
                     );
             }
             else
@@ -127,7 +141,7 @@ internal static class TaskAetheryteAethernetTeleport
                 P.TaskManager.InsertMulti(
                     new(() => S.TeleportService.TeleportToAetheryte(rootAetheryteId), "TeleportToRootAetheryte"),
                     new(Utils.WaitForScreenFalse),
-                    new(Utils.WaitForScreen)
+                    new(Utils.WaitForScreen, nameof(Utils.WaitForScreen), WaitForLoadingScreen)
                     );
             }
         }, "ConditionalTeleportToRootAetheryte");
