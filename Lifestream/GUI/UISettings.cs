@@ -85,7 +85,7 @@ internal static unsafe class UISettings
                 ImGui.Checkbox("Use direct position write instead of walking".Loc(), ref C.AetheryteLandingDirectWrite);
                 ImGui.Indent();
                 ImGuiEx.TextWrapped(EColor.RedBright, "WARNING - use at your own risk. This writes your character's coordinates straight into game memory to teleport you instantly. It is not something the normal client ever does, the server can detect it, and it may get your account actioned.".Loc());
-                ImGuiEx.TextWrapped(EColor.RedBright, "DailyRoutines, where this feature comes from, maintains its own list of zones with server-side speed detection and locks the feature behind a paid tier on the CN/TC clients - that is their own evidence that it is detectable.".Loc());
+                ImGuiEx.TextWrapped(EColor.RedBright, "DailyRoutines, where this feature comes from, keeps its own list of zones with server-side movement-speed detection, and on the CN/TC clients it refuses to position-teleport inside those zones unless the account is premium - that is their own evidence that it is detectable.".Loc());
                 ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "It is refused automatically while in a duty, in combat, casting, or zoning, and falls back to walking.".Loc());
                 ImGui.Unindent();
                 ImGui.Unindent();
