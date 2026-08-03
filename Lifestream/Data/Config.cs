@@ -100,4 +100,24 @@ public class Config : IEzConfig
     public bool AutoCompletionWindowBottom = false;
     public bool AutoCompletionWindowRight = false;
     public Vector2 AutoCompletionWindowOffset = Vector2.Zero;
+
+    // ── 傳送面板(移植自 DailyRoutines BetterTeleport) ─────────────────────────────
+    public bool TeleportPanelShowMap = true;
+    public bool TeleportPanelHideAethernetInParty = false;
+    public float TeleportPanelMapZoom = 1f;
+
+    /// <summary>
+    /// 每座乙太之光的自訂落點，鍵是 Aetheryte 表的 RowId ——
+    /// 與 DailyRoutines BetterTeleport 的 <c>Positions</c> 同一個鍵空間，可直接匯入。
+    /// </summary>
+    public Dictionary<uint, Vector3> AetheryteLandings = [];
+
+    /// <summary>傳送後自動前往自訂落點。預設關。開啟後走 vnavmesh(與 <c>/li goto</c> 同一套)。</summary>
+    public bool EnableAetheryteLanding = false;
+
+    /// <summary>🔴 改用「直接寫記憶體座標瞬移」抵達落點。預設關，需先開 <see cref="EnableAetheryteLanding"/>。</summary>
+    public bool AetheryteLandingDirectWrite = false;
+
+    /// <summary>🔴 「允許傳送到目前所在的乙太之光」記憶體修補。預設關。</summary>
+    public bool SameAethernetTeleport = false;
 }

@@ -3,6 +3,8 @@ using ECommons.ExcelServices;
 using ECommons.GameHelpers;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using Lifestream.Data;
+using Lifestream.Systems;
+using Lifestream.Systems.TeleportPanel;
 using Lifestream.Tasks.Shortcuts;
 using Lumina.Excel.Sheets;
 using NightmareUI;
@@ -17,13 +19,142 @@ internal static unsafe class UISettings
     private static string AddNew = "";
     internal static void Draw()
     {
-        NuiTools.ButtonTabs([[new("General".Loc(), () => Wrapper(DrawGeneral)), new("Overlay".Loc(), () => Wrapper(DrawOverlay))], [new("Expert".Loc(), () => Wrapper(DrawExpert)), new("Service Accounts".Loc(), () => Wrapper(UIServiceAccount.Draw)), new("Travel Block".Loc(), TabTravelBan.Draw)]]);
+        NuiTools.ButtonTabs([[new("General".Loc(), () => Wrapper(DrawGeneral)), new("Overlay".Loc(), () => Wrapper(DrawOverlay)), new("Teleport Panel".Loc(), () => Wrapper(DrawTeleportPanel))], [new("Expert".Loc(), () => Wrapper(DrawExpert)), new("Service Accounts".Loc(), () => Wrapper(UIServiceAccount.Draw)), new("Travel Block".Loc(), TabTravelBan.Draw)]]);
     }
 
     private static void Wrapper(Action action)
     {
         ImGui.Dummy(new(5f));
         action();
+    }
+
+    /// <summary>
+    /// 傳送面板的設定，以及兩個有帳號風險、預設關閉的進階選項。
+    /// 這兩個選項的說明文字刻意寫得很直白 —— 使用者是在知情的前提下自行承擔風險，
+    /// 所以說明不能含糊。
+    /// </summary>
+    private static void DrawTeleportPanel()
+    {
+        new NuiBuilder()
+        .Section("Teleport Panel".Loc())
+        .Widget(() =>
+        {
+            ImGuiEx.TextWrapped("A searchable teleport window with favorites, renames and a map preview. Open it with \"/li panel\".".Loc());
+            if(ImGui.Button("Open teleport panel".Loc())) S.Gui.TeleportPanelWindow.IsOpen = true;
+            ImGui.Checkbox("Show map preview".Loc(), ref C.TeleportPanelShowMap);
+            ImGui.Checkbox("Hide city aethernet shards while in a party".Loc(), ref C.TeleportPanelHideAethernetInParty);
+            ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "Favorites and renames are shared with the Lifestream overlay - anything you star here also stars there.".Loc());
+        })
+        .Draw();
+
+        new NuiBuilder()
+        .Section("Import from DailyRoutines".Loc())
+        .Widget(() =>
+        {
+            ImGuiEx.TextWrapped("Imports favorites, remarks and custom landing positions from DailyRoutines' BetterTeleport module. Both plugins key this data by aetheryte row id, so it transfers 1:1. Existing entries are never overwritten.".Loc());
+            var exists = DailyRoutinesImport.Exists;
+            if(ImGuiEx.Button("Import BetterTeleport.json".Loc(), exists))
+            {
+                DailyRoutinesImport.Import();
+            }
+            if(!exists)
+            {
+                ImGuiEx.Text(ImGuiColors.DalamudGrey, $"{"File not found:".Loc()} {DailyRoutinesImport.DefaultPath}");
+            }
+            if(DailyRoutinesImport.LastResult != null)
+            {
+                ImGuiEx.TextWrapped(ImGuiColors.DalamudYellow, DailyRoutinesImport.LastResult);
+            }
+        })
+        .Draw();
+
+        new NuiBuilder()
+        .Section("Custom landing positions".Loc())
+        .Widget(() =>
+        {
+            ImGuiEx.TextWrapped("You can save a custom landing spot for each aetheryte. After teleporting there, Lifestream will bring you to that spot instead of leaving you at the crystal. Set them from the right-click menu in the teleport panel.".Loc());
+            ImGui.Checkbox("Enable custom landing positions".Loc(), ref C.EnableAetheryteLanding);
+            ImGuiEx.HelpMarker("Off by default. When enabled, the safe route is used: normal teleport, then vnavmesh walks you to the spot. Nothing is written to game memory.".Loc());
+
+            if(C.EnableAetheryteLanding)
+            {
+                ImGui.Indent();
+                ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "Safe mode: teleport + vnavmesh pathfinding. If vnavmesh is not installed the spot is flagged on your map instead.".Loc());
+                ImGui.Dummy(new(5f));
+
+                ImGui.Checkbox("Use direct position write instead of walking".Loc(), ref C.AetheryteLandingDirectWrite);
+                ImGui.Indent();
+                ImGuiEx.TextWrapped(EColor.RedBright, "WARNING - use at your own risk. This writes your character's coordinates straight into game memory to teleport you instantly. It is not something the normal client ever does, the server can detect it, and it may get your account actioned.".Loc());
+                ImGuiEx.TextWrapped(EColor.RedBright, "DailyRoutines, where this feature comes from, maintains its own list of zones with server-side speed detection and locks the feature behind a paid tier on the CN/TC clients - that is their own evidence that it is detectable.".Loc());
+                ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "It is refused automatically while in a duty, in combat, casting, or zoning, and falls back to walking.".Loc());
+                ImGui.Unindent();
+                ImGui.Unindent();
+            }
+
+            if(C.AetheryteLandings.Count > 0)
+            {
+                ImGui.Dummy(new(5f));
+                ImGuiEx.Text($"{"Saved landing positions".Loc()}: {C.AetheryteLandings.Count}");
+                uint toRemove = 0;
+                foreach(var (id, pos) in C.AetheryteLandings)
+                {
+                    var row = Svc.Data.GetExcelSheet<Aetheryte>().GetRowOrDefault(id);
+                    var name = C.Renames.TryGetValue(id, out var rn) && rn != "" ? rn
+                        : row?.PlaceName.ValueNullable?.Name.ToString() is { Length: > 0 } pn ? pn
+                        : row?.AethernetName.ValueNullable?.Name.ToString() is { Length: > 0 } an ? an
+                        : $"#{id}";
+                    ImGuiEx.Text($"{name}  ({pos.X:F1}, {pos.Y:F1}, {pos.Z:F1})");
+                    ImGui.SameLine();
+                    if(ImGui.SmallButton($"{"Delete".Loc()}##landing{id}")) toRemove = id;
+                }
+                if(toRemove > 0)
+                {
+                    C.AetheryteLandings.Remove(toRemove);
+                    EzConfig.Save();
+                }
+            }
+        })
+        .Draw();
+
+        new NuiBuilder()
+        .Section("Teleport to the aethernet shard you are standing on".Loc())
+        .Widget(() =>
+        {
+            ImGuiEx.TextWrapped("The game refuses an aethernet teleport when the destination is the shard you are already standing at (\"This is your current location.\"). This option patches that check out, which is useful together with custom landing positions - you can re-teleport to snap back to your saved spot.".Loc());
+            ImGuiEx.TextWrapped(EColor.RedBright, "WARNING - use at your own risk. This is a memory patch: it rewrites two bytes of the game's code so it stops refusing, and the client then sends a teleport request the unmodified client would never send. Off by default.".Loc());
+            ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "The \"you have not attuned to this aetheryte\" check is left untouched. The patch is verified before it is written: each signature must match exactly once and the byte found must be the expected conditional jump, otherwise nothing is patched at all. The original bytes are restored when you turn this off or unload the plugin.".Loc());
+
+            var enabled = C.SameAethernetTeleport;
+            if(ImGui.Checkbox("Allow teleporting to the aethernet shard you are standing on".Loc(), ref enabled))
+            {
+                C.SameAethernetTeleport = enabled;
+                EzConfig.Save();
+                if(enabled)
+                {
+                    if(!SameAethernetTeleportPatch.Enable())
+                    {
+                        // 解析或寫入失敗：把設定退回關閉，免得下次啟動又白試一次。
+                        C.SameAethernetTeleport = false;
+                        EzConfig.Save();
+                    }
+                }
+                else
+                {
+                    SameAethernetTeleportPatch.Disable();
+                }
+            }
+
+            if(SameAethernetTeleportPatch.IsApplied)
+            {
+                ImGuiEx.Text(ImGuiColors.HealerGreen, "Patch active.".Loc());
+            }
+            else if(SameAethernetTeleportPatch.ResolveError != null)
+            {
+                ImGuiEx.TextWrapped(EColor.RedBright, $"{"Patch not applied:".Loc()} {SameAethernetTeleportPatch.ResolveError}");
+                ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "This usually means the game updated and the signature moved. Nothing was written - the feature is simply off.".Loc());
+            }
+        })
+        .Draw();
     }
 
     private static void DrawGeneral()

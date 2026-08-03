@@ -89,6 +89,9 @@ public unsafe class Lifestream : IDalamudPlugin
             TerritoryWatcher.Initialize();
             Config = EzConfig.Init<Config>();
             Utils.CheckConfigMigration();
+            // 「允許傳送到目前所在的乙太之光」記憶體修補。預設關；開著才會去解析特徵碼。
+            // 解析失敗(命中數不是 1)時只會寫一行 log 並維持未修補狀態，不影響其餘功能。
+            if(Config.SameAethernetTeleport) GenericHelpers.Safe(() => SameAethernetTeleportPatch.Enable());
             EzConfigGui.Init(MainGui.Draw);
             TaskManager = new(new(showDebug: true));
             CharaSelectOverlay = new();
@@ -308,6 +311,12 @@ public unsafe class Lifestream : IDalamudPlugin
             {
                 Notify.Error("Lifestream is busy");
             }
+        }
+        else if(arguments.EqualsIgnoreCase("panel"))
+        {
+            // 傳送面板(搜尋/我的最愛/備註/地圖預覽)。用 Toggle：再下一次指令會關掉，
+            // 跟其他外掛主視窗指令的慣例一致。
+            S.Gui.TeleportPanelWindow.IsOpen = !S.Gui.TeleportPanelWindow.IsOpen;
         }
         else if(arguments.StartsWithAny(StringComparison.OrdinalIgnoreCase, "tp"))
         {
@@ -632,6 +641,8 @@ public unsafe class Lifestream : IDalamudPlugin
         Svc.Toasts.ErrorToast -= Toasts_ErrorToast;
         followPath?.Dispose();
         GenericHelpers.Safe(EzIpcFailureLog.Disable);
+        // 🔴 一定要還原記憶體修補 —— 外掛卸載後遊戲還帶著被改過的碼是最糟的殘留。
+        GenericHelpers.Safe(SameAethernetTeleportPatch.Disable);
         ECommonsMain.Dispose();
         P = null;
     }
