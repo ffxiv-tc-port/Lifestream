@@ -73,6 +73,9 @@ public unsafe class Lifestream : IDalamudPlugin
     {
         P = this;
         ECommonsMain.Init(pluginInterface, this, Module.SplatoonAPI);
+        // 讓「呼叫了對方沒有的 IPC 方法」不再完全靜默。
+        // 訂閱越早越好：事件只在 IPC **呼叫**當下才被查閱，在這裡訂閱就涵蓋往後所有呼叫。
+        EzIpcFailureLog.Enable();
         ECommons.LanguageHelpers.Localization.Init("ChineseTraditional");
 #if CUSTOMCS
         PluginLog.Warning($"Using custom FFXIVClientStructs");
@@ -628,6 +631,7 @@ public unsafe class Lifestream : IDalamudPlugin
         Svc.Framework.Update -= Framework_Update;
         Svc.Toasts.ErrorToast -= Toasts_ErrorToast;
         followPath?.Dispose();
+        GenericHelpers.Safe(EzIpcFailureLog.Disable);
         ECommonsMain.Dispose();
         P = null;
     }
