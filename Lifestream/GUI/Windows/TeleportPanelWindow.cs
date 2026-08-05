@@ -32,13 +32,23 @@ public class TeleportPanelWindow : Window
         };
         Size = new(820, 520);
         SizeCondition = ImGuiCond.FirstUseEver;
+        OnHover = h =>
+        {
+            // hover 只更新地圖預覽的對象，不觸發任何動作
+            SelectedId = h.Id;
+            SelectedSub = h.SubIndex;
+        };
     }
 
     private string Search = "";
     private uint SelectedId;
     private byte SelectedSub;
-    private string RenameBuffer = "";
-    private uint RenameTarget;
+
+    /// <summary>
+    /// hover 回呼快取成欄位。⚠️ 只捕捉 <c>this</c> 的 lambda **不會**被編譯器快取，
+    /// 寫在 DrawRow 裡等於每一列每一幀配置一個 delegate(清單可以有好幾百列)。
+    /// </summary>
+    private Action<TeleportPanelEntry> OnHover;
 
     /// <summary>地圖材質是 2048x2048，世界→材質座標的換算基準。</summary>
     private const float MapTextureSize = 2048f;
@@ -87,17 +97,20 @@ public class TeleportPanelWindow : Window
         if(ImGuiEx.IconButton(FontAwesomeIcon.Redo)) TeleportPanelIndex.Invalidate();
         ImGuiEx.Tooltip("Rebuild destination list".Loc());
         ImGui.SameLine();
+        if(ImGui.SmallButton($"★ {"Favorites".Loc()}")) S.Gui.TeleportFavoritesWindow.IsOpen = true;
+        ImGuiEx.Tooltip("Open the favorites window (custom order and categories).".Loc());
+
+        // ⚠️ 分成兩行：原本一行塞得下是因為只有兩個核取方塊加一段靜態文字，
+        // 現在多了核取方塊之後在預設視窗寬度會被推出右邊界。
         ImGui.Checkbox("Map".Loc(), ref C.TeleportPanelShowMap);
         ImGui.SameLine();
         ImGui.Checkbox("Hide aethernet in party".Loc(), ref C.TeleportPanelHideAethernetInParty);
         ImGuiEx.HelpMarker("While in a party, hide city aethernet shards from the list.".Loc());
 
-        if(C.EnableAetheryteLanding)
-        {
-            ImGui.SameLine();
-            ImGuiEx.Text(C.AetheryteLandingDirectWrite ? ImGuiColors.DalamudRed : ImGuiColors.DalamudYellow,
-                C.AetheryteLandingDirectWrite ? "[direct position write]".Loc() : "[custom landings]".Loc());
-        }
+        // 「直接寫入座標」原本只是一行靜態警示字。它其實是既有的第二層開關
+        // (Config.AetheryteLandingDirectWrite，預設關)，改成核取方塊讓它在面板上就能開關，
+        // 行為與預設值沒有變 —— 沒打勾時走的一直都是 vnavmesh 導航。
+        TeleportRowUI.DrawDirectWriteToggle();
     }
 
     private void DrawList(List<TeleportPanelEntry> entries)
@@ -121,7 +134,7 @@ public class TeleportPanelWindow : Window
                 ImGuiEx.Text(ImGuiColors.DalamudGrey, "No matching destinations.".Loc());
                 return;
             }
-            foreach(var x in matches) DrawRow(x, showZone: true);
+            foreach(var x in matches) DrawRow(x, showZone: true, idScope: "search");
             return;
         }
 
@@ -132,7 +145,9 @@ public class TeleportPanelWindow : Window
             if(ImGui.CollapsingHeader($"★ {"Favorites".Loc()} ({favorites.Count})###LifestreamTpFav", ImGuiTreeNodeFlags.DefaultOpen))
             {
                 ImGui.Indent();
-                foreach(var x in favorites) DrawRow(x, showZone: true);
+                // 🔴 idScope 必須跟地區分組那邊不同：我的最愛的項目在下面的地區分組裡會**再出現一次**，
+                // 兩邊用同一組 ImGui id 會讓右鍵選單整份被畫兩遍，而且只有後畫的那份收得到輸入。
+                foreach(var x in favorites) DrawRow(x, showZone: true, idScope: "fav");
                 ImGui.Unindent();
             }
         }
@@ -150,120 +165,27 @@ public class TeleportPanelWindow : Window
                 }
                 foreach(var x in zone.OrderByDescending(x => x.IsAetheryte).ThenBy(x => x.DisplayName))
                 {
-                    DrawRow(x, showZone: false);
+                    DrawRow(x, showZone: false, idScope: "grp");
                 }
             }
             ImGui.Unindent();
         }
     }
 
-    private void DrawRow(TeleportPanelEntry x, bool showZone)
+    /// <summary>
+    /// 一列目的地。實際繪製在 <see cref="TeleportRowUI"/>(與我的最愛視窗共用)，
+    /// 這裡只負責面板自己的狀態：地圖預覽的選取對象、以及點下去要排傳送。
+    /// </summary>
+    private void DrawRow(TeleportPanelEntry x, bool showZone, string idScope)
     {
-        ImGui.PushID($"tp{x.Id}_{x.SubIndex}");
-
-        var label = x.DisplayName;
-        if(C.Favorites.Contains(x.Id)) label = "★ " + label;
-        if(!x.IsAetheryte) label = "» " + label;
-        if(C.AetheryteLandings.ContainsKey(x.Id)) label += " ⚑";
-        if(showZone && x.ZoneName != "" && !label.Contains(x.ZoneName)) label += $"  ({x.ZoneName})";
-
         var selected = SelectedId == x.Id && SelectedSub == x.SubIndex;
-        if(ImGui.Selectable(label, selected))
+        var clicked = TeleportRowUI.Draw(x, idScope, showZone, selected, OnHover);
+        if(clicked)
         {
             SelectedId = x.Id;
             SelectedSub = x.SubIndex;
             TaskTeleportPanelGo.Enqueue(x);
         }
-        if(ImGui.IsItemHovered())
-        {
-            // hover 只更新預覽選取，不觸發任何動作
-            SelectedId = x.Id;
-            SelectedSub = x.SubIndex;
-            if(x.GilCost > 0) ImGuiEx.Tooltip($"{x.ZoneName}\n{x.GilCost} gil");
-            else if(x.ZoneName != "") ImGuiEx.Tooltip(x.ZoneName);
-        }
-        DrawContextMenu(x);
-
-        ImGui.PopID();
-    }
-
-    private void DrawContextMenu(TeleportPanelEntry x)
-    {
-        if(ImGui.IsItemClicked(ImGuiMouseButton.Right))
-        {
-            ImGui.OpenPopup($"LifestreamTpPopup{x.Id}_{x.SubIndex}");
-            RenameTarget = x.Id;
-            RenameBuffer = C.Renames.TryGetValue(x.Id, out var r) ? r : "";
-        }
-        if(!ImGui.BeginPopup($"LifestreamTpPopup{x.Id}_{x.SubIndex}")) return;
-
-        ImGuiEx.Text(ImGuiColors.DalamudGrey, x.Name);
-        ImGui.Separator();
-
-        if(ImGuiEx.CollectionCheckbox("Favorite".Loc(), x.Id, C.Favorites))
-        {
-            // 我的最愛會影響 Overlay 的排序，跟 Overlay 的做法一致重建資料存放區
-            S.Data.DataStore = new();
-            EzConfig.Save();
-        }
-        if(ImGuiEx.CollectionCheckbox("Hidden".Loc(), x.Id, C.Hidden)) EzConfig.Save();
-
-        ImGuiEx.Text("Rename:".Loc());
-        ImGui.SetNextItemWidth(200f.Scale());
-        if(RenameTarget == x.Id && ImGui.InputText("##LifestreamTpRename", ref RenameBuffer, 100))
-        {
-            if(RenameBuffer.Trim() == "") C.Renames.Remove(x.Id);
-            else C.Renames[x.Id] = RenameBuffer.Trim();
-            EzConfig.Save();
-        }
-
-        ImGui.Separator();
-        DrawLandingMenu(x);
-
-        ImGui.EndPopup();
-    }
-
-    /// <summary>
-    /// 自訂落點的操作。功能關閉時仍然看得到既有落點(才知道匯入的資料還在)，但操作全部反白。
-    /// </summary>
-    private void DrawLandingMenu(TeleportPanelEntry x)
-    {
-        var has = C.AetheryteLandings.TryGetValue(x.Id, out var landing);
-
-        if(!C.EnableAetheryteLanding)
-        {
-            ImGuiEx.Text(ImGuiColors.DalamudGrey, "Custom landing is disabled in settings.".Loc());
-            if(has) ImGuiEx.Text(ImGuiColors.DalamudGrey3, $"⚑ {landing.X:F1}, {landing.Y:F1}, {landing.Z:F1}");
-            return;
-        }
-
-        if(has)
-        {
-            ImGuiEx.Text(ImGuiColors.DalamudYellow, $"⚑ {landing.X:F1}, {landing.Y:F1}, {landing.Z:F1}");
-        }
-        else
-        {
-            ImGuiEx.Text(ImGuiColors.DalamudGrey, "No custom landing set.".Loc());
-        }
-
-        // 只能在該乙太之光所屬的區域裡記錄落點 —— 在別的地圖記下來的座標沒有意義。
-        var canSave = Player.Interactable && P.Territory == x.Territory;
-        if(ImGuiEx.Button(has ? "Update landing to current position".Loc() : "Save current position as landing".Loc(), canSave))
-        {
-            C.AetheryteLandings[x.Id] = Player.Position;
-            EzConfig.Save();
-        }
-        if(!canSave)
-        {
-            ImGuiEx.Text(ImGuiColors.DalamudGrey3, $"{"Must be in".Loc()} {x.ZoneName}");
-        }
-
-        if(has && ImGuiEx.Button("Clear landing".Loc(), ImGuiEx.Ctrl))
-        {
-            C.AetheryteLandings.Remove(x.Id);
-            EzConfig.Save();
-        }
-        if(has) ImGuiEx.Tooltip("Hold CTRL and click to delete".Loc());
     }
 
     private void DrawMap(List<TeleportPanelEntry> entries)

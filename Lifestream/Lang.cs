@@ -60,6 +60,7 @@ internal static class Lang
         "/li island → go to Island Sanctuary".Loc(),
         "/li goto <name> → go to a saved custom destination (teleport + navigation)".Loc(),
         "/li panel → open the teleport panel (search, favorites, remarks, map preview)".Loc(),
+        "/li fav → open the favorites window (custom order and categories), alias: /li fav|favorites".Loc(),
         "/li w → open world travel window, alias: /li w|world|open|select".Loc(),
         "/lifestream → open plugin configuration".Loc(),
     });

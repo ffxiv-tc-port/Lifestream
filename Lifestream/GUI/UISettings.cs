@@ -41,6 +41,9 @@ internal static unsafe class UISettings
         {
             ImGuiEx.TextWrapped("A searchable teleport window with favorites, renames and a map preview. Open it with \"/li panel\".".Loc());
             if(ImGui.Button("Open teleport panel".Loc())) S.Gui.TeleportPanelWindow.IsOpen = true;
+            ImGui.SameLine();
+            if(ImGui.Button($"★ {"Open favorites window".Loc()}")) S.Gui.TeleportFavoritesWindow.IsOpen = true;
+            ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "The favorites window (\"/li fav\") is a separate list where you can put your favorites in your own order and sort them into your own categories. The teleport panel itself is unchanged.".Loc());
             ImGui.Checkbox("Show map preview".Loc(), ref C.TeleportPanelShowMap);
             ImGui.Checkbox("Hide city aethernet shards while in a party".Loc(), ref C.TeleportPanelHideAethernetInParty);
             ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "Favorites and renames are shared with the Lifestream overlay - anything you star here also stars there.".Loc());
@@ -323,6 +326,22 @@ internal static unsafe class UISettings
         })
         .Checkbox("Use Sprint when auto-moving".Loc(), () => ref C.UseSprintPeloton)
         .Checkbox("Use Peloton when auto-moving".Loc(), () => ref C.UsePeloton)
+        .Widget(() =>
+        {
+            // 「自動移動時使用坐騎」(C.UseMount) 一直存在，但走 vnavmesh 的野外導航那條路
+            // (自訂落點 / /li goto) 是寫死不上坐騎的。這個選項只是把那條路接回既有的坐騎流程。
+            // ⚠️ 預設關 = 維持既有行為。
+            ImGui.Checkbox("Mount up for outdoor navigation".Loc(), ref C.GotoUseMount);
+            ImGuiEx.HelpMarker("Applies to custom landing positions and \"/li goto\". Uses the same mount settings as above. Whether mounting is possible at all is left to the game - in a city, indoors, in combat or in a duty it simply walks instead.".Loc());
+            if(C.GotoUseMount)
+            {
+                ImGui.Indent();
+                ImGui.SetNextItemWidth(200f.Scale());
+                ImGui.SliderFloat("Minimum path length to mount, yalms".Loc(), ref C.GotoMountMinDistance, 10f, 300f);
+                ImGuiEx.HelpMarker("Shorter paths are walked - getting on and off a mount costs more time than it saves. This is the length of the actual path, not the straight-line distance.".Loc());
+                ImGui.Unindent();
+            }
+        })
 
         .Section("Character Select Menu".Loc())
         .Checkbox("Enable Data center and World visit from Character Select Menu".Loc(), () => ref C.AllowDCTravelFromCharaSelect)

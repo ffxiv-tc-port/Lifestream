@@ -120,4 +120,34 @@ public class Config : IEzConfig
 
     /// <summary>🔴 「允許傳送到目前所在的乙太之光」記憶體修補。預設關。</summary>
     public bool SameAethernetTeleport = false;
+
+    // ── 我的最愛：自訂排序與分類 ────────────────────────────────────────────────
+    // ⚠️ <see cref="Favorites"/> 是 HashSet(無序)，而且浮動視窗/指令都在讀它 ——
+    // **完全不動它**。排序與分類一律另存在下面這幾個新欄位裡，純加法、不需要設定檔遷移：
+    // 舊使用者第一次開，順序表與分類表都是空的 → 全部落回既有的字母序與「未分類」，
+    // 看到的東西跟以前一模一樣，也不會少任何一筆。
+
+    /// <summary>
+    /// 我的最愛的自訂顯示順序(Aetheryte RowId)。**只是一份排名**，不是成員名單 ——
+    /// 沒列在這裡的我的最愛不會消失，只是排在有排名的項目之後、彼此照字母序。
+    /// </summary>
+    public List<uint> FavoriteOrder = [];
+
+    /// <summary>我的最愛的自訂分類定義。清單順序就是顯示順序。</summary>
+    public List<FavoriteCategory> FavoriteCategories = [];
+
+    /// <summary>我的最愛 → 分類 Id。查不到、或指向已被刪除的分類，一律落到「未分類」。</summary>
+    public Dictionary<uint, uint> FavoriteCategoryAssignment = [];
+
+    // ── 野外導航 ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 野外導航(自訂落點 / <c>/li goto</c>)時，路徑夠長就先上坐騎再走。
+    /// ⚠️ 預設關 = 維持既有行為(這條路徑原本是寫死不上坐騎的)。
+    /// 上坐騎本身用的是既有的 <see cref="Tasks.Utility.TaskMount"/>，遵守 <see cref="Mount"/> 偏好。
+    /// </summary>
+    public bool GotoUseMount = false;
+
+    /// <summary>路徑總長短於這個距離就不上坐騎 —— 上下馬的時間比省下來的還多。</summary>
+    public float GotoMountMinDistance = 60f;
 }

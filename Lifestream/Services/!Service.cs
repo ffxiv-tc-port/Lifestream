@@ -26,6 +26,7 @@ public static class Service
         public static Overlay Overlay;
         public static ProgressOverlay ProgressOverlay;
         public static TeleportPanelWindow TeleportPanelWindow;
+        public static TeleportFavoritesWindow TeleportFavoritesWindow;
     }
 
     public static class Ipc

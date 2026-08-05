@@ -377,11 +377,54 @@ public static unsafe class TaskGotoDestination
             {
                 if(!task.IsCompleted) return false;
                 var path = task.Result;
-                P.TaskManager.Enqueue(() => TaskMoveToHouse.UseSprint(false));
+                var mount = ShouldMountForPath(path);
+                // ⚠️ 上坐騎這一步刻意 abortOnTimeout:false —— 召喚不出來(卡動畫、區域其實不准騎)
+                // 時只放棄坐騎、照樣用走的，不能因此把整條落點/導航佇列中止掉。
+                P.TaskManager.Enqueue(() => TaskMoveToHouse.UseSprint(mount), "GotoUseSprint",
+                    new(timeLimitMS: 20000, abortOnTimeout: false));
                 P.TaskManager.Enqueue(() => P.FollowPath.Move([.. path], true));
                 return true;
             }, "GotoBuildPath");
         }, "GotoNavmeshMaster");
+    }
+
+    /// <summary>
+    /// 這一段路值不值得上坐騎。
+    ///
+    /// 📌 「能不能騎」不自己判斷 —— <see cref="TaskMount.MountIfCan"/> 問的是
+    /// <c>ActionManager.GetActionStatus(GeneralAction, 9)</c>，那就是遊戲自己對「現在能不能召喚
+    /// 坐騎」的答案(區域不准、戰鬥中、室內、沒解鎖…全都涵蓋)，而且回非 0 時它會直接回 true 放行，
+    /// 不會卡住佇列。自己再寫一份區域白名單只會多一份會過期的資料。
+    /// 這裡只補遊戲答不出來的那一半：**值不值得**。
+    ///
+    /// ⚠️ 距離用的是**路徑總長**不是直線距離：要繞路的時候直線距離會嚴重低估，
+    /// 而那正是最該上坐騎的情況。
+    /// </summary>
+    private static bool ShouldMountForPath(List<Vector3> path)
+    {
+        if(!C.GotoUseMount) return false;
+        if(path == null || path.Count == 0) return false;
+        // 已經在坐騎上就不必再判斷距離：MountIfCan 會立刻回 true，不會有任何額外動作。
+        if(Svc.Condition[ConditionFlag.Mounted]) return true;
+        // 潛水中上坐騎會先浮上來，等於把使用者拉離原本的路徑
+        if(Svc.Condition[ConditionFlag.Diving]) return false;
+        if(Svc.Condition[ConditionFlag.InCombat]) return false;
+
+        var length = 0f;
+        var prev = Player.Position;
+        foreach(var p in path)
+        {
+            length += DistanceXZ(prev, p);
+            prev = p;
+        }
+        if(length < C.GotoMountMinDistance)
+        {
+            // 使用者跑 LogLevel 2 —— 「為什麼沒上坐騎」正是他會來問的事，寫 Debug 他收不到。
+            PluginLog.Information($"[Goto] Path is {length:F0}y, shorter than the {C.GotoMountMinDistance:F0}y mount threshold - walking.");
+            return false;
+        }
+        PluginLog.Information($"[Goto] Path is {length:F0}y, mounting up before moving.");
+        return true;
     }
 
     internal static void SetFlag(CustomDestination dest)

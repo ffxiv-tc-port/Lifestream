@@ -318,6 +318,11 @@ public unsafe class Lifestream : IDalamudPlugin
             // 跟其他外掛主視窗指令的慣例一致。
             S.Gui.TeleportPanelWindow.IsOpen = !S.Gui.TeleportPanelWindow.IsOpen;
         }
+        else if(arguments.EqualsIgnoreCase("fav") || arguments.EqualsIgnoreCase("favorites") || arguments.EqualsIgnoreCase("favourites"))
+        {
+            // 我的最愛視窗(自訂排序/分類)。跟傳送面板一樣用 Toggle。
+            S.Gui.TeleportFavoritesWindow.IsOpen = !S.Gui.TeleportFavoritesWindow.IsOpen;
+        }
         else if(arguments.StartsWithAny(StringComparison.OrdinalIgnoreCase, "tp"))
         {
             var destination = primary[(primary.IndexOf("tp") + 2)..].Trim();

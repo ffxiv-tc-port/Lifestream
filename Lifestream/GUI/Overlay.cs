@@ -325,6 +325,8 @@ public class Overlay : Window
             if(ImGuiEx.CollectionCheckbox("Favorite".Loc(), x.ID, C.Favorites))
             {
                 PluginLog.Debug($"Rebuilding data store");
+                // 取消我的最愛時把自訂排序/分類一併清掉，否則設定檔會靜默累積孤兒 id
+                Systems.TeleportPanel.FavoriteOrganizer.PruneIfNotFavorite(x.ID);
                 S.Data.DataStore = new();
                 EzConfig.Save();
             }
