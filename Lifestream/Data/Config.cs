@@ -143,10 +143,12 @@ public class Config : IEzConfig
 
     /// <summary>
     /// 野外導航(自訂落點 / <c>/li goto</c>)時，路徑夠長就先上坐騎再走。
-    /// ⚠️ 預設關 = 維持既有行為(這條路徑原本是寫死不上坐騎的)。
-    /// 上坐騎本身用的是既有的 <see cref="Tasks.Utility.TaskMount"/>，遵守 <see cref="Mount"/> 偏好。
+    /// 📌 預設開 = 刻意不沿用舊行為(這條路徑原本是寫死不上坐騎的)。只影響移動方式，
+    /// 上坐騎本身用的是既有的 <see cref="Tasks.Utility.TaskMount"/>，遵守 <see cref="Mount"/> 偏好；
+    /// 城內/室內/戰鬥中/副本裡遊戲會直接拒絕，那些情況自動退回步行。
+    /// ⚠️ 既有使用者的設定檔已經寫過這個鍵時，反序列化會蓋掉這個預設值 —— 只有沒有該鍵的設定檔才會吃到開。
     /// </summary>
-    public bool GotoUseMount = false;
+    public bool GotoUseMount = true;
 
     /// <summary>路徑總長短於這個距離就不上坐騎 —— 上下馬的時間比省下來的還多。</summary>
     public float GotoMountMinDistance = 60f;

@@ -330,7 +330,7 @@ internal static unsafe class UISettings
         {
             // 「自動移動時使用坐騎」(C.UseMount) 一直存在，但走 vnavmesh 的野外導航那條路
             // (自訂落點 / /li goto) 是寫死不上坐騎的。這個選項只是把那條路接回既有的坐騎流程。
-            // ⚠️ 預設關 = 維持既有行為。
+            // 📌 預設開(使用者裁決)：不上坐騎的舊行為只是實作限制，不是想要的行為。
             ImGui.Checkbox("Mount up for outdoor navigation".Loc(), ref C.GotoUseMount);
             ImGuiEx.HelpMarker("Applies to custom landing positions and \"/li goto\". Uses the same mount settings as above. Whether mounting is possible at all is left to the game - in a city, indoors, in combat or in a duty it simply walks instead.".Loc());
             if(C.GotoUseMount)
