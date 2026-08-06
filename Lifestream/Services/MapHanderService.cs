@@ -2,6 +2,7 @@
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Memory;
 using ECommons.MathHelpers;
+using ECommons.Throttlers;
 using ECommons.UIHelpers;
 using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -33,11 +34,6 @@ public unsafe class MapHanderService : IDisposable
 
     private void OnMapReceivedEvent(AddonEvent type, AddonArgs args)
     {
-        // 🔴 設定「點擊地圖上的乙太之光標記以快速傳送」原本是死的:全 repo 只有宣告與那個核取方塊,
-        // 沒有任何地方讀它 —— 使用者取消勾選完全沒有效果,而且是靜默的。這裡把它接上。
-        // (同一節的 DisableMapClickOtherTerritory 一直是活的,見下面;它是這個總開關底下的細部篩選。)
-        // 📌 預設 true = 維持既有行為,已勾選的使用者不受影響。
-        if(!C.UseMapTeleport) return;
         if(args is AddonReceiveEventArgs evt && TryGetAddonByName<AddonAreaMap>("AreaMap", out var addon) && addon->AtkUnitBase.IsReady() && !Utils.IsBusy())
         {
             /*var atkEvent = (AtkEvent*)evt.AtkEvent;
@@ -62,6 +58,26 @@ public unsafe class MapHanderService : IDisposable
                         {
                             var node = addonTooltip->UldManager.NodeList[2]->GetAsAtkTextNode();
                             var text = GenericHelpers.ReadSeString(&node->NodeText).GetText();
+
+                            // 🔴 設定「點擊地圖上的乙太之光標記以快速傳送」原本是死的:全 repo 只有
+                            // Config 的宣告與設定頁那個核取方塊,這裡從來沒讀過它 —— 使用者取消勾選
+                            // 完全沒有效果,而且是靜默的。這裡把它接上。
+                            // (同一節的 DisableMapClickOtherTerritory 一直是活的,見下面;
+                            //  它是這個總開關底下的細部篩選。)
+                            //
+                            // ⚠️ 接上之後,設定檔裡已經是 false 的使用者會發現地圖點擊「突然壞了」——
+                            // 其實是他當初關掉的設定終於生效。所以這裡寫 Information 級診斷
+                            // (使用者跑 LogLevel 2),讓 log 直接回答「為什麼沒反應」,不要再靜默一次。
+                            // 判斷點放在這裡而不是事件入口,是為了只在「真的點到了某個標記」時才記錄。
+                            if(!C.UseMapTeleport)
+                            {
+                                if(EzThrottler.Throttle("MapTeleportDisabledLog", 5000))
+                                {
+                                    PluginLog.Information($"[Map] Ignoring click on \"{text}\": \"Click Aethernet Shard on map for quick teleport\" is turned off in Lifestream settings (Map Integration).");
+                                }
+                                return;
+                            }
+
                             if(P.ActiveAetheryte != null)
                             {
                                 var master = Utils.GetMaster();
