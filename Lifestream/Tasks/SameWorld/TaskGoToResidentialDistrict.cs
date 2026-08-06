@@ -32,7 +32,7 @@ public static unsafe class TaskGoToResidentialDistrict
         var x = (AddonSelectYesno*)Utils.GetSpecificYesno(true, Lang.TravelTo);
         if(x != null)
         {
-            if(x->YesButton->IsEnabled && EzThrottler.Throttle("ConfirmTravelTo"))
+            if(IsButtonEnabled(x->YesButton) && EzThrottler.Throttle("ConfirmTravelTo"))
             {
                 new AddonMaster.SelectYesno(x).Yes();
                 return true;
@@ -66,7 +66,7 @@ public static unsafe class TaskGoToResidentialDistrict
         if(TryGetAddonByName<AtkUnitBase>("HousingSelectBlock", out var addon) && IsAddonReady(addon))
         {
             var button = addon->GetComponentButtonById(34);
-            if(button->IsEnabled)
+            if(IsButtonEnabled(button))
             {
                 if(EzThrottler.Throttle("HousingSelectBlockConfirm"))
                 {

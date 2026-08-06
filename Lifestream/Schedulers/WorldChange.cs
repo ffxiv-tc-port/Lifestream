@@ -137,7 +137,7 @@ internal static unsafe class WorldChange
         var x = (AddonSelectYesno*)Utils.GetSpecificYesno(true, Lang.ConfirmWorldVisit);
         if(x != null)
         {
-            if(x->YesButton->IsEnabled && EzThrottler.Throttle("ConfirmWorldVisit"))
+            if(IsButtonEnabled(x->YesButton) && EzThrottler.Throttle("ConfirmWorldVisit"))
             {
                 new AddonMaster.SelectYesno(x).Yes();
                 return true;
@@ -427,7 +427,7 @@ internal static unsafe class WorldChange
         var x = (AddonSelectYesno*)Utils.GetSpecificYesno();
         if(x != null)
         {
-            if(x->YesButton->IsEnabled && EzThrottler.Throttle("ConfirmLeaveParty"))
+            if(IsButtonEnabled(x->YesButton) && EzThrottler.Throttle("ConfirmLeaveParty"))
             {
                 new SelectYesnoMaster(x).Yes();
                 return true;

@@ -209,7 +209,7 @@ internal static unsafe class DCChange
 
     internal static bool? ConfirmDcVisitIntention()
     {
-        if(TryGetAddonByName<AtkUnitBase>("LobbyDKTCheck", out var addon) && IsAddonReady(addon) && addon->UldManager.NodeList[3]->GetAsAtkComponentButton()->IsEnabled)
+        if(TryGetAddonByName<AtkUnitBase>("LobbyDKTCheck", out var addon) && IsAddonReady(addon) && IsButtonEnabled(GetNodeListButton(addon, 3)))
         {
             if(DCThrottle)
             {
@@ -327,7 +327,7 @@ internal static unsafe class DCChange
             {
                 DCRethrottle();
             }
-            if(noAvailableWorldsAction != null && TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon2) && IsAddonReady(addon2) && addon2->UldManager.NodeList[4]->GetAsAtkComponentButton()->IsEnabled)
+            if(noAvailableWorldsAction != null && TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon2) && IsAddonReady(addon2) && IsButtonEnabled(GetNodeListButton(addon2, 4)))
             {
                 var result = noAvailableWorldsAction();
                 if(result) return true;
@@ -344,13 +344,17 @@ internal static unsafe class DCChange
     {
         if(TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon) && IsAddonReady(addon))
         {
-            if(addon->UldManager.NodeList[4]->GetAsAtkComponentButton()->IsEnabled)
+            if(IsButtonEnabled(GetNodeListButton(addon, 4)))
             {
                 if(DCThrottle && EzThrottler.Throttle("CancelDcVisit", 5000))
                 {
-                    PluginLog.Debug($"[DCChange] Cancelling DC visit");
-                    addon->UldManager.NodeList[4]->GetAsAtkComponentButton()->ClickAddonButton(addon);
-                    return true;
+                    var button = GetNodeListButton(addon, 4);
+                    if(button != null)
+                    {
+                        PluginLog.Debug($"[DCChange] Cancelling DC visit");
+                        button->ClickAddonButton(addon);
+                        return true;
+                    }
                 }
             }
             else
@@ -369,7 +373,7 @@ internal static unsafe class DCChange
     {
         if(TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon) && IsAddonReady(addon))
         {
-            if(addon->UldManager.NodeList[5]->GetAsAtkComponentButton()->IsEnabled)
+            if(IsButtonEnabled(GetNodeListButton(addon, 5)))
             {
                 if(DCThrottle && EzThrottler.Throttle("ConfirmDcVisit", 5000))
                 {
@@ -394,7 +398,7 @@ internal static unsafe class DCChange
     {
         if(TryGetAddonByName<AtkUnitBase>("LobbyDKTCheckExec", out var addon) && IsAddonReady(addon))
         {
-            if(addon->UldManager.NodeList[3]->GetAsAtkComponentButton()->IsEnabled)
+            if(IsButtonEnabled(GetNodeListButton(addon, 3)))
             {
                 if(DCThrottle && EzThrottler.Throttle("ConfirmDcVisit", 5000))
                 {
