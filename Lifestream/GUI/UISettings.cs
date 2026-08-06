@@ -178,6 +178,11 @@ internal static unsafe class UISettings
                 ImGui.Checkbox("Only teleport from command but not from overlay".Loc(), ref C.WorldVisitTPOnlyCmd);
                 ImGui.Unindent();
             }
+            // 目的地就在同一區又很近時,乾脆用走的 —— 省下整整一次讀取畫面。
+            // 🔴 預設 0(關):這會改變語意(點了傳送面板卻用走的),所以必須由使用者自己開,而且門檻可調。
+            ImGui.SetNextItemWidth(200f.Scale());
+            ImGui.SliderFloat("Walk instead of using the aethernet when closer than, yalms".Loc(), ref C.SkipAethernetIfCloserThan, 0f, 150f, "%.0f");
+            ImGuiEx.HelpMarker("0 turns this off (default). When the destination aethernet shard is in the zone you are already in and closer than this, Lifestream simply walks there instead of taking the aethernet - that saves a whole loading screen. Straight-line distance, not path length. If it cannot walk there in time it falls back to the normal aethernet route.".Loc());
             ImGui.Checkbox("Add firmament location into Foundation aetheryte".Loc(), ref C.Firmament);
             ImGui.Checkbox("Add Sinus Ardorum location into Bestways Burrow aetheryte".Loc(), ref C.SinusArdorum);
             ImGui.Checkbox("Automatically leave non cross-world party upon changing world".Loc(), ref C.LeavePartyBeforeWorldChange);

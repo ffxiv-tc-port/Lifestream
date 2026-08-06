@@ -78,8 +78,10 @@ public static unsafe class TaskTeleportPanelGo
                 P.TaskManager.Abort();
                 return;
             }
+            // ⚠️ 路線若決定「用走的」(TaskAethernetRoute.RouteUsesAethernet=false)就根本不會有讀取畫面,
+            // 直接放行,否則這裡會空轉滿 15 秒才往下走。
             P.TaskManager.Enqueue(
-                () => Svc.Condition[ConditionFlag.BetweenAreas] || Svc.Condition[ConditionFlag.BetweenAreas51],
+                () => !TaskAethernetRoute.RouteUsesAethernet || Svc.Condition[ConditionFlag.BetweenAreas] || Svc.Condition[ConditionFlag.BetweenAreas51],
                 "TeleportPanelWaitTransition", new(timeLimitMS: 15000, abortOnTimeout: false));
             P.TaskManager.Enqueue(Utils.WaitForScreen);
         }

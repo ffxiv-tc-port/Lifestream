@@ -33,6 +33,11 @@ public unsafe class MapHanderService : IDisposable
 
     private void OnMapReceivedEvent(AddonEvent type, AddonArgs args)
     {
+        // 🔴 設定「點擊地圖上的乙太之光標記以快速傳送」原本是死的:全 repo 只有宣告與那個核取方塊,
+        // 沒有任何地方讀它 —— 使用者取消勾選完全沒有效果,而且是靜默的。這裡把它接上。
+        // (同一節的 DisableMapClickOtherTerritory 一直是活的,見下面;它是這個總開關底下的細部篩選。)
+        // 📌 預設 true = 維持既有行為,已勾選的使用者不受影響。
+        if(!C.UseMapTeleport) return;
         if(args is AddonReceiveEventArgs evt && TryGetAddonByName<AddonAreaMap>("AreaMap", out var addon) && addon->AtkUnitBase.IsReady() && !Utils.IsBusy())
         {
             /*var atkEvent = (AtkEvent*)evt.AtkEvent;

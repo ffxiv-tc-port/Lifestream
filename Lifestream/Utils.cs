@@ -1208,12 +1208,19 @@ internal static unsafe partial class Utils
     /// 的那張圖時,<see cref="GetReachableMasterAetheryte"/> 永遠摸不到東西;這個方法改成只要是
     /// 同一個網路的任何節點都算,身邊摸得到就能直接互動、不必先傳送到另一張圖的主水晶。
     /// </summary>
-    internal static IGameObject GetReachableAethernetNetworkNode(TinyAetheryte root)
+    /// <param name="root">要找哪一個乙太網的節點。</param>
+    /// <param name="excludeId">
+    /// 要排除的節點 ID,通常是「這趟的目的地本身」。用目的地自己開選單再選自己會被遊戲以
+    /// LogMessage 1478「此處為目前所在地。」拒絕,所以找可走節點時要把它排掉,讓流程退回原本的
+    /// 「傳送到主水晶再走乙太網」——那正是修改前的行為。
+    /// </param>
+    internal static IGameObject GetReachableAethernetNetworkNode(TinyAetheryte root, uint? excludeId = null)
     {
         if(!Player.Available) return null;
         if(!S.Data.DataStore.Aetherytes.TryGetValue(root, out var children)) return null;
         var a = Svc.Objects.OrderBy(x => Vector3.DistanceSquared(Player.Object.Position, x.Position))
-            .FirstOrDefault(x => Utils.TryGetTinyAetheryteFromIGameObject(x, out var ae)
+            .FirstOrDefault(x => Utils.TryGetTinyAetheryteFromIGameObjectLenient(x, out var ae)
+                && ae.Value.ID != excludeId
                 && (ae.Value.ID == root.ID || children.Any(c => c.ID == ae.Value.ID)));
         if(a != null && a.IsTargetable && Vector3.Distance(a.Position, Player.Object.Position) < AethernetNetworkNodeApproachRange)
         {
@@ -1223,13 +1230,33 @@ internal static unsafe partial class Utils
     }
 
     /// <summary>
+    /// 找出「指定的那一座乙太之光」在物件表裡的實體。找不到代表它沒載入(太遠,或根本不在這一區),
+    /// 呼叫端必須要有退路。判定用寬鬆版,理由見 <see cref="TryGetTinyAetheryteFromIGameObjectLenient"/>。
+    ///
+    /// 🔴 回傳的 <see cref="IGameObject"/> **只在當下這一幀有效**,絕對不要跨幀保存 —— 呼叫端一律
+    /// 每次重查(<c>Address</c> 在物件建構時就凍結,不會重新解析)。
+    /// </summary>
+    internal static IGameObject GetAethernetNodeObject(TinyAetheryte node)
+    {
+        if(!Player.Available) return null;
+        if(node.TerritoryType != P.Territory) return null;
+        return Svc.Objects.FirstOrDefault(x => Utils.TryGetTinyAetheryteFromIGameObjectLenient(x, out var ae) && ae.Value.ID == node.ID);
+    }
+
+    /// <summary>
     /// 目前 <see cref="Lifestream.ActiveAetheryte"/>(每幀依 <see cref="GetValidAetheryte"/> 更新,
     /// 只在真的站到節點旁邊才會設值)是否已經是指定以太之光網路裡的節點——主水晶本身或任一子節點。
     /// 用來判斷「走到能互動的節點了嗎」,不管走到的是主水晶還是網路裡的哪一個城內以太之光。
     /// </summary>
-    internal static bool IsActiveAetheryteInNetwork(TinyAetheryte root)
+    /// <param name="root">要比對哪一個乙太網。</param>
+    /// <param name="excludeId">
+    /// 與 <see cref="GetReachableAethernetNetworkNode"/> 的同名參數同一個理由:走位途中剛好經過目的地
+    /// 本身時,不要把它當成「已抵達可用節點」而拿它開選單(選自己會被拒絕)。
+    /// </param>
+    internal static bool IsActiveAetheryteInNetwork(TinyAetheryte root, uint? excludeId = null)
     {
         if(P.ActiveAetheryte == null) return false;
+        if(P.ActiveAetheryte.Value.ID == excludeId) return false;
         if(P.ActiveAetheryte.Value.ID == root.ID) return true;
         return S.Data.DataStore.Aetherytes.TryGetValue(root, out var children) && children.Any(c => c.ID == P.ActiveAetheryte.Value.ID);
     }
@@ -1399,6 +1426,26 @@ internal static unsafe partial class Utils
     }
 
     internal static bool TryGetTinyAetheryteFromIGameObject(IGameObject a, out TinyAetheryte? t, uint? TerritoryType = null)
+        => TryGetTinyAetheryteFromIGameObjectCore(a, false, out t, TerritoryType);
+
+    /// <summary>
+    /// 跟 <see cref="TryGetTinyAetheryteFromIGameObject"/> 完全相同,只差在「什麼算乙太之光物件」的判定
+    /// 放寬成 <see cref="IsAetheryte(IGameObject)"/>:<see cref="ObjectKind.Aetheryte"/> 算,
+    /// DataId 落在 <see cref="AethernetShards"/> 裡的 EventObj 也算。
+    ///
+    /// 🔴 為什麼一定要有這一版:嚴格版硬性要求 <c>ObjectKind == ObjectKind.Aetheryte</c>,
+    /// 但 <see cref="IsAetheryte(IGameObject)"/> 這個擴充方法存在的唯一理由,就是「有些乙太之光在物件表裡
+    /// 不是這個 ObjectKind,只能靠 DataId 認出來」——而每幀決定 <see cref="Lifestream.ActiveAetheryte"/> 的
+    /// <see cref="GetValidAetheryte"/>(實機一直在用、已驗證可行)用的正是寬鬆版。
+    /// 拿嚴格版去找「身邊摸得到的同網路節點」,在那些城市會永遠回 null,而**失敗形式是完全靜默地退回傳送**
+    /// ——跟這個最佳化不存在時一模一樣,使用者只會看到「說改了卻沒改」。
+    ///
+    /// ⚠️ 嚴格版刻意維持原樣:它被用在世界移動/住宅區/主水晶身分比對等流程,放寬會連帶改變那些流程的行為。
+    /// </summary>
+    internal static bool TryGetTinyAetheryteFromIGameObjectLenient(IGameObject a, out TinyAetheryte? t, uint? TerritoryType = null)
+        => TryGetTinyAetheryteFromIGameObjectCore(a, true, out t, TerritoryType);
+
+    private static bool TryGetTinyAetheryteFromIGameObjectCore(IGameObject a, bool lenientObjectKind, out TinyAetheryte? t, uint? TerritoryType)
     {
         TerritoryType ??= P.Territory;
         if(a == null)
@@ -1406,7 +1453,7 @@ internal static unsafe partial class Utils
             t = default;
             return false;
         }
-        if(a.ObjectKind == ObjectKind.Aetheryte)
+        if(lenientObjectKind ? a.IsAetheryte() : a.ObjectKind == ObjectKind.Aetheryte)
         {
             var pos2 = a.Position.ToVector2();
             foreach(var x in S.Data.DataStore.Aetherytes)

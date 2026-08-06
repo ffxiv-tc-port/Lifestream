@@ -152,4 +152,15 @@ public class Config : IEzConfig
 
     /// <summary>路徑總長短於這個距離就不上坐騎 —— 上下馬的時間比省下來的還多。</summary>
     public float GotoMountMinDistance = 60f;
+
+    /// <summary>
+    /// 城內快捷傳送時,若目的地乙太之光**與玩家同區**且直線距離小於這個值,就乾脆走過去、完全不用乙太網
+    /// (省下整整一次讀取畫面)。
+    ///
+    /// 🔴 <b>0 = 關,而且是預設值</b>。這會改變語意(點了傳送面板卻用走的),所以必須由使用者自己開。
+    /// 建議 60~80。
+    ///
+    /// 📌 只比直線距離,不用 vnavmesh 算路徑長度 —— 理由見 <see cref="Tasks.Utility.TaskAethernetRoute"/>。
+    /// </summary>
+    public float SkipAethernetIfCloserThan = 0f;
 }

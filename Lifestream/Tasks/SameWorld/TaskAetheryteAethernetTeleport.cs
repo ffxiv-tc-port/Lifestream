@@ -3,6 +3,7 @@ using ECommons.Automation.NeoTaskManager.Tasks;
 using ECommons.GameHelpers;
 using ECommons.Throttlers;
 using Lifestream.Schedulers;
+using Lifestream.Tasks.Utility;
 using OtterGui;
 
 namespace Lifestream.Tasks.SameWorld;
@@ -74,10 +75,14 @@ internal static class TaskAetheryteAethernetTeleport
     /// ⚠️ 前一步的 <see cref="Utils.WaitForScreenFalse"/> 刻意維持「逾時即中止」:它等的是讀取畫面
     /// 「開始」,逾時代表詠唱被打斷、傳送根本沒發生。那時候放行會讓後面幾步在錯誤的區域執行。
     /// </summary>
-    private static TaskManagerConfiguration WaitForLoadingScreen => new(timeLimitMS: 60000, abortOnTimeout: false);
+    internal static TaskManagerConfiguration WaitForLoadingScreen => new(timeLimitMS: 60000, abortOnTimeout: false);
 
     internal static void Enqueue(uint rootAetheryteId, uint aethernetId)
     {
+        // 天穹街/渴望灣這兩條玄關路線不經過 TaskAethernetRoute,但呼叫端的「等讀取畫面」共用同一個旗標,
+        // 所以這裡要主動設回「後面會有讀取畫面」,免得沿用上一條路線留下的值。
+        TaskAethernetRoute.ExpectAethernetTransition();
+
         if(aethernetId == FirmamentAethernetId)
         {
             if(rootAetheryteId != FirmamentRootAetheryteId)
@@ -104,7 +109,12 @@ internal static class TaskAetheryteAethernetTeleport
         }
         if(S.Data.DataStore.Aetherytes[rootAetheryte].TryGetFirst(a => a.ID == aethernetId, out var aethernet))
         {
-            EnqueueInner(rootAetheryte.ID, rootAetheryte.TerritoryType, aethernet.Name);
+            // 🔴 一般情形改走共用的 TaskAethernetRoute:身邊摸得到同一個乙太網的節點(主水晶或城內乙太之光)
+            // 就走過去用它,摸不到才傳送到主水晶。修改前這裡一律先傳送到主水晶,結果是「站在商業街旁邊
+            // 點后翼」也要吃兩次讀取畫面。
+            // 📌 不是抄第三份走位碼 —— 那一套是 /li goto 已經上線過的版本(含 v7.20.0.19 的修正),
+            // 現在兩邊共用同一份。
+            TaskAethernetRoute.Enqueue(rootAetheryte, aethernet);
         }
         else
         {
@@ -123,6 +133,16 @@ internal static class TaskAetheryteAethernetTeleport
         }
     }
 
+    /// <summary>
+    /// 「傳送到指定的主水晶 → 互動 → 選單」的原始序列。
+    ///
+    /// 📌 自從一般情形改走 <see cref="Tasks.Utility.TaskAethernetRoute"/> 之後,實際只剩天穹街與渴望灣
+    /// 這兩條**玄關**路線會進來 —— 它們的選單項只掛在那一座特定的乙太之光上,不能改成「走去同網路的
+    /// 任一節點」,所以維持原樣。
+    ///
+    /// ⚠️ 底下一般情形的尾段(開乙太網選單 → 選目的地)刻意保留、沒有刪:它是這兩條特例的對照組,
+    /// 也是這個方法本身仍然自洽的證明。要改行為請改 <see cref="Tasks.Utility.TaskAethernetRoute"/>。
+    /// </summary>
     private static void EnqueueInner(uint rootAetheryteId, uint territoryId, string aethernetName)
     {
         if(!Player.Available)

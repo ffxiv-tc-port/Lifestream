@@ -292,9 +292,9 @@ internal static unsafe class WorldChange
     /// 跟 <see cref="TargetReachableMasterAetheryte"/> 同一套鎖定機制,但目標放寬成「同一個以太之光
     /// 網路裡摸得到的任一節點」(主水晶或城內以太之光都算),對應 <see cref="Utils.GetReachableAethernetNetworkNode"/>。
     /// </summary>
-    internal static bool? TargetReachableAethernetNetworkNode(TinyAetheryte root)
+    internal static bool? TargetReachableAethernetNetworkNode(TinyAetheryte root, uint? excludeId = null)
     {
-        return TargetReachableAetheryte(_ => Utils.GetReachableAethernetNetworkNode(root));
+        return TargetReachableAetheryte(_ => Utils.GetReachableAethernetNetworkNode(root, excludeId));
     }
 
     internal static bool? TargetReachableAetheryte(Func<bool, IGameObject> aetheryteFunc)
