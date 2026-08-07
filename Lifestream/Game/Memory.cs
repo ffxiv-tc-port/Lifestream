@@ -30,25 +30,76 @@ public unsafe class Memory : IDisposable
     internal IsFlightProhibitedDelegate IsFlightProhibited = EzDelegate.Get<IsFlightProhibitedDelegate>("40 53 48 83 EC 20 48 8B 1D ?? ?? ?? ?? 48 85 DB 0F 84 ?? ?? ?? ?? 80 3D");
     internal nint FlightAddr = Svc.SigScanner.TryScanText("48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 84 C0 75 11", out var result) ? result : default;
 
+    // fail-closed:detour 是「原生程式碼直接呼叫的受管理函式」,受管理例外從這裡逸出會穿過
+    // 沒有 SEH handler 的原生框架,行程直接被終止。所以這三支的自訂邏輯(全部只是記錄)一律進 try,
+    // 而 **Original 一律留在 try 外照樣呼叫** —— 我們的記錄失敗絕不能改變遊戲原本的行為。
+    // ⚠️ try 攔不到 AccessViolationException(在 .NET Core 是 corrupted-state exception)。
+    //    針對裸指標的防護是下面那些判空,不是 try。
+    private long _detourErrors;
+    private DateTime _lastDetourErrorLog = DateTime.MinValue;
+
+    private void OnDetourError(string site, Exception ex)
+    {
+        ++_detourErrors;
+        // 節流:這些 detour 可能連續觸發,不節流會把 log 灌爆反而讓使用者回報不出東西。
+        // Information 而不是 Debug —— 回報問題的使用者跑 LogLevel 2。
+        var now = DateTime.UtcNow;
+        if(now - _lastDetourErrorLog < TimeSpan.FromSeconds(30))
+            return;
+        _lastDetourErrorLog = now;
+        PluginLog.Information($"[Memory] {site} 的診斷記錄擲出受管理例外,已吞下、Original 照常執行(累計 {_detourErrors}): {ex}");
+    }
+
     internal byte OpenPartyFinderInfoDetour(void* agentLfg, ulong contentId)
     {
-        PluginLog.Information($"{((nint)agentLfg):X16}, {contentId:X16}");
+        try
+        {
+            PluginLog.Information($"{((nint)agentLfg):X16}, {contentId:X16}");
+        }
+        catch(Exception ex)
+        {
+            OnDetourError(nameof(OpenPartyFinderInfoDetour), ex);
+        }
         return OpenPartyFinderInfoHook.Original(agentLfg, contentId);
     }
 
     private void AtkComponentTreeList_vf31Detour(nint a1, uint a2, byte a3)
     {
-        PluginLog.Debug($"AtkComponentTreeList_vf31Detour: {a1:X16}, {a2}, {a3}");
+        try
+        {
+            PluginLog.Debug($"AtkComponentTreeList_vf31Detour: {a1:X16}, {a2}, {a3}");
+        }
+        catch(Exception ex)
+        {
+            OnDetourError(nameof(AtkComponentTreeList_vf31Detour), ex);
+        }
         AtkComponentTreeList_vf31Hook.Original(a1, a2, a3);
     }
 
     private void AddonDKTWorldList_ReceiveEventDetour(nint a1, short a2, nint a3, AtkEvent* a4, InputData* a5)
     {
-        PluginLog.Debug($"AddonDKTWorldCheck_ReceiveEventDetour: {a1:X16}, {a2}, {a3:X16}, {(nint)a4:X16}, {(nint)a5:X16}");
-        PluginLog.Debug($"  Event: {(nint)a4->Node:X16}, {(nint)a4->Target:X16}, {(nint)a4->Listener:X16}, {a4->Param}, {(nint)a4->NextEvent:X16}, {a4->State.EventType}, {a4->State.ReturnFlags}, {a4->State.StateFlags}");
-        PluginLog.Debug($"  Data: {(nint)a5->unk_8:X16}({*a5->unk_8:X16}/{*a5->unk_8:X16}), [{a5->unk_8s->unk_4}/{a5->unk_8s->SelectedItem}] {a5->unk_16}, {a5->unk_24} | "); //{a5->RawDumpSpan.ToArray().Print()}
-        //var span = new Span<byte>((void*)*a5->unk_8, 0x40).ToArray().Select(x => $"{x:X2}");
-        //PluginLog.Debug($"  Data 2, {a5->unk_8s->unk_4}, {MemoryHelper.ReadRaw((nint)a5->unk_8s->CategorySelection, 4).Print(",")},  :{string.Join(" ", span)}");
+        try
+        {
+            PluginLog.Debug($"AddonDKTWorldCheck_ReceiveEventDetour: {a1:X16}, {a2}, {a3:X16}, {(nint)a4:X16}, {(nint)a5:X16}");
+            // 🔴 a4/a5 是遊戲(或 ConstructEvent)交進來的裸指標,解參考失敗是攔不到的 AVE ⇒ 只能靠判空。
+            if(a4 != null)
+                PluginLog.Debug($"  Event: {(nint)a4->Node:X16}, {(nint)a4->Target:X16}, {(nint)a4->Listener:X16}, {a4->Param}, {(nint)a4->NextEvent:X16}, {a4->State.EventType}, {a4->State.ReturnFlags}, {a4->State.StateFlags}");
+            if(a5 != null)
+            {
+                // InputData.unk_8s 是 (UnknownStruct*)*unk_8 —— 兩層解參考,兩層都要驗
+                var inner = a5->unk_8 != null ? *a5->unk_8 : (nint)0;
+                if(inner != 0)
+                    PluginLog.Debug($"  Data: {(nint)a5->unk_8:X16}({inner:X16}/{inner:X16}), [{a5->unk_8s->unk_4}/{a5->unk_8s->SelectedItem}] {a5->unk_16}, {a5->unk_24} | "); //{a5->RawDumpSpan.ToArray().Print()}
+                else
+                    PluginLog.Debug($"  Data: {(nint)a5->unk_8:X16}(null), {a5->unk_16}, {a5->unk_24} | ");
+            }
+            //var span = new Span<byte>((void*)*a5->unk_8, 0x40).ToArray().Select(x => $"{x:X2}");
+            //PluginLog.Debug($"  Data 2, {a5->unk_8s->unk_4}, {MemoryHelper.ReadRaw((nint)a5->unk_8s->CategorySelection, 4).Print(",")},  :{string.Join(" ", span)}");
+        }
+        catch(Exception ex)
+        {
+            OnDetourError(nameof(AddonDKTWorldList_ReceiveEventDetour), ex);
+        }
         AddonDKTWorldList_ReceiveEventHook.Original(a1, a2, a3, a4, a5);
     }
 
