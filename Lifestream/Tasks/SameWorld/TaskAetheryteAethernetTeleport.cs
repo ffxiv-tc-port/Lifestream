@@ -11,7 +11,7 @@ namespace Lifestream.Tasks.SameWorld;
 internal static class TaskAetheryteAethernetTeleport
 {
     // Special values for the firmament.
-    private const uint FirmamentRootAetheryteId = 70;
+    internal const uint FirmamentRootAetheryteId = 70;
     internal const uint FirmamentAethernetId = uint.MaxValue;
     private const uint FirmamentRootAetheryteTerritoryId = 418;
     private const string Firmament = "The Firmament";
@@ -24,7 +24,7 @@ internal static class TaskAetheryteAethernetTeleport
     private const string SinusArdorum = "Sinus Ardorum";
 
     // 目的地區域本身沒有乙太之光,要靠「鄰近區域某座乙太之光的選單項」才進得去的區域。
-    private const uint FirmamentTerritoryId = 886;
+    internal const uint FirmamentTerritoryId = 886;
     internal const uint SinusArdorumTerritoryId = 1237;
 
     /// <summary>
@@ -47,20 +47,51 @@ internal static class TaskAetheryteAethernetTeleport
     /// </summary>
     internal static bool TryGetGatewayRoute(uint destinationTerritory, out uint rootAetheryteId, out uint aethernetId)
     {
-        if(destinationTerritory == FirmamentTerritoryId)
+        if(TryGetGatewayRouteByTerritory(destinationTerritory, out var route))
         {
-            rootAetheryteId = FirmamentRootAetheryteId;
-            aethernetId = FirmamentAethernetId;
-            return true;
-        }
-        if(destinationTerritory == SinusArdorumTerritoryId)
-        {
-            rootAetheryteId = SinusArdorumRootAetheryteId;
-            aethernetId = SinusArdorumAethernetId;
+            rootAetheryteId = route.RootAetheryteId;
+            aethernetId = route.AethernetId;
             return true;
         }
         rootAetheryteId = 0;
         aethernetId = 0;
+        return false;
+    }
+
+    /// <summary>
+    /// 一條玄關路線的完整資料。<see cref="AethernetId"/> 是 Lifestream 自己給這個目的地的偽 id
+    /// (<c>uint.MaxValue</c> 往下數),它同時也是**我的最愛/備註/自訂落點的鍵** ——
+    /// 傳送面板要列得出這個目的地,靠的就是它。
+    /// </summary>
+    /// <param name="DestinationTerritory">目的地區域(蒼天街 886 / 渴望灣 1237)。</param>
+    /// <param name="RootAetheryteId">玄關乙太之光,也就是「歸屬」的那一座(伊修加爾德下層 70 / 最佳威兔洞 175)。</param>
+    /// <param name="AethernetId">Lifestream 給這個目的地的偽 id,同時也是我的最愛的鍵。</param>
+    /// <param name="IsEnabled">對應的設定開關。只在建立傳送面板索引時求值,不是每幀。</param>
+    internal sealed record GatewayRoute(uint DestinationTerritory, uint RootAetheryteId, uint AethernetId, Func<bool> IsEnabled);
+
+    /// <summary>
+    /// 全部的玄關路線。⚠️ <see cref="TryGetGatewayRoute"/> **刻意不看 <see cref="GatewayRoute.IsEnabled"/>** ——
+    /// 那兩個開關的語意一直是「要不要把這個地點列進乙太之光的清單」,而不是「准不准前往」。
+    /// <c>/li goto</c>、地圖點擊、別名這些**指名道姓要去那裡**的路徑在開關關閉時仍然照舊可用,
+    /// 這是修改前就有的行為,不要因為新增了資料表就順手改掉。
+    /// </summary>
+    internal static readonly GatewayRoute[] GatewayRoutes =
+    [
+        new(FirmamentTerritoryId, FirmamentRootAetheryteId, FirmamentAethernetId, () => C.Firmament),
+        new(SinusArdorumTerritoryId, SinusArdorumRootAetheryteId, SinusArdorumAethernetId, () => C.SinusArdorum),
+    ];
+
+    internal static bool TryGetGatewayRouteByTerritory(uint destinationTerritory, out GatewayRoute route)
+    {
+        foreach(var x in GatewayRoutes)
+        {
+            if(x.DestinationTerritory == destinationTerritory)
+            {
+                route = x;
+                return true;
+            }
+        }
+        route = null;
         return false;
     }
 

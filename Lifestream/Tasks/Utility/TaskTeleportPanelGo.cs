@@ -2,6 +2,7 @@ using ECommons.Automation.NeoTaskManager.Tasks;
 using ECommons.ChatMethods;
 using ECommons.GameHelpers;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using Lifestream.Schedulers;
 using Lifestream.Systems;
 using Lifestream.Systems.TeleportPanel;
 using Lifestream.Tasks.SameWorld;
@@ -58,6 +59,10 @@ public static unsafe class TaskTeleportPanelGo
             P.TaskManager.Enqueue(Utils.WaitForScreenFalse);
             P.TaskManager.Enqueue(Utils.WaitForScreen);
         }
+        else if(IsGatewayZoneShard(entry, out var gateway))
+        {
+            EnqueueGatewayZoneShardRoute(entry, gateway);
+        }
         else
         {
             // 城內乙太之光。TaskAetheryteAethernetTeleport.Enqueue 是排到佇列尾端的，
@@ -87,6 +92,75 @@ public static unsafe class TaskTeleportPanelGo
         }
 
         EnqueueLanding(entry);
+    }
+
+    /// <summary>
+    /// 這一列是不是「玄關區域**內部**的城內乙太之光」——目前只有蒼天街的那八座。
+    ///
+    /// 它們與一般城內乙太之光的差別在於 <see cref="TeleportPanelEntry.Id"/> 是 Lifestream 的偽 id
+    /// (69420000 起)，<c>Aetheryte</c> 表裡查無此列，所以
+    /// <see cref="TaskAetheryteAethernetTeleport.Enqueue"/> 那條一般路線走不通 ——
+    /// 🔴 而且它的失敗方式是**靜默走錯**:找不到子節點時它會退化成「只傳送到母城主水晶」，
+    /// 人被丟在伊修加爾德下層，蒼天街那一段完全沒發生，畫面上不會有任何錯誤。
+    ///
+    /// ⚠️ 用 <see cref="TeleportPanelEntry.Id"/> 而不是只看區域來判斷:玄關區域本身那一列
+    /// (蒼天街/渴望灣，id 是 <c>uint.MaxValue</c> 往下數)的 Territory 也是玄關區域，
+    /// 但它走的是一般路線(<c>TaskAetheryteAethernetTeleport</c> 認得那兩個偽 id)，不能混進來。
+    /// </summary>
+    private static bool IsGatewayZoneShard(TeleportPanelEntry entry,
+        out TaskAetheryteAethernetTeleport.GatewayRoute gateway)
+    {
+        gateway = null;
+        if(!TaskAetheryteAethernetTeleport.TryGetGatewayRouteByTerritory(entry.Territory, out var route)) return false;
+        if(S.Data.CustomAethernet?.CustomAetheryteNames.ContainsKey(entry.Id) != true) return false;
+        gateway = route;
+        return true;
+    }
+
+    /// <summary>
+    /// 前往蒼天街的某一座城內乙太之光。分兩段：先用玄關路線進到該區域，再用區域內的乙太之光網路跳過去。
+    ///
+    /// 兩段都是既有的、已經上線過的流程，沒有新的原生層操作：
+    ///   第一段 = <see cref="TaskAetheryteAethernetTeleport.Enqueue"/>(浮動視窗的「蒼天街」按鈕走的就是它)
+    ///   第二段 = 與 <see cref="SameWorld.TaskAethernetTeleport"/> 相同的四步(鎖定→互動→選單→選目的地)，
+    ///            只是改用 <c>InsertMulti</c> 排在當下這一步的後面，因為它必須在**抵達之後**才決定要不要做。
+    /// </summary>
+    private static void EnqueueGatewayZoneShardRoute(TeleportPanelEntry entry,
+        TaskAetheryteAethernetTeleport.GatewayRoute gateway)
+    {
+        if(P.Territory != entry.Territory)
+        {
+            TaskAetheryteAethernetTeleport.Enqueue(gateway.RootAetheryteId, gateway.AethernetId);
+            // 進去是一整段區域轉場。⚠️ 這一步刻意讓逾時中止整條佇列：沒到對的區域就開始找乙太之光，
+            // 會在錯的地圖上鎖定錯的東西然後對它開選單。
+            P.TaskManager.Enqueue(
+                () => P.Territory == entry.Territory && Player.Interactable && !Svc.Condition[ConditionFlag.BetweenAreas],
+                "TeleportPanelWaitGatewayArrival", new(timeLimitMS: 120000));
+            P.TaskManager.Enqueue(Utils.WaitForScreen);
+        }
+
+        // 🔑 「還要不要再跳一次」**必須在執行期判斷**，不能在排佇列的當下決定：
+        // 玄關傳送的落點就是該區域的入口乙太之光，使用者要去的如果正好是它，這時再開選單選自己
+        // 會被遊戲以 LogMessage 1478「此處為目前所在地。」拒絕 —— 與本檔開頭那個前置檢查同一個理由，
+        // 只是那個檢查是在出發前做的，管不到「傳送過去之後才站到目的地上」這種情形。
+        P.TaskManager.Enqueue(() =>
+        {
+            if(IsStandingAt(entry))
+            {
+                PluginLog.Information($"[TeleportPanel] Arrived directly at {entry.Name} - no aethernet hop needed.");
+                return;
+            }
+            P.TaskManager.InsertMulti(
+                new(WorldChange.TargetValidAetheryte),
+                new(WorldChange.InteractWithTargetedAetheryte),
+                new(WorldChange.SelectAethernetIfNeeded),
+                // ⚠️ 用 Name 不是 DisplayName：這個字串要跟遊戲選單上的項目比對，
+                // 使用者的備註在這裡會讓它一個都對不上。
+                new(() => WorldChange.TeleportToAethernetDestination(entry.Name),
+                    nameof(WorldChange.TeleportToAethernetDestination))
+                );
+        }, "TeleportPanelGatewayZoneHop");
+        P.TaskManager.Enqueue(Utils.WaitForScreen);
     }
 
     /// <summary>

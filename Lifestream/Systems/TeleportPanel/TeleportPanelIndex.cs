@@ -1,6 +1,7 @@
 using ECommons.ExcelServices;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using Lifestream.Systems.Legacy;
+using Lifestream.Tasks.SameWorld;
 using Lumina.Excel.Sheets;
 
 namespace Lifestream.Systems.TeleportPanel;
@@ -146,8 +147,78 @@ public static unsafe class TeleportPanelIndex
             }
         }
 
+        AddGatewayDestinations(result, territorySheet, uiState);
+
         PluginLog.Debug($"[TeleportPanel] Built index: {result.Count(x => x.IsAetheryte)} aetherytes, {result.Count(x => !x.IsAetheryte)} aethernet shards.");
         return result;
+    }
+
+    /// <summary>
+    /// 蒼天街與渴望灣 —— 以及蒼天街自己的城內乙太之光。
+    ///
+    /// 🔑 為什麼上面兩段都撈不到它們:這兩個區域在 <c>Aetheryte</c> 表裡**一列都沒有**
+    /// (台服 7.20 全表查證:Territory 欄等於 886 或 1237 的列數為 0)。
+    /// <see cref="Svc.AetheryteList"/> 自然沒有,<see cref="DataStore.Aetherytes"/> 也沒有 ——
+    /// 它們是靠母城乙太之光選單裡的專用項目進去的,Lifestream 用偽 id 自己建模
+    /// (見 <see cref="TaskAetheryteAethernetTeleport.GatewayRoutes"/> 與
+    /// <see cref="Systems.Custom.CustomAethernet"/>)。
+    ///
+    /// 後果不只是「清單短一截」:我的最愛的鍵就是這裡的 <see cref="TeleportPanelEntry.Id"/>，
+    /// 列不出來就等於**加不進我的最愛** —— 這正是這一段要修的問題。
+    ///
+    /// <see cref="TeleportPanelEntry.MasterId"/> 一律填母城乙太之光(蒼天街→伊修加爾德下層 70、
+    /// 渴望灣→最佳威兔洞 175),也就是「歸屬」的實際意義:傳送時就是從那一座走。
+    /// ⚠️ 顯示上的地區/區域分組仍照實填(蒼天街在庫爾札斯、渴望灣在星外天域),
+    /// 沒有把它們假裝成母城的一部分 —— 那會讓地圖預覽與「必須在某區域」的落點判斷全部對不上。
+    /// </summary>
+    private static void AddGatewayDestinations(List<TeleportPanelEntry> result,
+        Lumina.Excel.ExcelSheet<TerritoryType> territorySheet, UIState* uiState)
+    {
+        if(uiState == null) return;
+        foreach(var route in TaskAetheryteAethernetTeleport.GatewayRoutes)
+        {
+            // 這兩個開關既有的語意就是「要不要把這個地點掛進母城乙太之光的清單」，沿用它，
+            // 預設(都是開)等於這些目的地直接出現，不需要使用者再去設定裡找開關。
+            if(!route.IsEnabled()) continue;
+            // 進得去的前提是先傳送到母城乙太之光。沒共鳴就列不得 ——
+            // 判斷方式與上面城內乙太之光那段一致(只讀 UIState 的解鎖點陣圖)。
+            if(!uiState->IsAetheryteUnlocked(route.RootAetheryteId)) continue;
+
+            var e = new TeleportPanelEntry
+            {
+                Id = route.AethernetId,
+                SubIndex = 0,
+                IsAetheryte = false,
+                MasterId = route.RootAetheryteId,
+                Territory = route.DestinationTerritory,
+            };
+            // 名稱留空 → FillTerritoryNames 會用區域名(蒼天街 / 渴望灣)，那正是選單上的說法。
+            FillTerritoryNames(e, territorySheet);
+            FinishEntry(e);
+            result.Add(e);
+
+            // 玄關區域內部自己的乙太之光網路。目前只有蒼天街有(渴望灣沒有節點，查無此territory)。
+            if(S.Data.CustomAethernet?.ZoneInfo == null) continue;
+            if(!S.Data.CustomAethernet.ZoneInfo.TryGetValue(route.DestinationTerritory, out var zone)) continue;
+            foreach(var shard in zone.Aetherytes)
+            {
+                var s = new TeleportPanelEntry
+                {
+                    Id = shard.ID,
+                    SubIndex = 0,
+                    IsAetheryte = false,
+                    MasterId = route.RootAetheryteId,
+                    Territory = shard.TerritoryType,
+                    Name = shard.Name,
+                    // CustomAetheryte.Position 存的是世界座標的 XZ(與 IGameObject.Position.ToVector2()
+                    // 比對用)，補成 Vector3 才能餵給地圖預覽與「是不是就站在這裡」的判斷。
+                    Position = new Vector3(shard.Position.X, 0f, shard.Position.Y),
+                };
+                FillTerritoryNames(s, territorySheet);
+                FinishEntry(s);
+                result.Add(s);
+            }
+        }
     }
 
     private static void FillNames(TeleportPanelEntry e, Aetheryte row, Lumina.Excel.ExcelSheet<TerritoryType> territorySheet)
@@ -157,6 +228,16 @@ public static unsafe class TeleportPanelIndex
         var aethernet = row.AethernetName.ValueNullable?.Name.ToString() ?? "";
         e.Name = row.IsAetheryte ? (place != "" ? place : aethernet) : (aethernet != "" ? aethernet : place);
 
+        FillTerritoryNames(e, territorySheet);
+    }
+
+    /// <summary>
+    /// 依 <see cref="TeleportPanelEntry.Territory"/> 補上地圖 id、區域名、地區名。
+    /// <see cref="TeleportPanelEntry.Name"/> 只在**還是空的**時候才用區域名補 ——
+    /// 呼叫端已經填了名字(城內乙太之光)就不能蓋掉。
+    /// </summary>
+    private static void FillTerritoryNames(TeleportPanelEntry e, Lumina.Excel.ExcelSheet<TerritoryType> territorySheet)
+    {
         if(territorySheet.TryGetRow(e.Territory, out var terr))
         {
             e.MapId = terr.Map.RowId;
