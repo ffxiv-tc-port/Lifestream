@@ -235,7 +235,11 @@ public static unsafe class TaskTeleportPanelGo
         P.TaskManager.InsertMulti(
             // 網格還在建就等它。逾時不中止：下一步會再問一次 IsReady，由它統一報錯，
             // 免得這裡靜默清掉整條佇列。
-            new(() => S.Ipc.VnavmeshIPC.IsReady() == true, "TeleportPanelGatewayZoneWaitNav",
+            // ⚠️ 刻意直接傳 IsReady 這個方法群組，不要包成 `IsReady() == true`：
+            // 它在 IPC 整個叫不動時是**回 null**（同時自己印一次錯誤），而 null 在 NeoTaskManager
+            // 的語意是「中止」。包成 == true 會把那個 null 變成 false，於是這一步空轉滿 120 秒，
+            // 而 IsReady 每一幀都再印一次聊天欄錯誤 —— 一次故障洗出幾千行。
+            new(S.Ipc.VnavmeshIPC.IsReady, "TeleportPanelGatewayZoneWaitNav",
                 new(timeLimitMS: 120000, abortOnTimeout: false)),
             new(() => StartWalkToShard(shard, shardPos), "TeleportPanelGatewayZonePathfind"),
             new(() => CheckWalkArrival(entry, shard), "TeleportPanelGatewayZoneWalkCheckArrival")
