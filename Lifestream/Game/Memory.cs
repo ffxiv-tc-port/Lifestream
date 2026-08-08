@@ -73,7 +73,7 @@ public unsafe class Memory : IDisposable
         {
             OnDetourError(nameof(AtkComponentTreeList_vf31Detour), ex);
         }
-        AtkComponentTreeList_vf31Hook.Original(a1, a2, a3);
+        AtkComponentTreeList_vf31Hook.OriginalDisposeSafe(a1, a2, a3);
     }
 
     private void AddonDKTWorldList_ReceiveEventDetour(nint a1, short a2, nint a3, AtkEvent* a4, InputData* a5)
@@ -100,7 +100,7 @@ public unsafe class Memory : IDisposable
         {
             OnDetourError(nameof(AddonDKTWorldList_ReceiveEventDetour), ex);
         }
-        AddonDKTWorldList_ReceiveEventHook.Original(a1, a2, a3, a4, a5);
+        AddonDKTWorldList_ReceiveEventHook.OriginalDisposeSafe(a1, a2, a3, a4, a5);
     }
 
     internal void ConstructEvent(AtkUnitBase* addon, int category, int which, int nodeIndex, int itemToSelect, int itemToHighlight)
