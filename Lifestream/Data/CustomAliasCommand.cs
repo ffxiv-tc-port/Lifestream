@@ -118,7 +118,14 @@ public class CustomAliasCommand
             P.TaskManager.Enqueue(() => IsScreenReady() && Player.Interactable);
             P.TaskManager.Enqueue(() =>
             {
-                var aetheryte = Svc.Data.GetExcelSheet<Aetheryte>().GetRow(Aetheryte);
+                // 別名裡的以太之光 ID 是設定檔回讀的，可能跨版本殘留或匯入自其他服務版本。
+                // 裸 GetRow 查無此列時 Lumina 會擲例外，整條別名任務鏈會在沒有任何訊息的
+                // 情況下斷掉；改成查不到就記一行使用者看得見的錯誤並跳過這一步。
+                if(!Svc.Data.GetExcelSheet<Aetheryte>().TryGetRow(Aetheryte, out var aetheryte))
+                {
+                    DuoLog.Error($"此別名的以太之光（ID {Aetheryte}）已不存在，略過這一步。");
+                    return;
+                }
                 var nearestAetheryte = Svc.Objects.OrderBy(Player.DistanceTo).FirstOrDefault(x => x.IsTargetable && x.IsAetheryte() && Utils.IsAetheryteEligibleForCustomAlias(x));
                 if(nearestAetheryte == null || P.Territory != aetheryte.Territory.RowId || Player.DistanceTo(nearestAetheryte) > SkipTeleport)
                 {
