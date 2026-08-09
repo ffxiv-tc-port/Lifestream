@@ -81,7 +81,12 @@ public class CustomAliasCommand
         }
         else if(Kind == CustomAliasKind.Navmesh_to_point)
         {
-            P.TaskManager.Enqueue(() => IsScreenReady() && Player.Interactable && S.Ipc.VnavmeshIPC.IsReady() == true);
+            P.TaskManager.Enqueue(() => IsScreenReady() && Player.Interactable);
+            // ⚠️ 刻意直接傳 IsReady 這個方法群組，不要包成 `IsReady() == true`：
+            // 它在 IPC 整個叫不動時是**回 null**（同時自己印一次錯誤），而 null 在 NeoTaskManager
+            // 的語意是「中止」。包成 == true 會把那個 null 變成 false，於是這一步空轉滿預設的
+            // 30 秒逾時，而 IsReady 每一幀都再印一次聊天欄錯誤 —— 一次故障洗出上千行。
+            P.TaskManager.Enqueue(S.Ipc.VnavmeshIPC.IsReady, "CustomAliasNavmeshWaitNavReady");
             if(UseTA && Svc.PluginInterface.InstalledPlugins.Any(x => x.Name == "TextAdvance" && x.IsLoaded))
             {
                 P.TaskManager.Enqueue(() =>
