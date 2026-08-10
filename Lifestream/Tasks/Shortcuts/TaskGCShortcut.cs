@@ -115,7 +115,13 @@ public static unsafe class TaskGCShortcut
 
         void EnqueueFromStart()
         {
-            if(Player.GrandCompany == company && InventoryManager.Instance()->GetInventoryItemCount(CompanyItem[company]) > 0)
+            // ⚠️ 已經在目標城市裡的時候不要用傳送券。傳送券要詠唱、要過場載入,而人就在城裡時
+            // 走乙太網(底下的 moveCommand)本來就到得了,而且更快 —— 原本這裡只看「有沒有券」,
+            // 於是站在大國防聯軍旁邊的城內乙太水晶前面按下去,還是會先詠唱傳送一次。
+            // moveCommand 這條路徑本來就要處理任意起點(沒有券的人一直都走它),所以不必另外判斷位置。
+            if(P.Territory != CompanyTerritory[company]
+                && Player.GrandCompany == company
+                && InventoryManager.Instance()->GetInventoryItemCount(CompanyItem[company]) > 0)
             {
                 P.TaskManager.Enqueue(() =>
                 {
