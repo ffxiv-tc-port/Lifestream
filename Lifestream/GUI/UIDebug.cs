@@ -165,9 +165,22 @@ internal static unsafe class UIDebug
                         }
                     }
                 }
-                var curPlot = HousingManager.Instance()->GetCurrentPlot();
-                if(curPlot != -1) LastPlot = curPlot;
-                ImGuiEx.Text($"Plot: {curPlot + 1}");
+                // HousingManager.Instance() 是 [StaticAddress(..., isPointer: true)],不在住宅區/登入前是 null。
+                // 同 repo 其餘六處全都判過空(Utils.cs:943/963、UIHouseReg.cs:497、TabAddressBook.cs:69、
+                // 同檔 :749),只有這裡漏掉 —— 是個例不是慣例,所以照既有形狀補上。
+                var housingManager = HousingManager.Instance();
+                if(housingManager == null)
+                {
+                    // 「讀不到」和「不在地皮上」是兩件事:後者 GetCurrentPlot() 回 -1 會顯示成 Plot: 0,
+                    // 這裡不沿用那個顯示,免得把未知畫成一個看起來像數值的東西。LastPlot 也維持前值不動。
+                    ImGuiEx.Text("Plot: (housing manager unavailable)");
+                }
+                else
+                {
+                    var curPlot = housingManager->GetCurrentPlot();
+                    if(curPlot != -1) LastPlot = curPlot;
+                    ImGuiEx.Text($"Plot: {curPlot + 1}");
+                }
                 ImGui.SetNextItemWidth(150f.Scale());
                 ImGui.InputInt($"Resize", ref Resize);
                 ImGui.SameLine();
