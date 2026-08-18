@@ -73,7 +73,7 @@ public static unsafe class TaskISShortcut
             }
         });
 
-        IGameObject baldin() => Svc.Objects.FirstOrDefault(x => x.DataId == (uint)IslandNPC.Baldin);
+        IGameObject baldin() => Svc.Objects.FirstOrDefault(x => x.BaseId == (uint)IslandNPC.Baldin);
 
         void TravelToIsland()
         {

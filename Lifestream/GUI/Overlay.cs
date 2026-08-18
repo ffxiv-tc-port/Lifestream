@@ -368,7 +368,7 @@ public class Overlay : Window
 
     private void DrawWorldVisit()
     {
-        var cWorld = Svc.ClientState.LocalPlayer?.CurrentWorld.ValueNullable?.Name.ToString();
+        var cWorld = Svc.Objects.LocalPlayer?.CurrentWorld.ValueNullable?.Name.ToString();
         foreach(var x in S.Data.DataStore.Worlds)
         {
             ResizeButton($"{Pad}{x}");

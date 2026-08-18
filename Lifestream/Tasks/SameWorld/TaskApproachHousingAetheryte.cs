@@ -47,7 +47,7 @@ public static class TaskApproachHousingAetheryte
         }
         if(P.Territory == ResidentalAreas.The_Lavender_Beds)
         {
-            return Svc.Objects.Any(x => Utils.AethernetShards.Contains(x.DataId) && Vector3.Distance(Player.Object.Position, x.Position) < LavenderIMP.Distance);
+            return Svc.Objects.Any(x => Utils.AethernetShards.Contains(x.BaseId) && Vector3.Distance(Player.Object.Position, x.Position) < LavenderIMP.Distance);
         }
         if(P.Territory == ResidentalAreas.Shirogane)
         {
@@ -63,7 +63,7 @@ public static class TaskApproachHousingAetheryte
         if(!Player.Interactable) return false;
         foreach(var x in Svc.Objects.OrderBy(z => Vector3.Distance(Player.Object.Position, z.Position)))
         {
-            if(Utils.AethernetShards.Contains(x.DataId) && x.IsTargetable && x.ObjectKind == ObjectKind.EventObj)
+            if(Utils.AethernetShards.Contains(x.BaseId) && x.IsTargetable && x.ObjectKind == ObjectKind.EventObj)
             {
                 if(EzThrottler.Throttle("TargetNearestShard"))
                 {

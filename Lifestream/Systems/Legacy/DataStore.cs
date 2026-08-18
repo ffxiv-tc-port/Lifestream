@@ -97,7 +97,7 @@ public class DataStore
 
     internal void BuildWorlds()
     {
-        BuildWorlds(Svc.ClientState.LocalPlayer.CurrentWorld.Value.DataCenter.Value.RowId);
+        BuildWorlds(Svc.Objects.LocalPlayer.CurrentWorld.Value.DataCenter.Value.RowId);
         if(Player.Available)
         {
             if(P.AutoRetainerApi?.Ready == true && C.UseAutoRetainerAccounts)

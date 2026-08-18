@@ -260,7 +260,7 @@ public static unsafe class TaskPropertyShortcut
             P.TaskManager.Enqueue(() => P.FollowPath.Waypoints.Count == 0, "Wait until movement completes");
             P.TaskManager.Enqueue(() =>
             {
-                var obj = Svc.Objects.FirstOrDefault(x => x.DataId.EqualsAny(InnNpc) && x.ObjectKind == ObjectKind.EventNpc && x.IsTargetable && Vector3.Distance(x.Position, Player.Position) < 10f);
+                var obj = Svc.Objects.FirstOrDefault(x => x.BaseId.EqualsAny(InnNpc) && x.ObjectKind == ObjectKind.EventNpc && x.IsTargetable && Vector3.Distance(x.Position, Player.Position) < 10f);
                 if(obj == null) return false;
                 if(!Utils.DismountIfNeeded()) return false;
                 if(obj.IsTarget())
@@ -286,7 +286,7 @@ public static unsafe class TaskPropertyShortcut
                 {
                     talk.Click();
                 }
-                var obj = Svc.Objects.FirstOrDefault(x => x.DataId.EqualsAny(InnNpc) && x.ObjectKind == ObjectKind.EventNpc && x.IsTargetable && Vector3.Distance(x.Position, Player.Position) < 10f);
+                var obj = Svc.Objects.FirstOrDefault(x => x.BaseId.EqualsAny(InnNpc) && x.ObjectKind == ObjectKind.EventNpc && x.IsTargetable && Vector3.Distance(x.Position, Player.Position) < 10f);
                 if(obj == null) return false;
                 if(obj.IsTarget() && TryGetAddonMaster<AddonMaster.SelectString>(out var m))
                 {
@@ -321,7 +321,7 @@ public static unsafe class TaskPropertyShortcut
     {
         enterApartment ??= C.EnterMyApartment;
         var a = GetApartmentAetheryteID();
-        var nextToMyApt = AgentHUD.Instance()->MapMarkers.Any(x => x.IconId.EqualsAny(60790u, 60792u) && Vector3.Distance(Player.Position, x.Position) < 50f) && Svc.Objects.Any(x => x.DataId == 2007402 && Vector3.Distance(x.Position, Player.Position) < 20f);
+        var nextToMyApt = AgentHUD.Instance()->MapMarkers.Any(x => x.IconId.EqualsAny(60790u, 60792u) && Vector3.Distance(Player.Position, x.Position) < 50f) && Svc.Objects.Any(x => x.BaseId == 2007402 && Vector3.Distance(x.Position, Player.Position) < 20f);
         P.TaskManager.BeginStack();
         try
         {

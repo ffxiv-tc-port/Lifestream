@@ -18,7 +18,7 @@ public static unsafe class TaskChangeInstance
     {
         // 切線後重新上坐騎(參考 DR FastInstanceZoneChange 的 MountAfterChange;預設關)
         var remount = C.InstanceRemount && Svc.Condition[ConditionFlag.Mounted];
-        var remountId = remount ? Svc.ClientState.LocalPlayer?.CurrentMount?.RowId ?? 0 : 0;
+        var remountId = remount ? Svc.Objects.LocalPlayer?.CurrentMount?.RowId ?? 0 : 0;
 
         var tasks = new TaskManagerTask[]
         {

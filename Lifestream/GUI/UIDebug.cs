@@ -235,7 +235,7 @@ internal static unsafe class UIDebug
                             Chat.ExecuteCommand("/clearlog");
                             DuoLog.Information($"For plot {index + 1}");
                             plot.Front = Player.Object.Position;
-                            var candidates = Svc.Objects.Where(x => x.DataId.EqualsAny(Utils.AethernetShards) && Vector3.Distance(plot.Front, x.Position) < 100f && S.Data.ResidentialAethernet.GetFromIGameObject(x) != null);
+                            var candidates = Svc.Objects.Where(x => x.BaseId.EqualsAny(Utils.AethernetShards) && Vector3.Distance(plot.Front, x.Position) < 100f && S.Data.ResidentialAethernet.GetFromIGameObject(x) != null);
                             Task.Run(() =>
                             {
                                 var currentDistance = float.MaxValue;

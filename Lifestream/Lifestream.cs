@@ -584,7 +584,7 @@ public unsafe class Lifestream : IDalamudPlugin
     {
         YesAlreadyManager.Tick();
         followPath?.Update();
-        if(Svc.ClientState.LocalPlayer != null && S.Data.DataStore.Territories.Contains(P.Territory))
+        if(Svc.Objects.LocalPlayer != null && S.Data.DataStore.Territories.Contains(P.Territory))
         {
             UpdateActiveAetheryte();
         }

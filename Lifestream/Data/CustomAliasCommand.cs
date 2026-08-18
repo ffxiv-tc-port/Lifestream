@@ -166,7 +166,7 @@ public class CustomAliasCommand
         else if(Kind == CustomAliasKind.Interact)
         {
             P.TaskManager.Enqueue(() => IsScreenReady() && Player.Interactable);
-            P.TaskManager.EnqueueTask(NeoTasks.InteractWithObject(() => Svc.Objects.OrderBy(Player.DistanceTo).FirstOrDefault(x => x.IsTargetable && x.DataId == DataID)));
+            P.TaskManager.EnqueueTask(NeoTasks.InteractWithObject(() => Svc.Objects.OrderBy(Player.DistanceTo).FirstOrDefault(x => x.IsTargetable && x.BaseId == DataID)));
         }
         else if(Kind == CustomAliasKind.Mount_Up)
         {

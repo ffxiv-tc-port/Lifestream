@@ -413,7 +413,7 @@ internal static unsafe partial class Utils
 
     public static bool IsPlayerFalling()
     {
-        var p = Svc.ClientState.LocalPlayer;
+        var p = Svc.Objects.LocalPlayer;
         if(p == null)
             return true;
 
@@ -738,7 +738,7 @@ internal static unsafe partial class Utils
         {
             if(x.IsTargetable && x.Name.ToString().EqualsIgnoreCaseAny([.. Lang.Entrance]))
             {
-                var distance = Vector3.Distance(Svc.ClientState.LocalPlayer.Position, x.Position);
+                var distance = Vector3.Distance(Svc.Objects.LocalPlayer.Position, x.Position);
                 if(distance < currentDistance)
                 {
                     currentDistance = distance;
@@ -1570,8 +1570,8 @@ internal static unsafe partial class Utils
         {
             if(x.IsAetheryte())
             {
-                var d2d = Vector2.Distance(Svc.ClientState.LocalPlayer.Position.ToVector2(), x.Position.ToVector2());
-                var d3d = Vector3.Distance(Svc.ClientState.LocalPlayer.Position, x.Position);
+                var d2d = Vector2.Distance(Svc.Objects.LocalPlayer.Position.ToVector2(), x.Position.ToVector2());
+                var d3d = Vector3.Distance(Svc.Objects.LocalPlayer.Position, x.Position);
                 if(S.Data.ResidentialAethernet.IsInResidentialZone() && d3d > 4.6f) continue;
                 if(S.Data.CustomAethernet.ZoneInfo.TryGetValue(P.Territory, out var zinfo) && d3d > zinfo.MaxInteractionDistance) continue;
 
@@ -1590,7 +1590,7 @@ internal static unsafe partial class Utils
     public static bool IsAetheryte(this IGameObject obj)
     {
         if(obj.ObjectKind == ObjectKind.Aetheryte) return true;
-        return Utils.AethernetShards.Contains(obj.DataId);
+        return Utils.AethernetShards.Contains(obj.BaseId);
     }
 
     internal static bool IsVPosValid(this IGameObject x)
