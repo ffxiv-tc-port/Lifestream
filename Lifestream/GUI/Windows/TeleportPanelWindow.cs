@@ -202,14 +202,14 @@ public class TeleportPanelWindow : Window
 
         if(entry.MapId == 0 || !Svc.Data.GetExcelSheet<Map>().TryGetRow(entry.MapId, out var map))
         {
-            ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "No map available for this destination.".Loc());
+            ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, LocText.NoMapAvailableForDestination.Loc());
             return;
         }
 
         var mapId = map.Id.ExtractText();
         if(mapId == "")
         {
-            ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "No map available for this destination.".Loc());
+            ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, LocText.NoMapAvailableForDestination.Loc());
             return;
         }
         var path = $"ui/map/{mapId}/{mapId.Replace("/", "")}_m.tex";

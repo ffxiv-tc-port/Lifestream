@@ -70,7 +70,7 @@ internal static class TeleportRowUI
                 // 起疑才會想查的細節放 tooltip。
                 if(tooltip != "") tooltip += "\n";
                 tooltip += $"⚑ {landing.X:F1}, {landing.Y:F1}, {landing.Z:F1}";
-                if(!C.EnableAetheryteLanding) tooltip += $"\n{"Custom landing is disabled in settings.".Loc()}";
+                if(!C.EnableAetheryteLanding) tooltip += $"\n{LocText.CustomLandingDisabled.Loc()}";
             }
             if(tooltip != "") ImGuiEx.Tooltip(tooltip);
         }
@@ -128,7 +128,7 @@ internal static class TeleportRowUI
 
         if(!C.EnableAetheryteLanding)
         {
-            ImGuiEx.Text(ImGuiColors.DalamudGrey, "Custom landing is disabled in settings.".Loc());
+            ImGuiEx.Text(ImGuiColors.DalamudGrey, LocText.CustomLandingDisabled.Loc());
             if(has) ImGuiEx.Text(ImGuiColors.DalamudGrey3, $"⚑ {landing.X:F1}, {landing.Y:F1}, {landing.Z:F1}");
             return;
         }
@@ -185,7 +185,7 @@ internal static class TeleportRowUI
             }
             if(C.AetheryteLandingDirectWrite) ImGui.PopStyleColor();
             ImGuiEx.Tooltip(C.AetheryteLandingDirectWrite
-                ? $"{"WARNING - use at your own risk. This writes your character's coordinates straight into game memory to teleport you instantly. It is not something the normal client ever does, the server can detect it, and it may get your account actioned.".Loc()}\n\n{"It is refused automatically while in a duty, in combat, casting, or zoning, and falls back to walking.".Loc()}"
+                ? $"{LocText.MemoryTeleportWarning.Loc()}\n\n{LocText.MemoryTeleportRefusalNote.Loc()}"
                 : "Off: Lifestream walks you to the custom landing with vnavmesh. Turn this on only if you accept the risk explained in the settings.".Loc());
         }
         else if(C.AetheryteLandings.Count > 0)
@@ -193,7 +193,7 @@ internal static class TeleportRowUI
             if(sameLine) ImGui.SameLine();
             // 「有落點但整個功能關著」= 被忽略。它本身要在列上看得見，不能只藏在 tooltip 裡。
             ImGuiEx.Text(ImGuiColors.DalamudGrey, "[landings off]".Loc());
-            ImGuiEx.Tooltip($"{"Custom landing is disabled in settings.".Loc()}\n{C.AetheryteLandings.Count} {"custom landing positions".Loc()}");
+            ImGuiEx.Tooltip($"{LocText.CustomLandingDisabled.Loc()}\n{C.AetheryteLandings.Count} {"custom landing positions".Loc()}");
         }
     }
 }

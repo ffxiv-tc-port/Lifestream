@@ -510,7 +510,7 @@ internal static unsafe partial class Utils
                 point = worldPos;
             }
             ImGui.BeginTooltip();
-            ImGuiEx.Text("Point: ??\nLeft-click to finish".Loc(point.ToString("F2")));
+            ImGuiEx.Text(LocText.PointLeftClickToFinish.Loc(point.ToString("F2")));
             ImGui.EndTooltip();
             if(IsKeyPressed((int)Keys.LButton))
             {
@@ -540,7 +540,7 @@ internal static unsafe partial class Utils
                 point = worldPos.ToVector2();
             }
             ImGui.BeginTooltip();
-            ImGuiEx.Text("Point: ??\nLeft-click to finish".Loc(point.ToString("F2")));
+            ImGuiEx.Text(LocText.PointLeftClickToFinish.Loc(point.ToString("F2")));
             ImGui.EndTooltip();
             if(IsKeyPressed((int)Keys.LButton))
             {

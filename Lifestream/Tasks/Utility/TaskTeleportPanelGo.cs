@@ -265,7 +265,7 @@ public static unsafe class TaskTeleportPanelGo
         if(task == null)
         {
             PluginLog.Error($"[TeleportPanel] vnavmesh Nav.Pathfind returned no task for \"{shard.Name}\".");
-            DuoLog.Error($"{"vnavmesh could not find a path to this aethernet shard:".Loc()} {shard.Name}");
+            DuoLog.Error($"{LocText.VnavmeshNoPathToShard.Loc()} {shard.Name}");
             return null;
         }
 
@@ -289,7 +289,7 @@ public static unsafe class TaskTeleportPanelGo
         if(!task.IsCompleted || task.IsFaulted || task.IsCanceled)
         {
             PluginLog.Error($"[TeleportPanel] vnavmesh pathfinding to \"{shard.Name}\" did not produce a path: completed={task.IsCompleted}, faulted={task.IsFaulted}, cancelled={task.IsCanceled}, error={task.Exception?.InnerException?.Message ?? task.Exception?.Message}");
-            DuoLog.Error($"{"vnavmesh could not find a path to this aethernet shard:".Loc()} {shard.Name}");
+            DuoLog.Error($"{LocText.VnavmeshNoPathToShard.Loc()} {shard.Name}");
             return null;
         }
 
@@ -300,7 +300,7 @@ public static unsafe class TaskTeleportPanelGo
             // 不擲例外。照舊往下走的話，下一步的「路徑點數 == 0」會被誤讀成「已經走到了」，
             // 然後互動步驟又在原地空轉 —— 跟修正前一模一樣的症狀。
             PluginLog.Error($"[TeleportPanel] vnavmesh returned an empty path to \"{shard.Name}\" - the destination is probably off the navmesh.");
-            DuoLog.Error($"{"vnavmesh could not find a path to this aethernet shard:".Loc()} {shard.Name}");
+            DuoLog.Error($"{LocText.VnavmeshNoPathToShard.Loc()} {shard.Name}");
             return null;
         }
 
@@ -541,7 +541,7 @@ public static unsafe class TaskTeleportPanelGo
                 AgentMap.Instance()->SetFlagMapMarker(entry.Territory, mapId, landing);
                 AgentMap.Instance()->OpenMap(mapId, entry.Territory);
             }
-            ChatPrinter.Green($"[Lifestream] {"vnavmesh is not installed - destination flagged on map, please walk there manually:".Loc()} {entry.DisplayName}");
+            ChatPrinter.Green($"[Lifestream] {LocText.VnavmeshNotInstalledFlagged.Loc()} {entry.DisplayName}");
         }
     }
 

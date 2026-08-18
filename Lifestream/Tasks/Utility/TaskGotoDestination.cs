@@ -47,7 +47,7 @@ public static unsafe class TaskGotoDestination
         // (已在目的區域時不需要傳送點,TeleportToDestinationZone 會直接回 true)
         if(!hasAethernetRoute && !hasGatewayRoute && P.Territory != dest.Territory && FindClosestUnlockedAetheryte(dest) == 0)
         {
-            ChatPrinter.Red($"[Lifestream] {"Cannot reach destination - no unlocked aetheryte in target zone:".Loc()} {dest.Name} ({ExcelTerritoryHelper.GetName(dest.Territory)})");
+            ChatPrinter.Red($"[Lifestream] {LocText.CannotReachDestinationNoAetheryte.Loc()} {dest.Name} ({ExcelTerritoryHelper.GetName(dest.Territory)})");
             return;
         }
 
@@ -110,7 +110,7 @@ public static unsafe class TaskGotoDestination
         {
             // Enqueue 已預先驗證過,理論上到不了這裡;真的發生(狀態在途中改變)也不丟例外,
             // 印聊天欄錯誤並整條中止,免得後續的導航步驟在錯的區域亂走。
-            ChatPrinter.Red($"[Lifestream] {"Cannot reach destination - no unlocked aetheryte in target zone:".Loc()} {dest.Name} ({ExcelTerritoryHelper.GetName(dest.Territory)})");
+            ChatPrinter.Red($"[Lifestream] {LocText.CannotReachDestinationNoAetheryte.Loc()} {dest.Name} ({ExcelTerritoryHelper.GetName(dest.Territory)})");
             P.TaskManager.Abort();
             return true;
         }
@@ -309,6 +309,6 @@ public static unsafe class TaskGotoDestination
         if(mapId == 0) return;
         AgentMap.Instance()->SetFlagMapMarker(dest.Territory, mapId, dest.Position);
         AgentMap.Instance()->OpenMap(mapId, dest.Territory);
-        ChatPrinter.Green($"[Lifestream] {"vnavmesh is not installed - destination flagged on map, please walk there manually:".Loc()} {dest.Name}");
+        ChatPrinter.Green($"[Lifestream] {LocText.VnavmeshNotInstalledFlagged.Loc()} {dest.Name}");
     }
 }

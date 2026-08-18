@@ -119,7 +119,7 @@ public static unsafe class TabAddressBook
                         {
                             if(!entry.IsValid(out var error))
                             {
-                                Notify.Error("Could not paste from clipboard:\n??".Loc(error));
+                                Notify.Error(LocText.CouldNotPasteFromClipboard.Loc(error));
                             }
                             else
                             {
@@ -139,7 +139,7 @@ public static unsafe class TabAddressBook
                         }
                         else
                         {
-                            Notify.Error("Could not paste from clipboard:\n??".Loc(e.Message));
+                            Notify.Error(LocText.CouldNotPasteFromClipboard.Loc(e.Message));
                         }
                     }
                 }
@@ -211,7 +211,7 @@ public static unsafe class TabAddressBook
                 }
                 if(ImGui.BeginPopup($"ABMenu {entry.GUID}"))
                 {
-                    if(ImGui.MenuItem("Copy chat-friendly name to clipboard".Loc()))
+                    if(ImGui.MenuItem(LocText.CopyChatFriendlyName.Loc()))
                     {
                         Copy(entry.GetAddressString());
                     }
@@ -236,7 +236,7 @@ public static unsafe class TabAddressBook
                         }
                         else
                         {
-                            Svc.Toasts.ShowError("Hold CTRL and click to delete an entry".Loc());
+                            Svc.Toasts.ShowError(LocText.HoldCtrlToDeleteEntry.Loc());
                         }
                     }
                     ImGuiEx.Tooltip("Hold CTRL and click to delete".Loc());
@@ -249,7 +249,7 @@ public static unsafe class TabAddressBook
                     InternalLog.Verbose($"DragDropSource = {entry.GUID}");
                     if(book.SortMode == SortMode.Manual)
                     {
-                        ImGui.SetTooltip("Reorder or move to other folder".Loc());
+                        ImGui.SetTooltip(LocText.ReorderOrMoveToOtherFolder.Loc());
                     }
                     else
                     {
