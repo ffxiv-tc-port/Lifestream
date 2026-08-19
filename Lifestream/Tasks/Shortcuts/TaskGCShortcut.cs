@@ -76,7 +76,21 @@ public static unsafe class TaskGCShortcut
             DuoLog.Error("Player not available");
             return;
         }
-        companyNullable ??= fcgc ? (GrandCompany)InfoProxyFreeCompany.Instance()->GrandCompany : Player.GrandCompany;
+        if(companyNullable == null && fcgc)
+        {
+            // InfoProxyFreeCompany 走 InfoModule 鏈:UIModule／InfoModule 皆可能為 null,
+            // proxy 未註冊時 GetInfoProxyById 也回 null。這是使用者明確觸發的傳送,
+            // 取不到就照本檔既有慣例記錯誤並中止 —— 悄悄退回 Player.GrandCompany
+            // 會把人送去另一個大國,比不動更糟。
+            var freeCompany = InfoProxyFreeCompany.Instance();
+            if(freeCompany == null)
+            {
+                DuoLog.Error("Free company information is not available");
+                return;
+            }
+            companyNullable = (GrandCompany)freeCompany->GrandCompany;
+        }
+        companyNullable ??= Player.GrandCompany;
         if(companyNullable == GrandCompany.Unemployed)
         {
             if(Svc.AetheryteList.Any(x => x.AetheryteId == (int)WorldChangeAetheryte.Uldah))
