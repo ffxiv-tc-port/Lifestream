@@ -106,7 +106,11 @@ internal static unsafe class DCChange
             PluginLog.Debug($"Select1-1");
             //if (!AgentLobby.Instance()->AgentInterface.IsAgentActive()) return false;
             PluginLog.Debug($"Select2");
-            if(AgentLobby.Instance()->TemporaryLocked) return false;
+            // AgentLobby 取得器合法回 null。拿不到就當作「還沒準備好」回 false,
+            // 讓這個工作下一幀重試 —— 比對 null 解參考 TemporaryLocked 安全。
+            var lobby = AgentLobby.Instance();
+            if(lobby == null) return false;
+            if(lobby->TemporaryLocked) return false;
             PluginLog.Debug($"Select3");
             if(Utils.TryGetCharacterIndex(name, world, out var index))
             {

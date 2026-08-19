@@ -536,10 +536,12 @@ public static unsafe class TaskTeleportPanelGo
         else
         {
             var mapId = Svc.Data.GetExcelSheet<TerritoryType>().GetRowOrDefault(entry.Territory)?.Map.RowId ?? 0;
-            if(mapId != 0)
+            // AgentMap 取得器合法回 null;拿不到就只印訊息、不插旗(同檔 FlagOnMap 的寫法)。
+            var agent = AgentMap.Instance();
+            if(mapId != 0 && agent != null)
             {
-                AgentMap.Instance()->SetFlagMapMarker(entry.Territory, mapId, landing);
-                AgentMap.Instance()->OpenMap(mapId, entry.Territory);
+                agent->SetFlagMapMarker(entry.Territory, mapId, landing);
+                agent->OpenMap(mapId, entry.Territory);
             }
             ChatPrinter.Green($"[Lifestream] {LocText.VnavmeshNotInstalledFlagged.Loc()} {entry.DisplayName}");
         }

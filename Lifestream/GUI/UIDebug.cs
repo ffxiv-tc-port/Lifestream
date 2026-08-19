@@ -391,7 +391,10 @@ internal static unsafe class UIDebug
             if(TryGetAddonByName<AddonAreaMap>("AreaMap", out var addon))
             {
                 ImGuiEx.Text($"{addon->HoveredCoords} - press ctrl to copy");
-                if(ImGuiEx.Ctrl && EzThrottler.Throttle("Copy") && !CSFramework.Instance()->WindowInactive)
+                // Framework 是 [StaticAddress(..., isPointer: true)],合法回 null。
+                // 拿不到就當作「視窗非作用中」→ 不複製(fail-closed)。
+                var fw = CSFramework.Instance();
+                if(ImGuiEx.Ctrl && EzThrottler.Throttle("Copy") && fw != null && !fw->WindowInactive)
                 {
                     Copy($", new({addon->HoveredCoords.X}f, {addon->HoveredCoords.Y}f)");
                 }
@@ -516,7 +519,19 @@ internal static unsafe class UIDebug
         if(ImGui.Button("Get file list")) Utils.ReadClipboardFiles();
         if(ImGui.Button("Open PF self"))
         {
-            S.Memory.OpenPartyFinderInfoDetour(AgentModule.Instance()->GetAgentByInternalId(AgentId.LookingForGroup), Player.CID);
+            // AgentModule.Instance() 在 UIModule 尚未建立時回 null;GetAgentByInternalId 本身也可能回 null。
+            // 這個指標最後會被交給原生的 OpenPartyFinderInfo(hook Original),傳 null 會崩在遊戲裡,
+            // 所以兩層都要判,拿不到就整個不呼叫。
+            var lfgAgentModule = AgentModule.Instance();
+            var lfgAgent = lfgAgentModule == null ? null : lfgAgentModule->GetAgentByInternalId(AgentId.LookingForGroup);
+            if(lfgAgent == null)
+            {
+                DuoLog.Warning("AgentLookingForGroup 尚未就緒,略過。");
+            }
+            else
+            {
+                S.Memory.OpenPartyFinderInfoDetour(lfgAgent, Player.CID);
+            }
         }
         if(ImGui.CollapsingHeader("Lobby2"))
         {
@@ -704,7 +719,10 @@ internal static unsafe class UIDebug
             if(ImGui.Button("game version reset")) C.GameVersion = "";
         }
         ImGuiEx.Text($"Player interactable: {Player.Interactable}");
-        ImGuiEx.Text($"Is moving: {AgentMap.Instance()->IsPlayerMoving}");
+        // AgentMap 取得器合法回 null。拿不到時印 "?" 而不是 false ——
+        // 把「不知道」畫成一個看起來正常的值會直接誤導看偵錯視窗的人。
+        var dbgMap = AgentMap.Instance();
+        ImGuiEx.Text($"Is moving: {(dbgMap == null ? "?" : $"{dbgMap->IsPlayerMoving}")}");
         ImGuiEx.Text($"IsOccupied: {IsOccupied()}");
         ImGuiEx.Text($"Casting: {Player.Object?.IsCasting}");
         if(ImGui.CollapsingHeader("Data test"))
@@ -747,13 +765,21 @@ internal static unsafe class UIDebug
             {
                 DCChange.OpenContextMenuForChara(CharaName, (uint)WorldSel, (uint)WorldSel);
             }
+            // AgentLobby 取得器合法回 null(不在角色選擇畫面時本來就沒有這個 agent)。
             var agent = AgentLobby.Instance();
-            ImGuiEx.Text($"Active: {agent->IsAgentActive()}");
-            for(var i = 0; i < agent->LobbyData.CharaSelectEntries.Count; i++)
+            if(agent == null)
             {
-                var c = agent->LobbyData.CharaSelectEntries[i].Value;
-                ImGuiEx.Text($"Locked: {agent->TemporaryLocked}");
-                ImGuiEx.Text($"{i}: {c->Name.Read()}/{c->HomeWorldName.Read()}");
+                ImGuiEx.Text("AgentLobby 尚未就緒");
+            }
+            else
+            {
+                ImGuiEx.Text($"Active: {agent->IsAgentActive()}");
+                for(var i = 0; i < agent->LobbyData.CharaSelectEntries.Count; i++)
+                {
+                    var c = agent->LobbyData.CharaSelectEntries[i].Value;
+                    ImGuiEx.Text($"Locked: {agent->TemporaryLocked}");
+                    ImGuiEx.Text($"{i}: {c->Name.Read()}/{c->HomeWorldName.Read()}");
+                }
             }
         }
         if(ImGui.CollapsingHeader("Addon test"))

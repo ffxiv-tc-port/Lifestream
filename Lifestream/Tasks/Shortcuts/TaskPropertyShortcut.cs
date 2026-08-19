@@ -321,7 +321,12 @@ public static unsafe class TaskPropertyShortcut
     {
         enterApartment ??= C.EnterMyApartment;
         var a = GetApartmentAetheryteID();
-        var nextToMyApt = AgentHUD.Instance()->MapMarkers.Any(x => x.IconId.EqualsAny(60790u, 60792u) && Vector3.Distance(Player.Position, x.Position) < 50f) && Svc.Objects.Any(x => x.BaseId == 2007402 && Vector3.Distance(x.Position, Player.Position) < 20f);
+        // AgentHUD 取得器合法回 null。拿不到就當作「人不在自己的公寓旁邊」——
+        // 那是保守的一邊:會照常先傳送過去,而不是誤判成已經到了、直接跳過移動。
+        var hud = AgentHUD.Instance();
+        var nextToMyApt = hud != null
+            && hud->MapMarkers.Any(x => x.IconId.EqualsAny(60790u, 60792u) && Vector3.Distance(Player.Position, x.Position) < 50f)
+            && Svc.Objects.Any(x => x.BaseId == 2007402 && Vector3.Distance(x.Position, Player.Position) < 20f);
         P.TaskManager.BeginStack();
         try
         {

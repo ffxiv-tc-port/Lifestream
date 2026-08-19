@@ -600,9 +600,13 @@ internal static unsafe partial class Utils
         ScreenToWorldSelector(id, ref value);
         ImGuiEx.Tooltip("Select with mouse".Loc());
         ImGui.SameLine();
-        if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && AgentMap.Instance()->FlagMarkerCount > 0))
+        // AgentMap.Instance() 是 AgentGetterGenerator 產出的兩層可空取得器
+        // (`agentModule == null ? null : GetAgentByInternalId(...)`)——合法回 null。
+        // 這裡在繪製路徑每幀跑,取一次、判一次,拿不到就把按鈕停用(fail-closed)。
+        var flagAgent = AgentMap.Instance();
+        if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && flagAgent != null && flagAgent->FlagMarkerCount > 0))
         {
-            var marker = AgentMap.Instance()->FlagMapMarkers[0];
+            var marker = flagAgent->FlagMapMarkers[0];
             value = new(marker.XFloat, marker.YFloat);
         }
         ScreenToWorldSelector(id, ref value);
@@ -633,9 +637,11 @@ internal static unsafe partial class Utils
         ScreenToWorldSelector(id, ref value);
         ImGuiEx.Tooltip("Select with mouse".Loc());
         ImGui.SameLine();
-        if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && AgentMap.Instance()->FlagMarkerCount > 0))
+        // 同上:AgentMap 取得器合法回 null,取一次、判一次,拿不到就停用按鈕。
+        var flagAgent = AgentMap.Instance();
+        if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && flagAgent != null && flagAgent->FlagMarkerCount > 0))
         {
-            var marker = AgentMap.Instance()->FlagMapMarkers[0];
+            var marker = flagAgent->FlagMapMarkers[0];
             value = new(marker.XFloat, 0, marker.YFloat);
         }
         ScreenToWorldSelector(id, ref value);
@@ -1148,6 +1154,10 @@ internal static unsafe partial class Utils
             }
         }*/
         var agent = AgentLobby.Instance();
+        // AgentLobby 取得器合法回 null(角色選擇畫面之外、或 UIModule 尚未建立)。
+        // 拿不到就回空清單:呼叫端 TryGetCharacterIndex 會得到 index < 0 → 判定「找不到角色」,
+        // 流程停在原地重試,不會拿 null 去解參考 LobbyData。
+        if(agent == null) return ret;
         //if (agent->AgentInterface.IsAgentActive())
         {
             var charaSpan = agent->LobbyData.CharaSelectEntries.AsSpan();

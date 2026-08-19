@@ -263,7 +263,10 @@ internal static unsafe class WorldChange
     internal static bool? ExecuteTPToAethernetDestination(uint destination, uint subIndex = 0)
     {
         if(!Player.Available) return false;
-        if(AgentMap.Instance()->IsPlayerMoving == false && !IsOccupied() && !Player.Object.IsCasting && EzThrottler.Throttle("ExecTP", 1000))
+        // AgentMap 取得器合法回 null。拿不到就回 false 讓工作重試,不要對 null 讀 IsPlayerMoving。
+        var map = AgentMap.Instance();
+        if(map == null) return false;
+        if(map->IsPlayerMoving == false && !IsOccupied() && !Player.Object.IsCasting && EzThrottler.Throttle("ExecTP", 1000))
         {
             return S.TeleportService.TeleportToAetheryte(destination, subIndex);
             //return Svc.PluginInterface.GetIpcSubscriber<uint, byte, bool>("Teleport").InvokeFunc(destination, (byte)subIndex);
@@ -383,7 +386,13 @@ internal static unsafe class WorldChange
         {
             if(Utils.GenericThrottle)
             {
-                S.Memory.OpenPartyFinderInfoDetour(AgentLookingForGroup.Instance(), Player.CID);
+                // 🔴 這個指標會被原封不動交給原生的 OpenPartyFinderInfo(hook 的 Original),
+                //    傳 null 進去是崩在遊戲程式碼裡、try/catch 攔不到。
+                //    AgentLookingForGroup 取得器合法回 null,所以先判空;拿不到就這次不呼叫、
+                //    回 false 讓工作下一幀重試。
+                var lfg = AgentLookingForGroup.Instance();
+                if(lfg == null) return false;
+                S.Memory.OpenPartyFinderInfoDetour(lfg, Player.CID);
                 return true;
             }
         }

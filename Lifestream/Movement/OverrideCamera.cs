@@ -92,7 +92,12 @@ public unsafe class OverrideCamera : IDisposable
                 return;
             if(IgnoreUserInput || inputMode == 0) // let user override...
             {
-                var dt = Framework.Instance()->FrameDeltaTime;
+                // 🔴 這裡是每幀跑的相機 detour。Framework 是 [StaticAddress(..., isPointer: true)],
+                //    合法回 null;在 detour 裡對 null 解參考等於崩在原生層(AVE，try/catch 攔不到)。
+                //    拿不到就用 dt = 0 —— 這一幀的 maxH/maxV 都是 0，等於「不動相機」，
+                //    絕不在這裡丟例外，也絕不寫 log(每幀熱路徑)。
+                var framework = Framework.Instance();
+                var dt = framework == null ? 0f : framework->FrameDeltaTime;
                 var deltaH = (DesiredAzimuth - self->DirH.Radians()).Normalized();
                 var deltaV = (DesiredAltitude - self->DirV.Radians()).Normalized();
                 var maxH = SpeedH.Rad * dt;

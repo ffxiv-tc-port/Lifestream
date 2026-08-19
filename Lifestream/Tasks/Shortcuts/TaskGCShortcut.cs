@@ -128,7 +128,10 @@ public static unsafe class TaskGCShortcut
                     if(Player.IsAnimationLocked) return false;
                     if(EzThrottler.Throttle("GCUseTicket", 1000))
                     {
-                        AgentInventoryContext.Instance()->UseItem(CompanyItem[company]);
+                        // AgentInventoryContext 取得器合法回 null;拿不到就這次不用券,
+                        // 下面的 return false 會讓工作重試。
+                        var ctx = AgentInventoryContext.Instance();
+                        if(ctx != null) ctx->UseItem(CompanyItem[company]);
                     }
                     if(Svc.Condition[ConditionFlag.Casting] || Player.Object.IsCasting) return true;
                     return false;

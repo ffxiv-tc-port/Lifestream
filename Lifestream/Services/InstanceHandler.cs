@@ -13,7 +13,10 @@ public unsafe class InstanceHandler : IDisposable
     private InstanceHandler()
     {
         Svc.AddonLifecycle.RegisterListener(AddonEvent.PostUpdate, "SelectString", OnPostUpdate);
-        var gv = CSFramework.Instance()->GameVersionString;
+        // Framework 是 isPointer: true 的靜態位址,合法回 null。
+        // 建構子在外掛載入時就跑,拿不到就跳過版本比對(下次載入還會再比一次)。
+        var framework = CSFramework.Instance();
+        var gv = framework == null ? "" : framework->GameVersionString;
         if(!gv.IsNullOrEmpty() && gv != C.GameVersion)
         {
             PluginLog.Information($"New game version detected, new {gv}, old {C.GameVersion}");

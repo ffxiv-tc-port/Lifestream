@@ -259,6 +259,9 @@ public static unsafe class TaskChangeCharacter
     {
         var lobby = AgentLobby.Instance();
         if(Utils.CanAutoLogin()) return true;
+        // AgentLobby 取得器合法回 null。下面那行會讀 lobby->AgentInterface / TemporaryLocked,
+        // 拿不到就回 false 讓工作重試,不要裸解參考。
+        if(lobby == null) return false;
         if(!TryGetAddonByName<AtkUnitBase>("SelectOk", out _) && TryGetAddonByName<AtkUnitBase>("_CharaSelectReturn", out var addon) && IsAddonReady(addon) && (!lobby->AgentInterface.IsAgentActive() || !lobby->TemporaryLocked))
         {
             if(Utils.GenericThrottle)

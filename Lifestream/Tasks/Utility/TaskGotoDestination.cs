@@ -305,10 +305,14 @@ public static unsafe class TaskGotoDestination
 
     internal static void SetFlag(CustomDestination dest)
     {
+        // AgentMap 取得器合法回 null;拿不到就不插旗也不開地圖(fail-closed)。
+        // 同 repo 的 TaskTeleportPanelGo.FlagOnMap 已經是這個寫法,這裡照抄。
+        var agent = AgentMap.Instance();
+        if(agent == null) return;
         var mapId = Svc.Data.GetExcelSheet<TerritoryType>().GetRowOrDefault(dest.Territory)?.Map.RowId ?? 0;
         if(mapId == 0) return;
-        AgentMap.Instance()->SetFlagMapMarker(dest.Territory, mapId, dest.Position);
-        AgentMap.Instance()->OpenMap(mapId, dest.Territory);
+        agent->SetFlagMapMarker(dest.Territory, mapId, dest.Position);
+        agent->OpenMap(mapId, dest.Territory);
         ChatPrinter.Green($"[Lifestream] {LocText.VnavmeshNotInstalledFlagged.Loc()} {dest.Name}");
     }
 }
