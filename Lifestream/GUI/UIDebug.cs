@@ -595,27 +595,51 @@ internal static unsafe class UIDebug
         }
         if(ImGui.CollapsingHeader("CharaSelectListMenu"))
         {
-            var list = RaptureAtkUnitManager.Instance()->FocusedUnitsList;
-            foreach(var x in list.Entries)
+            // 🔴 RaptureAtkUnitManager.Instance() 是 CS 裡的**手寫**包裝
+            //    （`raptureAtkModule == null ? null : &raptureAtkModule->RaptureAtkUnitManager`），
+            //    不是產生器的 [StaticAddress] —— 它會合法回 null（UIModule/RaptureAtkModule
+            //    任一層還沒建好時）。裸解參考是攔不到的 AVE（corrupted-state exception）。
+            //    這是偵錯視窗的每幀繪製路徑：不記 log，取不到就顯示一行說明。
+            var raptureAtkUnitManager = RaptureAtkUnitManager.Instance();
+            if(raptureAtkUnitManager == null)
             {
-                if(x.Value == null) continue;
-                ImGuiEx.Text($"{x.Value->NameString}");
+                ImGuiEx.Text("RaptureAtkUnitManager 尚未就緒");
+            }
+            else
+            {
+                var list = raptureAtkUnitManager->FocusedUnitsList;
+                foreach(var x in list.Entries)
+                {
+                    if(x.Value == null) continue;
+                    ImGuiEx.Text($"{x.Value->NameString}");
+                }
             }
             { if(TryGetAddonMaster<AddonMaster._CharaSelectListMenu>(out var m)) ImGuiEx.Text($"Selected chara: {m.Characters.FirstOrDefault(x => x.IsSelected)?.Name}"); }
         }
         ImGui.Checkbox("DisableHousePathData", ref P.DisableHousePathData);
         if(ImGui.CollapsingHeader("HUD"))
         {
+            // 🔴 同一個家族的第三種來源：[Agent(AgentId.Hud)] 產生的 Instance() 樣板是
+            //    `agentModule == null ? null : (T*)agentModule->GetAgentByInternalId(...)`
+            //    —— 一樣會合法回 null（AgentGetterGenerator.cs:44 直證）。
+            //    ⚠️ 這一處不在原掃描清單裡，是修上面那處時同檔同形一併掃到的。
             var hud = AgentHUD.Instance();
-            for(var i = 0; i < hud->MapMarkers.Count; i++)
+            if(hud == null)
             {
-                var marker = hud->MapMarkers[i];
-                var pos = new Vector3(marker.Position.X, marker.Position.Y, marker.Position.Z);
-                ImGuiEx.Text($"Marker {marker.IconId}, pos: {pos:F1}, distance: {Vector3.Distance(Player.Position, pos):f1}");
-                if(ThreadLoadImageHandler.TryGetIconTextureWrap(marker.IconId, false, out var w))
+                ImGuiEx.Text("AgentHUD 尚未就緒");
+            }
+            else
+            {
+                for(var i = 0; i < hud->MapMarkers.Count; i++)
                 {
-                    ImGui.SameLine();
-                    ImGui.Image(w.Handle, new(30f));
+                    var marker = hud->MapMarkers[i];
+                    var pos = new Vector3(marker.Position.X, marker.Position.Y, marker.Position.Z);
+                    ImGuiEx.Text($"Marker {marker.IconId}, pos: {pos:F1}, distance: {Vector3.Distance(Player.Position, pos):f1}");
+                    if(ThreadLoadImageHandler.TryGetIconTextureWrap(marker.IconId, false, out var w))
+                    {
+                        ImGui.SameLine();
+                        ImGui.Image(w.Handle, new(30f));
+                    }
                 }
             }
         }

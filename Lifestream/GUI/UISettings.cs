@@ -525,10 +525,19 @@ internal static unsafe class UISettings
                 List<string> focused = [];
                 try
                 {
-                    foreach(var x in RaptureAtkUnitManager.Instance()->FocusedUnitsList.Entries)
+                    // 🔴 外面這層 try/catch 對這一行是**假安全**：RaptureAtkUnitManager.Instance()
+                    //    是 CS 的手寫包裝（RaptureAtkModule 為 null 時回 null），裸解參考產生的是
+                    //    AccessViolationException —— 在 .NET Core 屬 corrupted-state exception，
+                    //    catch(Exception) 攔不到，只能事前擋。try 保留給 NameString 那類受管理例外。
+                    //    取不到就維持空清單，畫面顯示「沒有聚焦中的視窗」，不崩潰。
+                    var raptureAtkUnitManager = RaptureAtkUnitManager.Instance();
+                    if(raptureAtkUnitManager != null)
                     {
-                        if(x.Value == null) continue;
-                        focused.Add(x.Value->NameString);
+                        foreach(var x in raptureAtkUnitManager->FocusedUnitsList.Entries)
+                        {
+                            if(x.Value == null) continue;
+                            focused.Add(x.Value->NameString);
+                        }
                     }
                 }
                 catch(Exception e) { e.Log(); }
