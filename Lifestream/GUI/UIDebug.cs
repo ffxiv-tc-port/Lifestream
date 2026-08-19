@@ -844,9 +844,9 @@ internal static unsafe class UIDebug
         }
         if(ImGui.CollapsingHeader("Path"))
         {
-            if(ImGui.Button("Add")) DebugPath.Add(Player.Object.Position);
+            if(ImGui.Button("Add".Loc())) DebugPath.Add(Player.Object.Position);
             //if (ImGui.Button("Go")) P.FollowPath.Waypoints.AddRange(Enumerable.Reverse(DebugPath));
-            if(ImGui.Button("Copy")) Copy($"new Vector3({Player.Object.Position.X}f, {Player.Object.Position.Y}f, {Player.Object.Position.Z}f);");
+            if(ImGui.Button("Copy".Loc())) Copy($"new Vector3({Player.Object.Position.X}f, {Player.Object.Position.Y}f, {Player.Object.Position.Z}f);");
             for(var i = 0; i < DebugPath.Count; i++)
             {
                 ImGuiEx.Text($"{DebugPath[i]}");
@@ -862,7 +862,7 @@ internal static unsafe class UIDebug
             ImGui.InputText("World", ref World, 100);
             ImGuiEx.EnumCombo("Resi", ref ResiA);
             ImGui.InputInt("Ward", ref Ward);
-            if(ImGui.Button("Go"))
+            if(ImGui.Button("Go".Loc()))
             {
                 TaskTpAndGoToWard.Enqueue(World, ResiA, Ward, 1, false, false);
             }
