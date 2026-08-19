@@ -8,6 +8,7 @@ using Callback = ECommons.Automation.Callback;
 using ECommons.ExcelServices;
 using ECommons.EzSharedDataManager;
 using ECommons.GameHelpers;
+using ECommons.LanguageHelpers;
 using ECommons.MathHelpers;
 using ECommons.Reflection;
 using ECommons.Throttlers;
@@ -46,7 +47,7 @@ internal static unsafe class UIDebug
             ("Data editor", Editor, null, true),
             ("Housing data", Housing, null, true),
             ("AtkReader", Reader, null, true),
-            ("Debug", Debug, null, true),
+            ("Debug".Loc(), Debug, null, true),
             ("Multipath", TabMultipath.Draw, null, true)
             );
     }
