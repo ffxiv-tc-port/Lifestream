@@ -1164,6 +1164,16 @@ internal static unsafe partial class Utils
             for(var i = 0; i < charaSpan.Length; i++)
             {
                 var s = charaSpan[i];
+                // 🔴 元素本身是可為 null 的指標(項目還沒填完就是 null),直接 s.Value->Name 是 AccessViolation。
+                // 🔴 但這裡不能用 continue 跳過:本清單的「索引」會被 DCChange.SelectCharacter 原封不動
+                // 當成 _CharaSelectListMenu 的角色索引送出去(Callback.Fire(addon, false, 29, 0, index)),
+                // 少一項就讓後面每個角色的索引往前位移一格 ⇒ 失敗形式是「登入到錯的角色」,比崩潰更糟。
+                // 填一個永遠不會被 IndexOf 命中的佔位項(空名字＋世界 0)來保住位置對齊。
+                if(s.Value == null)
+                {
+                    ret.Add(("", (ushort)0));
+                    continue;
+                }
                 ret.Add(($"{s.Value->Name.Read()}", s.Value->HomeWorldId));
             }
         }

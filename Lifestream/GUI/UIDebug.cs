@@ -678,9 +678,19 @@ internal static unsafe class UIDebug
         {
             if(TryGetAddonByName<AddonSelectYesno>("SelectYesno", out var addon))
             {
-                foreach(var x in addon->PromptText->NodeText.Read().Payloads)
+                // PromptText 是 addon 上的節點指標,節點還沒建好時是 null,
+                // 直接解參考 NodeText 就是 AccessViolation(try/catch 攔不到)。
+                // 這是使用者按按鈕觸發的除錯路徑,取不到就明講,不要安靜地什麼都不印。
+                if(addon->PromptText == null)
                 {
-                    PluginLog.Information($"Payload {x.Type}, text: {x.ToString()}");
+                    PluginLog.Information("PromptText 節點取不到（尚未建立）");
+                }
+                else
+                {
+                    foreach(var x in addon->PromptText->NodeText.Read().Payloads)
+                    {
+                        PluginLog.Information($"Payload {x.Type}, text: {x.ToString()}");
+                    }
                 }
             }
         }
@@ -778,7 +788,18 @@ internal static unsafe class UIDebug
                 {
                     var c = agent->LobbyData.CharaSelectEntries[i].Value;
                     ImGuiEx.Text($"Locked: {agent->TemporaryLocked}");
-                    ImGuiEx.Text($"{i}: {c->Name.Read()}/{c->HomeWorldName.Read()}");
+                    // CharaSelectEntries 的元素本身是可為 null 的指標(項目還沒填完就是 null),
+                    // 直接 c->Name.Read() 是 AccessViolation。
+                    // 這是每影格的 ImGui 繪製路徑,不寫 log；「取不到」直接畫在列上,
+                    // 不要靜默跳過整列害人以為角色少了一個。
+                    if(c == null)
+                    {
+                        ImGuiEx.Text($"{i}: (空項目)");
+                    }
+                    else
+                    {
+                        ImGuiEx.Text($"{i}: {c->Name.Read()}/{c->HomeWorldName.Read()}");
+                    }
                 }
             }
         }
