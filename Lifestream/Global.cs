@@ -22,6 +22,7 @@ global using System.Text;
 global using System.Threading.Tasks;
 global using static ECommons.GenericHelpers;
 global using static Lifestream.CSExtensions.AtkButtonSafety;
+global using static Lifestream.CSExtensions.AtkNodeSafety;
 global using static Lifestream.Lifestream;
 global using AddressBookFS = OtterGui.Filesystem.FileSystem<Lifestream.Data.AddressBookFolder>;
 global using CSFramework = FFXIVClientStructs.FFXIV.Client.System.Framework.Framework;

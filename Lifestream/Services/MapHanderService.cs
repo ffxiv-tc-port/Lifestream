@@ -56,8 +56,21 @@ public unsafe class MapHanderService : IDisposable
                     {
                         if(TryGetAddonByName<AtkUnitBase>("Tooltip", out var addonTooltip) && IsAddonReady(addonTooltip) && addonTooltip->IsVisible)
                         {
-                            var node = addonTooltip->UldManager.NodeList[2]->GetAsAtkTextNode();
-                            var text = GenericHelpers.ReadSeString(&node->NodeText).GetText();
+                            // 🔴 NodeList[2] 既沒驗 NodeListCount 上界也沒判元素,而 &node->NodeText
+                            // 對 null 節點不會當場崩:NodeText 在 AtkTextNode 偏移 0xC0,算出的毒指標
+                            // 0xC0 連 ReadSeString 內部的判空都騙得過去,直到真的去讀才炸。
+                            //
+                            // 🔴🔴 這裡**絕對不能**用「取不到就當空字串」帶過:下面自訂乙太網那段是
+                            // x.Name.StartsWith(text),空字串會對**每一個**地點成立 —— 讀取失敗會變成
+                            // 隨便挑一個地點傳送過去。讀不到就什麼都不做。
+                            if(!TryGetNodeText(addonTooltip, 2, out var text))
+                            {
+                                if(EzThrottler.Throttle("MapTooltipUnreadableLog", 5000))
+                                {
+                                    PluginLog.Information("[Map] Tooltip text node is unavailable; ignoring this map click.");
+                                }
+                                return;
+                            }
 
                             // 🔴 設定「點擊地圖上的乙太之光標記以快速傳送」原本是死的:全 repo 只有
                             // Config 的宣告與設定頁那個核取方塊,這裡從來沒讀過它 —— 使用者取消勾選

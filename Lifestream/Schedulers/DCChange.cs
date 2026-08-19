@@ -234,13 +234,22 @@ internal static unsafe class DCChange
         if(TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon) && IsAddonReady(addon))
         {
             var reader = new ReaderLobbyDKTWorldList(addon);
-            var cw = GenericHelpers.ReadSeString(&addon->UldManager.NodeList[13]->GetAsAtkTextNode()->NodeText).GetText();
+            // ⚠️ cw 讀了之後在本方法裡從來沒被用過(上游就是這樣)。沒有明確指示不回退既有行為,
+            // 所以保留這次讀取,只補上判空。
+            TryGetNodeText(addon, 13, out var cw);
             if(reader.SelectedDataCenter == name)
             {
                 PluginLog.Information($"SelectTargetDataCenter complete");
                 return true;
             }
-            var list = addon->UldManager.SearchNodeById(21)->GetAsAtkComponentNode();
+            // 🔴 SearchNodeById 找不到時回 null,而 GetAsAtkComponentNode() 是原生 member function
+            // (this 走 RCX),對 null 呼叫＝當場 AVE。Component(偏移 0xB0)也是可為 null 的指標欄位。
+            // 這裡刻意**不提早 return** —— 讓後面的 reader.Regions.Count == 0 → DCRethrottle 照跑,
+            // 控制流完全不變;取不到時 listUld 留 null,迴圈裡的 GetNodeSafe 自然一路跳過。
+            var listNode = addon->UldManager.SearchNodeById(21);
+            var list = listNode == null ? null : listNode->GetAsAtkComponentNode();
+            AtkUldManager* listUld = null;
+            if(list != null && list->Component != null) listUld = &list->Component->UldManager;
             var addonItem = 0;
             var listIndex = 3;
             var category = 0;
@@ -253,8 +262,10 @@ internal static unsafe class DCChange
                 {
                     if(dc.Name == name)
                     {
-                        var t = list->Component->UldManager.NodeList[listIndex]->GetAsAtkComponentNode()->Component->UldManager.NodeList[8]->GetAsAtkTextNode();
-                        if(t->AtkResNode.Alpha_2 == 255)
+                        // 🔴 五跳裸鏈。真正的炸點是下一行的 t->AtkResNode.Alpha_2 ——
+                        // 取節點那一行算出毒指標時不會崩,要到讀 Alpha_2／NodeText 才炸。
+                        var t = GetTextNodeSafe(GetComponentNodeSafe(GetNodeSafe(listUld, listIndex), 8));
+                        if(t != null && t->AtkResNode.Alpha_2 == 255)
                         {
                             var text = GenericHelpers.ReadSeString(&t->NodeText).GetText();
                             if(text == name && DCThrottle && EzThrottler.Throttle("SelectTargetDataCenter"))
@@ -285,17 +296,26 @@ internal static unsafe class DCChange
     {
         if(TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon) && IsAddonReady(addon))
         {
-            var cw = GenericHelpers.ReadSeString(&addon->UldManager.NodeList[10]->GetAsAtkTextNode()->NodeText).GetText();
+            // 🔴 讀不到目前世界名稱時**不能**往下比對(空字串比不中就會當成「還沒到」繼續操作,
+            // 但也可能反過來讓後面的清單掃描白跑)。回 false ＝ 這一輪不判定,下一輪重試,
+            // 與既有的「addon 尚未就緒」同一條路徑。
+            if(!TryGetNodeText(addon, 10, out var cw)) return false;
             if(cw == name || (C.DcvUseAlternativeWorld && cw.EqualsAny(PublicWorlds.Get(Utils.GetDataCenter(name).RowId).Select(w => w.Name.ToString()))))
             {
                 return true;
             }
-            var list = addon->UldManager.NodeList[6]->GetAsAtkComponentNode();
+            // 取不到清單時 listUld 留 null,兩個迴圈裡的 GetNodeSafe 會一路跳過 ——
+            // num 維持 0 ⇒ 照樣走到既有的 DCRethrottle 與 noAvailableWorldsAction,控制流不變。
+            var listNode = GetNodeSafe(&addon->UldManager, 6);
+            var list = listNode == null ? null : listNode->GetAsAtkComponentNode();
+            AtkUldManager* listUld = null;
+            if(list != null && list->Component != null) listUld = &list->Component->UldManager;
             var num = 0;
             for(var i = 3; i < 3 + 8; i++)
             {
-                var t = list->Component->UldManager.NodeList[i]->GetAsAtkComponentNode()->Component->UldManager.NodeList[8]->GetAsAtkTextNode();
-                if(t->AtkResNode.Alpha_2 == 255)
+                // 🔴 五跳裸鏈;炸點在下一行讀 Alpha_2 的時候,不是在取節點那一行。
+                var t = GetTextNodeSafe(GetComponentNodeSafe(GetNodeSafe(listUld, i), 8));
+                if(t != null && t->AtkResNode.Alpha_2 == 255)
                 {
                     var text = GenericHelpers.ReadSeString(&t->NodeText).GetText();
                     if(text != "") num++;
@@ -312,8 +332,9 @@ internal static unsafe class DCChange
             {
                 for(var i = 3; i < 3 + 8; i++)
                 {
-                    var t = list->Component->UldManager.NodeList[i]->GetAsAtkComponentNode()->Component->UldManager.NodeList[8]->GetAsAtkTextNode();
-                    if(t->AtkResNode.Alpha_2 == 255)
+                    // 🔴 同上(替代世界那一輪)。
+                    var t = GetTextNodeSafe(GetComponentNodeSafe(GetNodeSafe(listUld, i), 8));
+                    if(t != null && t->AtkResNode.Alpha_2 == 255)
                     {
                         var text = GenericHelpers.ReadSeString(&t->NodeText).GetText();
                         if(text != "") num++;
@@ -453,7 +474,10 @@ internal static unsafe class DCChange
         if(TryGetAddonByName<AddonSelectString>("SelectString", out var addon) && IsAddonReady(&addon->AtkUnitBase)
             && addon->AtkUnitBase.UldManager.NodeListCount >= 4)
         {
-            var text = GenericHelpers.ReadSeString(&addon->AtkUnitBase.UldManager.NodeList[3]->GetAsAtkTextNode()->NodeText).GetText();
+            // 上界(NodeListCount >= 4)原本就有,缺的是**元素判空**與 GetAsAtkTextNode 的 null this
+            // —— 兩者是不同的關卡,只做上界擋不住元素為 null。
+            // 讀不到就回 false(等下一輪),不要拿空字串去和 Lobby 表比對後選錯服務帳號。
+            if(!TryGetNodeText(&addon->AtkUnitBase, 3, out var text)) return false;
             var compareTo = Svc.Data.GetExcelSheet<Lobby>()?.GetRow(11).Text.ToString();
             if(text == compareTo)
             {

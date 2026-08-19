@@ -1519,8 +1519,10 @@ internal static unsafe partial class Utils
                 if(addon == null) return null;
                 if(IsAddonReady(addon))
                 {
-                    var textNode = addon->UldManager.NodeList[15]->GetAsAtkTextNode();
-                    var text = GenericHelpers.ReadSeString(&textNode->NodeText).GetText().Replace(" ", "");
+                    // 讀不到就跳過這個 SelectYesno 繼續往下掃(fail-closed):
+                    // 不能拿空字串去比對,否則「讀不到」會被誤判成「內容為空的相符」而按下確認。
+                    if(!TryGetNodeText(addon, 15, out var rawText)) continue;
+                    var text = rawText.Replace(" ", "");
                     if(contains ?
                         text.ContainsAny(s.Select(x => x.Replace(" ", "")))
                         : text.EqualsAny(s.Select(x => x.Replace(" ", "")))
@@ -1547,8 +1549,10 @@ internal static unsafe partial class Utils
             List<string> arr = [];
             for(var i = 3; i <= 9; i++)
             {
-                var item = addon->UldManager.NodeList[4]->GetAsAtkComponentNode()->Component->UldManager.NodeList[i];
-                var text = GenericHelpers.ReadSeString(&item->GetAsAtkComponentNode()->Component->UldManager.NodeList[4]->GetAsAtkTextNode()->NodeText).GetText();
+                // 🔴 原本是六跳裸鏈。取不到就 break ＝ 與既有的「空字串代表清單到底了」同一條路徑,
+                // 回傳截短的清單(fail-closed:少列出目的地只會讓人手動處理,列出錯的才會傳錯地方)。
+                var item = GetComponentNodeSafe(addon, 4, i);
+                if(!TryGetNodeText(GetComponentNodeSafe(item, 4), out var text)) break;
                 if(text == "") break;
                 arr.Add(text);
             }
@@ -1564,8 +1568,11 @@ internal static unsafe partial class Utils
             List<string> arr = [];
             for(var i = 1; i <= 52; i++)
             {
-                var item = addon->UldManager.NodeList[16]->GetAsAtkComponentNode()->Component->UldManager.NodeList[i];
-                var text = GenericHelpers.ReadSeString(&item->GetAsAtkComponentNode()->Component->UldManager.NodeList[3]->GetAsAtkTextNode()->NodeText).GetText().Trim();
+                // 🔴 同上的六跳裸鏈;這裡的迴圈上限 52 也完全沒對 NodeListCount 驗過 ——
+                // GetComponentNodeSafe 會把上界與元素判空一起做掉。
+                var item = GetComponentNodeSafe(addon, 16, i);
+                if(!TryGetNodeText(GetComponentNodeSafe(item, 3), out var rawText)) break;
+                var text = rawText.Trim();
                 if(text == "") break;
                 arr.Add(text);
             }
