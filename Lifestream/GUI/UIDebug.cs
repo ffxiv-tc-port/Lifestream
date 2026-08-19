@@ -877,7 +877,14 @@ internal static unsafe class UIDebug
                 if(TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon) && ImGui.Button("Try event"))
                 {
                     //S.Memory.ConstructEvent(addon);
-                    ImGuiEx.Text($"PTR: {(nint)(addon->UldManager.NodeList[7]->GetAsAtkComponentList() + 456):X16}");
+                    // 🔴 NodeList[7] 上界與元素都沒驗;GetAsAtkComponentList() 是 [MemberFunction],
+                    //    對 null 節點呼叫等於把 this = 0 交給遊戲原生碼。
+                    //    取不到就顯示 "?" —— 這是診斷欄,把「不知道」畫成一個位址會直接誤導判讀。
+                    //    ⚠️ `+ 456` 是**指標運算**(456 × sizeof(AtkComponentList))而不是位元組偏移,
+                    //    看起來很可疑;但這一行只是把數字印出來、從來沒有解參考,所以維持原樣不動。
+                    var dktNode = GetNodeSafe(&addon->UldManager, 7);
+                    var dktList = dktNode == null ? null : dktNode->GetAsAtkComponentList();
+                    ImGuiEx.Text($"PTR: {(dktList == null ? "?" : $"{(nint)(dktList + 456):X16}")}");
                 }
             }
             if(ImGui.Button($"{nameof(DCChange.Logout)}")) PluginLog.Information($"{DCChange.Logout()}");
@@ -925,12 +932,22 @@ internal static unsafe class UIDebug
     {
         if(TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon) && IsAddonReady(addon))
         {
-            var list = addon->UldManager.NodeList[6]->GetAsAtkComponentNode();
+            // 🔴 這裡有兩個不同的問題:
+            //    ①六跳裸鏈(NodeList[6] → Component → NodeList[i] → Component → NodeList[8] → 文字節點),
+            //      上界與元素全程沒驗;真正的炸點是下面讀/寫 Alpha_2 那兩行,不是取節點那一行。
+            //    ②addon->AtkValues[160 + …] 是**寫入**,而陣列長度是 AtkValuesCount(ushort),
+            //      原本連上界都沒看 —— 越界寫比越界讀更糟,踩到的是相鄰的原生記憶體,
+            //      失敗形式是別的地方莫名其妙壞掉,完全指不回這一行。
+            //    取不到就跳過該筆(這是除錯用的「解鎖全部世界」按鈕,少改一筆的代價只是沒解鎖)。
             for(var i = 3; i < 3 + 8; i++)
             {
-                addon->AtkValues[160 + (i - 3) * 8].Int = 0;
-                var t = list->Component->UldManager.NodeList[i]->GetAsAtkComponentNode()->Component->UldManager.NodeList[8]->GetAsAtkTextNode();
-                if(t->Alpha_2 != 255)
+                var valueIndex = 160 + (i - 3) * 8;
+                if(addon->AtkValues != null && valueIndex < addon->AtkValuesCount)
+                {
+                    addon->AtkValues[valueIndex].Int = 0;
+                }
+                var t = GetTextNodeSafe(GetComponentNodeSafe(GetComponentNodeSafe(addon, 6, i), 8));
+                if(t != null && t->Alpha_2 != 255)
                 {
                     t->Alpha_2 = 255;
                 }

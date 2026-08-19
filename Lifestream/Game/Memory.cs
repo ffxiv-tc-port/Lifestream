@@ -106,13 +106,30 @@ public unsafe class Memory : IDisposable
     internal void ConstructEvent(AtkUnitBase* addon, int category, int which, int nodeIndex, int itemToSelect, int itemToHighlight)
     {
         if(itemToSelect == 0) throw new Exception("Enumeration starts with 1");
+        // 🔴 nodeIndex 這條鏈原本從頭到尾零判空,而且是「合成事件送進遊戲原生碼」的路徑,
+        //    錯的指標不是崩在這裡就是崩在遊戲裡:
+        //    ①NodeList[nodeIndex] 上界沒驗 —— 越界讀到的是相鄰記憶體而不是 null,
+        //      Target 於是變成一個看起來合法的垃圾指標,直接交給 ReceiveEvent。
+        //    ②GetAsAtkComponentNode() 是 [MemberFunction],對 null 節點呼叫＝把 this = 0
+        //      交給原生碼(AVE 是 corrupted-state exception,try/catch 攔不到)。
+        //    ③&...->Component->AtkEventListener 是取位址不是解參考:Component 為 null 時
+        //      **不會當場崩**,而是靜默算出毒指標交給遊戲 —— 崩潰現場指不到這一行。
+        //    取不到就整個不送事件直接 return:呼叫端(DCChange 的世界/資料中心選取)在這之後
+        //    一律 DCRethrottle() 並 return false,也就是下一輪重試,不會被當成已經選好了。
+        var listNode = GetNodeSafe(addon == null ? null : &addon->UldManager, nodeIndex);
+        var listComponentNode = listNode == null ? null : listNode->GetAsAtkComponentNode();
+        if(listComponentNode == null || listComponentNode->Component == null)
+        {
+            PluginLog.Information($"ConstructEvent: NodeList[{nodeIndex}] 的清單元件取不到(版面未建好或已拆除),這一輪不送事件");
+            return;
+        }
         var Event = stackalloc AtkEvent[1]
         {
             new AtkEvent()
             {
                 Node = null,
-                Target = (AtkEventTarget*)addon->UldManager.NodeList[nodeIndex],
-                Listener = &addon->UldManager.NodeList[nodeIndex]->GetAsAtkComponentNode()->Component->AtkEventListener,
+                Target = (AtkEventTarget*)listNode,
+                Listener = &listComponentNode->Component->AtkEventListener,
                 Param = 1,
                 NextEvent = null,
                 State = new()
@@ -146,7 +163,18 @@ public unsafe class Memory : IDisposable
             }
         };
         AddonDKTWorldList_ReceiveEventDetour((nint)addon, 35, which, Event, Data);
-        AtkComponentTreeList_vf31Detour((nint)addon->UldManager.NodeList[nodeIndex]->GetAsAtkComponentList(), (uint)itemToHighlight, 0);
+        // 🔴 原本直接把 GetAsAtkComponentList() 的回值(可能是 null)當 this 傳進 vf31 ——
+        //    那支原生函式第一件事就是解參考 a1。
+        //    ⚠️ 這裡刻意只跳過「反白」這一步而不是連上面的選取事件一起擋掉:
+        //    GetAsAtkComponentList() 對「型別不是 List 的元件」本來就可能合法地回 null,
+        //    把它當成整個 ConstructEvent 的前置條件等於順手收緊既有行為。
+        var treeList = listNode->GetAsAtkComponentList();
+        if(treeList == null)
+        {
+            PluginLog.Information($"ConstructEvent: NodeList[{nodeIndex}] 取不到 AtkComponentList,略過反白(選取事件已送出)");
+            return;
+        }
+        AtkComponentTreeList_vf31Detour((nint)treeList, (uint)itemToHighlight, 0);
     }
 
     internal Memory()
