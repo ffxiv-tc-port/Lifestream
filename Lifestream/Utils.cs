@@ -1112,13 +1112,18 @@ internal static unsafe partial class Utils
 
     internal static bool CanAutoLogin()
     {
-        return !Svc.ClientState.IsLoggedIn
-            && !Svc.Condition.Any()
-            && TryGetAddonByName<AtkUnitBase>("_TitleMenu", out var title)
-            && IsAddonReady(title)
-            && title->UldManager.NodeListCount > 3
-            && title->UldManager.NodeList[3]->Color.A == 0xFF
-            && !TryGetAddonByName<AtkUnitBase>("TitleDCWorldMap", out _)
+        if(Svc.ClientState.IsLoggedIn || Svc.Condition.Any()) return false;
+        if(!TryGetAddonByName<AtkUnitBase>("_TitleMenu", out var title) || !IsAddonReady(title)) return false;
+        if(title->UldManager.NodeListCount <= 3) return false;
+
+        // 🔴 上界與元素判空是兩件事（見 AtkNodeSafety 的說明）：索引在範圍內時 NodeList[3]
+        //    仍然可能是 null，->Color 是對 null 加偏移後讀取，AVE 在 .NET Core 是
+        //    corrupted-state exception，try/catch 攔不到。
+        //    GetNodeSafe 的上界條件與上面那行等價（index 3 需要 NodeListCount > 3），上界維持不變。
+        var titleNode = GetNodeSafe(&title->UldManager, 3);
+        if(titleNode == null || titleNode->Color.A != 0xFF) return false;
+
+        return !TryGetAddonByName<AtkUnitBase>("TitleDCWorldMap", out _)
             && !TryGetAddonByName<AtkUnitBase>("TitleConnect", out _);
     }
 
