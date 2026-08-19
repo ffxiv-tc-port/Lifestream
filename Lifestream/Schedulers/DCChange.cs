@@ -296,10 +296,11 @@ internal static unsafe class DCChange
     {
         if(TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon) && IsAddonReady(addon))
         {
-            // 🔴 讀不到目前世界名稱時**不能**往下比對(空字串比不中就會當成「還沒到」繼續操作,
-            // 但也可能反過來讓後面的清單掃描白跑)。回 false ＝ 這一輪不判定,下一輪重試,
-            // 與既有的「addon 尚未就緒」同一條路徑。
-            if(!TryGetNodeText(addon, 10, out var cw)) return false;
+            // cw 讀不到時**刻意不提早 return**:回 false 會把下面整段清單掃描與
+            // noAvailableWorldsAction 一起跳掉,而「讀不到目前世界名稱」不代表沒事可做 ——
+            // 掃清單本來就能找到目標世界並選下去。讀不到就留空字串,
+            // 讓 cw == name 單純比不中(＝「還沒確認到站」),控制流與原本一字不差。
+            TryGetNodeText(addon, 10, out var cw);
             if(cw == name || (C.DcvUseAlternativeWorld && cw.EqualsAny(PublicWorlds.Get(Utils.GetDataCenter(name).RowId).Select(w => w.Name.ToString()))))
             {
                 return true;
