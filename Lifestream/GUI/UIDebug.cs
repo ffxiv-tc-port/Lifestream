@@ -720,8 +720,10 @@ internal static unsafe class UIDebug
         }
         if(ImGui.CollapsingHeader("Instance"))
         {
+            // MaxInstances 的 StaticAddress sig 在台服掃不到時欄位為 null,裸解參考會擲例外。
+            // 除錯視窗顯示「N/A」而不是崩掉(把「不知道」畫成看似正常的值也會誤導看視窗的人)。
             ImGuiEx.Text($"""
-                Max instances: {*S.Memory.MaxInstances}
+                Max instances: {(S.Memory.MaxInstances == null ? "N/A (sig unresolved)" : (*S.Memory.MaxInstances).ToString())}
                 Initialized: {S.InstanceHandler.InstancesInitizliaed(out var maxInstances)} {maxInstances}
                 GetInstance: {S.InstanceHandler.GetInstance()}
                 DrawConditions: {S.Gui.Overlay.DrawConditions()}

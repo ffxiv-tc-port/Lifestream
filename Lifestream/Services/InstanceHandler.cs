@@ -48,6 +48,18 @@ public unsafe class InstanceHandler : IDisposable
             var inst = CountInstanceEntries(m);
             if(inst < 2 || inst > 9)
             {
+                // MaxInstances 是 Fallibility.Fallible 的 StaticAddress sig。台服執行檔上這條目前掃不到
+                // (實機 WRN「Failed to find StaticAddress signature MaxInstances」)⇒ 欄位停在 null。
+                // 裸解參考 null int* 會讀位址 0(<0x10000 屬 NRE,會被 AddonLifecycle 攔,但每逢選單數量
+                // 異常就擲一次,是缺陷)。沒有可用的靜態 fallback 時,走與「fallback 落在合理值域外」
+                // 完全相同的路徑:節流警告後放棄本輪。
+                // 🔑 主來源 CountInstanceEntries(選單計數)不受此守衛影響——它才是可靠來源(見上方 :47 註解),
+                //    守衛只作用在「主來源已經數不出合理值」的 fallback 分支,不改變主邏輯行為。
+                if(S.Memory.MaxInstances == null)
+                {
+                    if(EzThrottler.Throttle("InstanceWarning", 5000)) PluginLog.Warning($"Instance count is wrong, entries {inst} / static unavailable (MaxInstances 特徵碼未解析), please report to developer");
+                    return;
+                }
                 var fallback = *S.Memory.MaxInstances;
                 if(fallback >= 2 && fallback <= 9)
                 {
