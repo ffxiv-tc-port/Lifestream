@@ -10,6 +10,9 @@ using Lifestream.Tasks.SameWorld;
 namespace Lifestream.Services;
 public unsafe class InstanceHandler : IDisposable
 {
+    // 已印過的 (territory, MaxInstances 讀值) 組合,避免每次開分線選單重複洗版(每個新觀察只印一次)。
+    private readonly HashSet<long> _loggedMaxInstances = [];
+
     private InstanceHandler()
     {
         Svc.AddonLifecycle.RegisterListener(AddonEvent.PostUpdate, "SelectString", OnPostUpdate);
@@ -46,6 +49,22 @@ public unsafe class InstanceHandler : IDisposable
             // 分線數量優先「數選單裡的分線項目」——這是遊戲實際列出來的清單,
             // 比上游只讀靜態位址 (*S.Memory.MaxInstances) 可靠(上游會偶發 "Instance count is wrong")。
             var inst = CountInstanceEntries(m);
+
+            // [MaxInstances 語意驗證診斷] 候選 sig 0x14294D1C0 的執行期語意存疑(疑似 telemetry),靠實機自證:
+            // sig 命中(欄位非 null)時,讀取「下方 fallback 本來就會讀的同一個 sig 解析位址」,與可靠的選單計數 inst
+            // 對照後印一行 Information(使用者跑 LogLevel 2 收得到):
+            //   讀到值落 1~9 且與選單計數相符 => sig 語意正確,可定案;
+            //   天文數字 / 0 / 與選單計數明顯不符 => 語意錯,保留判空 fallback(不採信這個位址)。
+            // 只讀 sig 解析出的那一個位址、不碰任何相鄰位址,是外掛自己分線偵測路徑上的被動讀取,不是主動記憶體探測。
+            // fail-closed:欄位為 null(sig 未命中)時整段跳過。節流:每個 (territory, 讀到值) 組合只印一次。
+            if(S.Memory.MaxInstances != null)
+            {
+                var maxRaw = *S.Memory.MaxInstances;
+                var key = ((long)P.Territory << 32) | (uint)maxRaw;
+                if(_loggedMaxInstances.Add(key))
+                    PluginLog.Information($"[MaxInstances驗證] territory={P.Territory} sig命中 讀到值={maxRaw} 選單計數={inst} (預期兩者相符且落 1~9)");
+            }
+
             if(inst < 2 || inst > 9)
             {
                 // MaxInstances 是 Fallibility.Fallible 的 StaticAddress sig。台服執行檔上這條目前掃不到

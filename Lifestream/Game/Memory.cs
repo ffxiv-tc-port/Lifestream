@@ -19,7 +19,14 @@ public unsafe class Memory : IDisposable
     [Signature("48 89 5C 24 ?? 48 89 74 24 ?? 57 48 83 EC 20 8B DA 41 0F B6 F0", DetourName = nameof(AtkComponentTreeList_vf31Detour), Fallibility = Fallibility.Fallible)]
     internal Hook<AtkComponentTreeList_vf31> AtkComponentTreeList_vf31Hook;
 
-    [Signature("4C 8D 0D ?? ?? ?? ?? 4C 8B 11 48 8B D9", ScanType = ScanType.StaticAddress, Fallibility = Fallibility.Fallible)]
+    // MaxInstances(當前分線區的分線總數)靜態位址。
+    // 上游 sig "4C 8D 0D ?? ?? ?? ?? 4C 8B 11 48 8B D9" 在台服 7.20 執行檔上 0 命中(已離線驗證)。
+    // 下面這條是離線重新定位到的候選 sig,在台服執行檔唯一命中,解析出的靜態位址 = 0x14294D1C0
+    // (lea r9,[rip+0x1e0a7bc] @ 0x140B429FD;ScanType.StaticAddress 走 iced 解 lea 的 MemoryDisplacement64,與上游同形)。
+    // 執行期語意仍待實機自證,見 InstanceHandler.OnPostUpdate 的 [MaxInstances驗證] 診斷。
+    // fail-closed:維持 Fallibility.Fallible —— sig 掃不到時欄位停在 null(default(int*)),
+    //   消費端(InstanceHandler / UIDebug)的判空 fallback 照舊生效,不因填了 sig 而移除那道防護。
+    [Signature("4C 8D 0D ?? ?? ?? ?? 4C 8B 11 44 0F B7 41 78 48 8B 91 80 00 00 00", ScanType = ScanType.StaticAddress, Fallibility = Fallibility.Fallible)]
     internal int* MaxInstances;
 
     internal delegate byte OpenPartyFinderInfoDelegate(void* agentLfg, ulong contentId);
