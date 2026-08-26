@@ -30,6 +30,9 @@ public class Overlay : Window
 
     public override void PreDraw()
     {
+        // base.PreDraw() 承載 Dalamud 的每視窗不透明度(PushStyleVar(Alpha)),
+        // 漏掉它會讓該功能靜默失效;自家的 style push 一律排在它之後。
+        base.PreDraw();
         if(C.FixedPosition)
         {
             ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new Vector2(GetBasePosX(), GetBasePosY()) + C.Offset);
@@ -46,6 +49,8 @@ public class Overlay : Window
         {
             ImGui.PopStyleVar();
         }
+        // 自家的 pop 做完才輪到 base.PostDraw() 收掉不透明度的 PushStyleVar。
+        base.PostDraw();
     }
 
     private float GetBasePosX()

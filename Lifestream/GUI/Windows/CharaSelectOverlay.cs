@@ -209,6 +209,8 @@ public unsafe class CharaSelectOverlay : EzOverlayWindow
 
         public override void PreDraw()
         {
+            // base.PreDraw() 承載每視窗不透明度的 PushStyleVar(Alpha);自家的 style push 排在它之後。
+            base.PreDraw();
             ImGuiHelpers.SetNextWindowPosRelativeMainViewport(Vector2.Zero);
             ImGui.SetNextWindowSize(ImGuiHelpers.MainViewport.Size);
             ImGui.PushStyleColor(ImGuiCol.WindowBg, ImGuiEx.Vector4FromRGBA(0x000000AA));
@@ -223,6 +225,8 @@ public unsafe class CharaSelectOverlay : EzOverlayWindow
         public override void PostDraw()
         {
             ImGui.PopStyleColor();
+            // 自家的 pop 做完才輪到 base.PostDraw() 收掉不透明度的 PushStyleVar。
+            base.PostDraw();
         }
     }
 }

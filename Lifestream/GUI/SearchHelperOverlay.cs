@@ -186,6 +186,8 @@ public unsafe class SearchHelperOverlay : Window
 
     public override void PreDraw()
     {
+        // base.PreDraw() 承載每視窗不透明度的 PushStyleVar(Alpha);自家的 style push 排在它之後。
+        base.PreDraw();
         if(C.AutoCompletionFixedWindow)
         {
             ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new(
@@ -214,6 +216,8 @@ public unsafe class SearchHelperOverlay : Window
     {
         ImGui.PopStyleVar(3);
         ImGui.PopStyleColor(2);
+        // 自家的 pop 做完才輪到 base.PostDraw() 收掉不透明度的 PushStyleVar。
+        base.PostDraw();
     }
 
     public override void Draw()

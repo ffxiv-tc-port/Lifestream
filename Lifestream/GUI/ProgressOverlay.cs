@@ -44,6 +44,9 @@ public class ProgressOverlay : Window
 
     public override void PreDraw()
     {
+        // 漏 base.PreDraw() 會讓 Dalamud 的每視窗不透明度靜默失效(本類沒有 override PostDraw,
+        // base.PostDraw 本來就會跑,所以只缺這一邊)。
+        base.PreDraw();
         SizeConstraints = new()
         {
             MinimumSize = new(ImGuiHelpers.MainViewport.Size.X, 0),
