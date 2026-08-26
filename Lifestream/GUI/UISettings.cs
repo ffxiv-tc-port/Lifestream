@@ -17,7 +17,7 @@ internal static unsafe class UISettings
     private static string AddNew = "";
     internal static void Draw()
     {
-        NuiTools.ButtonTabs([[new("General", () => Wrapper(DrawGeneral)), new("Overlay", () => Wrapper(DrawOverlay))], [new("Expert", () => Wrapper(DrawExpert)), new("Service Accounts", () => Wrapper(UIServiceAccount.Draw)), new("Travel Block", TabTravelBan.Draw)]]);
+        NuiTools.ButtonTabs([[new("General".Loc(), () => Wrapper(DrawGeneral)), new("Overlay".Loc(), () => Wrapper(DrawOverlay))], [new("Expert".Loc(), () => Wrapper(DrawExpert)), new("Service Accounts".Loc(), () => Wrapper(UIServiceAccount.Draw)), new("Travel Block".Loc(), TabTravelBan.Draw)]]);
     }
 
     private static void Wrapper(Action action)
@@ -29,52 +29,52 @@ internal static unsafe class UISettings
     private static void DrawGeneral()
     {
         new NuiBuilder()
-        .Section("Teleport Configuration")
+        .Section("Teleport Configuration".Loc())
         .Widget(() =>
         {
             ImGui.SetNextItemWidth(200f.Scale());
-            ImGuiEx.EnumCombo($"Teleport world change gateway", ref C.WorldChangeAetheryte, Lang.WorldChangeAetherytes);
-            ImGuiEx.HelpMarker($"Where would you like to teleport for world changes");
-            ImGui.Checkbox($"Teleport to specific aethernet destination after world/dc visit", ref C.WorldVisitTPToAethernet);
+            ImGuiEx.EnumCombo("Teleport world change gateway".Loc(), ref C.WorldChangeAetheryte, Lang.WorldChangeAetherytes);
+            ImGuiEx.HelpMarker("Where would you like to teleport for world changes".Loc());
+            ImGui.Checkbox("Teleport to specific aethernet destination after world/dc visit".Loc(), ref C.WorldVisitTPToAethernet);
             if(C.WorldVisitTPToAethernet)
             {
                 ImGui.Indent();
                 ImGui.SetNextItemWidth(250f.Scale());
-                ImGui.InputText("Aethernet destination, as if you'd use in \"/li\" command", ref C.WorldVisitTPTarget, 50);
-                ImGui.Checkbox($"Only teleport from command but not from overlay", ref C.WorldVisitTPOnlyCmd);
+                ImGui.InputText("Aethernet destination, as if you'd use in \"/li\" command".Loc(), ref C.WorldVisitTPTarget, 50);
+                ImGui.Checkbox("Only teleport from command but not from overlay".Loc(), ref C.WorldVisitTPOnlyCmd);
                 ImGui.Unindent();
             }
-            ImGui.Checkbox($"Add firmament location into Foundation aetheryte", ref C.Firmament);
-            ImGui.Checkbox($"Automatically leave non cross-world party upon changing world", ref C.LeavePartyBeforeWorldChange);
-            ImGui.Checkbox($"Show teleport destination in chat", ref C.DisplayChatTeleport);
-            ImGui.Checkbox($"Show teleport destination in popup notifications", ref C.DisplayPopupNotifications);
-            ImGui.Checkbox("Retry same-world failed world visits", ref C.RetryWorldVisit);
+            ImGui.Checkbox("Add firmament location into Foundation aetheryte".Loc(), ref C.Firmament);
+            ImGui.Checkbox("Automatically leave non cross-world party upon changing world".Loc(), ref C.LeavePartyBeforeWorldChange);
+            ImGui.Checkbox("Show teleport destination in chat".Loc(), ref C.DisplayChatTeleport);
+            ImGui.Checkbox("Show teleport destination in popup notifications".Loc(), ref C.DisplayPopupNotifications);
+            ImGui.Checkbox("Retry same-world failed world visits".Loc(), ref C.RetryWorldVisit);
             ImGui.Indent();
             ImGui.SetNextItemWidth(100f.Scale());
-            ImGui.InputInt("Interval between retries, seconds##2", ref C.RetryWorldVisitInterval.ValidateRange(1, 120));
+            ImGui.InputInt("Interval between retries, seconds".Loc() + "##2", ref C.RetryWorldVisitInterval.ValidateRange(1, 120));
             ImGui.SameLine();
-            ImGuiEx.Text("+ up to");
+            ImGuiEx.Text("+ up to".Loc());
             ImGui.SameLine();
             ImGui.SetNextItemWidth(100f.Scale());
-            ImGui.InputInt("seconds##2", ref C.RetryWorldVisitIntervalDelta.ValidateRange(0, 120));
-            ImGuiEx.HelpMarker("To make it appear less bot-like");
+            ImGui.InputInt("seconds".Loc() + "##2", ref C.RetryWorldVisitIntervalDelta.ValidateRange(0, 120));
+            ImGuiEx.HelpMarker("To make it appear less bot-like".Loc());
             ImGui.Unindent();
             //ImGui.Checkbox("Use Return instead of Teleport when possible", ref C.UseReturn);
             //ImGuiEx.HelpMarker("This includes any IPC calls");
-            ImGui.Checkbox("Enable tray notifications upon travel completion", ref C.EnableNotifications);
+            ImGui.Checkbox("Enable tray notifications upon travel completion".Loc(), ref C.EnableNotifications);
             ImGuiEx.PluginAvailabilityIndicator([new("NotificationMaster")]);
         })
 
-        .Section("Shortcuts")
+        .Section("Shortcuts".Loc())
         .Widget(() =>
         {
             ImGui.SetNextItemWidth(200f.Scale());
-            ImGuiEx.EnumCombo("\"/li\" command behavior", ref C.LiCommandBehavior);
-            ImGui.Checkbox("When teleporting to your own apartment, enter inside", ref C.EnterMyApartment);
+            ImGuiEx.EnumCombo("\"/li\" command behavior".Loc(), ref C.LiCommandBehavior);
+            ImGui.Checkbox("When teleporting to your own apartment, enter inside".Loc(), ref C.EnterMyApartment);
             ImGui.SetNextItemWidth(150f.Scale());
-            ImGuiEx.EnumCombo("When teleporting to your/fc house, perform this action", ref C.HouseEnterMode);
+            ImGuiEx.EnumCombo("When teleporting to your/fc house, perform this action".Loc(), ref C.HouseEnterMode);
             ImGui.SetNextItemWidth(150f.Scale());
-            if(ImGui.BeginCombo("Preferred Inn", Utils.GetInnNameFromTerritory(C.PreferredInn), ImGuiComboFlags.HeightLarge))
+            if(ImGui.BeginCombo("Preferred Inn".Loc(), Utils.GetInnNameFromTerritory(C.PreferredInn), ImGuiComboFlags.HeightLarge))
             {
                 foreach(var x in (uint[])[0, .. TaskPropertyShortcut.InnData.Keys])
                 {
@@ -88,23 +88,23 @@ internal static unsafe class UISettings
                 var pref = C.PreferredSharedEstates.SafeSelect(Player.CID);
                 var name = pref switch
                 {
-                    (0, 0, 0) => "First available",
-                    (-1, 0, 0) => "Disable",
+                    (0, 0, 0) => "First available".Loc(),
+                    (-1, 0, 0) => "Disable".Loc(),
                     _ => $"{ExcelTerritoryHelper.GetName((uint)pref.Territory)}, W{pref.Ward}, P{pref.Plot}"
                 };
-                if(ImGui.BeginCombo($"Preferred shared estate for {Player.NameWithWorld}", name))
+                if(ImGui.BeginCombo("Preferred shared estate for ??".Loc(Player.NameWithWorld), name))
                 {
                     foreach(var x in Svc.AetheryteList.Where(x => x.IsSharedHouse))
                     {
-                        if(ImGui.RadioButton("First available", pref == default))
+                        if(ImGui.RadioButton("First available".Loc(), pref == default))
                         {
                             C.PreferredSharedEstates.Remove(Player.CID);
                         }
-                        if(ImGui.RadioButton("Disable", pref == (-1, 0, 0)))
+                        if(ImGui.RadioButton("Disable".Loc(), pref == (-1, 0, 0)))
                         {
                             C.PreferredSharedEstates[Player.CID] = (-1, 0, 0);
                         }
-                        if(ImGui.RadioButton($"{ExcelTerritoryHelper.GetName(x.TerritoryId)}, Ward {x.Ward}, Plot {x.Plot}", pref == ((int)x.TerritoryId, x.Ward, x.Plot)))
+                        if(ImGui.RadioButton("??, Ward ??, Plot ??".Loc(ExcelTerritoryHelper.GetName(x.TerritoryId), x.Ward, x.Plot), pref == ((int)x.TerritoryId, x.Ward, x.Plot)))
                         {
                             C.PreferredSharedEstates[Player.CID] = ((int)x.TerritoryId, x.Ward, x.Plot);
                         }
@@ -113,9 +113,9 @@ internal static unsafe class UISettings
                 }
             }
             ImGui.Separator();
-            ImGuiEx.Text("\"/li auto\" command priority:");
+            ImGuiEx.Text("\"/li auto\" command priority:".Loc());
             ImGui.SameLine();
-            if(ImGui.SmallButton("Reset")) C.PropertyPrio.Clear();
+            if(ImGui.SmallButton("Reset".Loc())) C.PropertyPrio.Clear();
             var dragDrop = Ref<ImGuiEx.RealtimeDragDrop<AutoPropertyData>>.Get(() => new("apddd", x => x.Type.ToString()));
             C.PropertyPrio.AddRange(Enum.GetValues<TaskPropertyShortcut.PropertyType>().Where(x => x != TaskPropertyShortcut.PropertyType.Auto && !C.PropertyPrio.Any(s => s.Type == x)).Select(x => new AutoPropertyData(false, x)));
             dragDrop.Begin();
@@ -133,123 +133,123 @@ internal static unsafe class UISettings
             ImGui.Separator();
         })
 
-        .Section("Map Integration")
+        .Section("Map Integration".Loc())
         .Widget(() =>
         {
-            ImGui.Checkbox("Click Aethernet Shard on map for quick teleport", ref C.UseMapTeleport);
-            ImGui.Checkbox("Only process when next to aetheryte in the same map", ref C.DisableMapClickOtherTerritory);
+            ImGui.Checkbox("Click Aethernet Shard on map for quick teleport".Loc(), ref C.UseMapTeleport);
+            ImGui.Checkbox("Only process when next to aetheryte in the same map".Loc(), ref C.DisableMapClickOtherTerritory);
         })
 
-        .Section("Command completion")
+        .Section("Command completion".Loc())
         .Widget(() =>
         {
-            ImGuiEx.Text($"Suggest autocompletion when typing Lifestream commands in chat");
-            ImGui.Checkbox("Enable", ref C.EnableAutoCompletion);
-            ImGui.Checkbox("Display popup window at fixed position", ref C.AutoCompletionFixedWindow);
+            ImGuiEx.Text("Suggest autocompletion when typing Lifestream commands in chat".Loc());
+            ImGui.Checkbox("Enable".Loc(), ref C.EnableAutoCompletion);
+            ImGui.Checkbox("Display popup window at fixed position".Loc(), ref C.AutoCompletionFixedWindow);
             ImGui.Indent();
             ImGui.SetNextItemWidth(200f.Scale());
-            ImGui.DragFloat2("Position", ref C.AutoCompletionWindowOffset, 1f);
-            ImGuiEx.RadioButtonBool("From bottom", "From top", ref C.AutoCompletionWindowBottom, sameLine: true, inverted: true);
-            ImGuiEx.RadioButtonBool("From right", "From left", ref C.AutoCompletionWindowRight, sameLine: true, inverted: true);
+            ImGui.DragFloat2("Position".Loc(), ref C.AutoCompletionWindowOffset, 1f);
+            ImGuiEx.RadioButtonBool("From bottom".Loc(), "From top".Loc(), ref C.AutoCompletionWindowBottom, sameLine: true, inverted: true);
+            ImGuiEx.RadioButtonBool("From right".Loc(), "From left".Loc(), ref C.AutoCompletionWindowRight, sameLine: true, inverted: true);
             ImGui.Unindent();
         })
 
-        .Section("Cross-Datacenter")
+        .Section("Cross-Datacenter".Loc())
         .Widget(() =>
         {
-            ImGui.Checkbox($"Allow travelling to another data center", ref C.AllowDcTransfer);
-            ImGui.Checkbox($"Leave party before switching data center", ref C.LeavePartyBeforeLogout);
-            ImGui.Checkbox($"Teleport to gateway aetheryte before switching data center if not in sanctuary", ref C.TeleportToGatewayBeforeLogout);
-            ImGui.Checkbox($"Teleport to gateway aetheryte after completing data center travel", ref C.DCReturnToGateway);
-            ImGui.Checkbox($"Allow alternative world during DC transfer", ref C.DcvUseAlternativeWorld);
-            ImGuiEx.HelpMarker("If destination world isn't available but some other world on targeted data center is, it will be selected instead. Normal world visit will be enqueued after logging in.");
-            ImGui.Checkbox($"Retry data center transfer if destination world is not available", ref C.EnableDvcRetry);
+            ImGui.Checkbox("Allow travelling to another data center".Loc(), ref C.AllowDcTransfer);
+            ImGui.Checkbox("Leave party before switching data center".Loc(), ref C.LeavePartyBeforeLogout);
+            ImGui.Checkbox("Teleport to gateway aetheryte before switching data center if not in sanctuary".Loc(), ref C.TeleportToGatewayBeforeLogout);
+            ImGui.Checkbox("Teleport to gateway aetheryte after completing data center travel".Loc(), ref C.DCReturnToGateway);
+            ImGui.Checkbox("Allow alternative world during DC transfer".Loc(), ref C.DcvUseAlternativeWorld);
+            ImGuiEx.HelpMarker("If destination world isn't available but some other world on targeted data center is, it will be selected instead. Normal world visit will be enqueued after logging in.".Loc());
+            ImGui.Checkbox("Retry data center transfer if destination world is not available".Loc(), ref C.EnableDvcRetry);
             ImGui.Indent();
             ImGui.SetNextItemWidth(150f.Scale());
-            ImGui.InputInt("Max retries", ref C.MaxDcvRetries.ValidateRange(1, int.MaxValue));
+            ImGui.InputInt("Max retries".Loc(), ref C.MaxDcvRetries.ValidateRange(1, int.MaxValue));
             ImGui.SetNextItemWidth(150f.Scale());
-            ImGui.InputInt("Interval between retries, seconds", ref C.DcvRetryInterval.ValidateRange(10, 1000));
+            ImGui.InputInt("Interval between retries, seconds".Loc(), ref C.DcvRetryInterval.ValidateRange(10, 1000));
             ImGui.Unindent();
         })
 
-        .Section("Address Book")
+        .Section("Address Book".Loc())
         .Widget(() =>
         {
-            ImGui.Checkbox($"Disable pathing to a plot", ref C.AddressNoPathing);
-            ImGuiEx.HelpMarker($"You will be left at a closest aetheryte to the ward");
-            ImGui.Checkbox($"Disable entering an apartment", ref C.AddressApartmentNoEntry);
-            ImGuiEx.HelpMarker($"You will be left at an entry confirmation dialogue");
+            ImGui.Checkbox("Disable pathing to a plot".Loc(), ref C.AddressNoPathing);
+            ImGuiEx.HelpMarker("You will be left at a closest aetheryte to the ward".Loc());
+            ImGui.Checkbox("Disable entering an apartment".Loc(), ref C.AddressApartmentNoEntry);
+            ImGuiEx.HelpMarker("You will be left at an entry confirmation dialogue".Loc());
         })
 
-        .Section("Movement")
-        .Checkbox("Use Mount when auto-moving", () => ref C.UseMount)
+        .Section("Movement".Loc())
+        .Checkbox("Use Mount when auto-moving".Loc(), () => ref C.UseMount)
         .Widget(() =>
         {
-            Dictionary<int, string> mounts = [new KeyValuePair<int, string>(0, "Mount roulette"), .. Svc.Data.GetExcelSheet<Mount>().Where(x => x.Singular != "").ToDictionary(x => (int)x.RowId, x => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(x.Singular.GetText()))];
+            Dictionary<int, string> mounts = [new KeyValuePair<int, string>(0, "Mount roulette".Loc()), .. Svc.Data.GetExcelSheet<Mount>().Where(x => x.Singular != "").ToDictionary(x => (int)x.RowId, x => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(x.Singular.GetText()))];
             ImGui.SetNextItemWidth(200f);
-            ImGuiEx.Combo("Preferred Mount", ref C.Mount, mounts.Keys, names: mounts);
+            ImGuiEx.Combo("Preferred Mount".Loc(), ref C.Mount, mounts.Keys, names: mounts);
         })
-        .Checkbox("Use Sprint when auto-moving", () => ref C.UseSprintPeloton)
-        .Checkbox("Use Peloton when auto-moving", () => ref C.UsePeloton)
+        .Checkbox("Use Sprint when auto-moving".Loc(), () => ref C.UseSprintPeloton)
+        .Checkbox("Use Peloton when auto-moving".Loc(), () => ref C.UsePeloton)
 
-        .Section("Character Select Menu")
-        .Checkbox("Enable Data center and World visit from Character Select Menu", () => ref C.AllowDCTravelFromCharaSelect)
-        .Checkbox("Use world visit instead of DC visit to travel to same world on guest DC", () => ref C.UseGuestWorldTravel)
+        .Section("Character Select Menu".Loc())
+        .Checkbox("Enable Data center and World visit from Character Select Menu".Loc(), () => ref C.AllowDCTravelFromCharaSelect)
+        .Checkbox("Use world visit instead of DC visit to travel to same world on guest DC".Loc(), () => ref C.UseGuestWorldTravel)
 
-        .Section("Wotsit Integration")
+        .Section("Wotsit Integration".Loc())
         .Widget(() =>
         {
-            var anyChanged = ImGui.Checkbox("Enable Wotsit Integration for teleporting to Aethernet destinations", ref C.WotsitIntegrationEnabled);
+            var anyChanged = ImGui.Checkbox("Enable Wotsit Integration for teleporting to Aethernet destinations".Loc(), ref C.WotsitIntegrationEnabled);
             ImGuiEx.PluginAvailabilityIndicator([new("Dalamud.FindAnything", "Wotsit")]);
 
             if(C.WotsitIntegrationEnabled)
             {
                 ImGui.Indent();
-                if(ImGui.Checkbox("Include world select window", ref C.WotsitIntegrationIncludes.WorldSelect))
+                if(ImGui.Checkbox("Include world select window".Loc(), ref C.WotsitIntegrationIncludes.WorldSelect))
                 {
                     anyChanged = true;
                 }
-                if(ImGui.Checkbox("Include auto-teleport to property", ref C.WotsitIntegrationIncludes.PropertyAuto))
+                if(ImGui.Checkbox("Include auto-teleport to property".Loc(), ref C.WotsitIntegrationIncludes.PropertyAuto))
                 {
                     anyChanged = true;
                 }
-                if(ImGui.Checkbox("Include teleport to private estate", ref C.WotsitIntegrationIncludes.PropertyPrivate))
+                if(ImGui.Checkbox("Include teleport to private estate".Loc(), ref C.WotsitIntegrationIncludes.PropertyPrivate))
                 {
                     anyChanged = true;
                 }
-                if(ImGui.Checkbox("Include teleport to free company estate", ref C.WotsitIntegrationIncludes.PropertyFreeCompany))
+                if(ImGui.Checkbox("Include teleport to free company estate".Loc(), ref C.WotsitIntegrationIncludes.PropertyFreeCompany))
                 {
                     anyChanged = true;
                 }
-                if(ImGui.Checkbox("Include teleport to apartment", ref C.WotsitIntegrationIncludes.PropertyApartment))
+                if(ImGui.Checkbox("Include teleport to apartment".Loc(), ref C.WotsitIntegrationIncludes.PropertyApartment))
                 {
                     anyChanged = true;
                 }
-                if(ImGui.Checkbox("Include teleport to inn room", ref C.WotsitIntegrationIncludes.PropertyInn))
+                if(ImGui.Checkbox("Include teleport to inn room".Loc(), ref C.WotsitIntegrationIncludes.PropertyInn))
                 {
                     anyChanged = true;
                 }
-                if(ImGui.Checkbox("Include teleport to grand company", ref C.WotsitIntegrationIncludes.GrandCompany))
+                if(ImGui.Checkbox("Include teleport to grand company".Loc(), ref C.WotsitIntegrationIncludes.GrandCompany))
                 {
                     anyChanged = true;
                 }
-                if(ImGui.Checkbox("Include teleport to market board", ref C.WotsitIntegrationIncludes.MarketBoard))
+                if(ImGui.Checkbox("Include teleport to market board".Loc(), ref C.WotsitIntegrationIncludes.MarketBoard))
                 {
                     anyChanged = true;
                 }
-                if(ImGui.Checkbox("Include teleport to island sanctuary", ref C.WotsitIntegrationIncludes.IslandSanctuary))
+                if(ImGui.Checkbox("Include teleport to island sanctuary".Loc(), ref C.WotsitIntegrationIncludes.IslandSanctuary))
                 {
                     anyChanged = true;
                 }
-                if(ImGui.Checkbox("Include auto-teleport to aethernet destinations", ref C.WotsitIntegrationIncludes.AetheryteAethernet))
+                if(ImGui.Checkbox("Include auto-teleport to aethernet destinations".Loc(), ref C.WotsitIntegrationIncludes.AetheryteAethernet))
                 {
                     anyChanged = true;
                 }
-                if(ImGui.Checkbox("Include address book entries", ref C.WotsitIntegrationIncludes.AddressBook))
+                if(ImGui.Checkbox("Include address book entries".Loc(), ref C.WotsitIntegrationIncludes.AddressBook))
                 {
                     anyChanged = true;
                 }
-                if(ImGui.Checkbox("Include custom aliases", ref C.WotsitIntegrationIncludes.CustomAlias))
+                if(ImGui.Checkbox("Include custom aliases".Loc(), ref C.WotsitIntegrationIncludes.CustomAlias))
                 {
                     anyChanged = true;
                 }
@@ -270,29 +270,29 @@ internal static unsafe class UISettings
     private static void DrawOverlay()
     {
         new NuiBuilder()
-        .Section("General Overlay Settings")
+        .Section("General Overlay Settings".Loc())
         .Widget(() =>
         {
-            ImGui.Checkbox("Enable Overlay", ref C.Enable);
+            ImGui.Checkbox("Enable Overlay".Loc(), ref C.Enable);
             if(C.Enable)
             {
                 ImGui.Indent();
-                ImGui.Checkbox($"Display Aethernet menu", ref C.ShowAethernet);
-                ImGui.Checkbox($"Display World Visit menu", ref C.ShowWorldVisit);
-                ImGui.Checkbox($"Display Housing Ward buttons", ref C.ShowWards);
+                ImGui.Checkbox("Display Aethernet menu".Loc(), ref C.ShowAethernet);
+                ImGui.Checkbox("Display World Visit menu".Loc(), ref C.ShowWorldVisit);
+                ImGui.Checkbox("Display Housing Ward buttons".Loc(), ref C.ShowWards);
 
                 UtilsUI.NextSection();
 
-                ImGui.Checkbox("Fixed Lifestream Overlay position", ref C.FixedPosition);
+                ImGui.Checkbox("Fixed Lifestream Overlay position".Loc(), ref C.FixedPosition);
                 if(C.FixedPosition)
                 {
                     ImGui.Indent();
                     ImGui.SetNextItemWidth(200f.Scale());
-                    ImGuiEx.EnumCombo("Horizontal base position", ref C.PosHorizontal);
+                    ImGuiEx.EnumCombo("Horizontal base position".Loc(), ref C.PosHorizontal);
                     ImGui.SetNextItemWidth(200f.Scale());
-                    ImGuiEx.EnumCombo("Vertical base position", ref C.PosVertical);
+                    ImGuiEx.EnumCombo("Vertical base position".Loc(), ref C.PosVertical);
                     ImGui.SetNextItemWidth(200f.Scale());
-                    ImGui.DragFloat2("Offset", ref C.Offset);
+                    ImGui.DragFloat2("Offset".Loc(), ref C.Offset);
 
                     ImGui.Unindent();
                 }
@@ -300,35 +300,35 @@ internal static unsafe class UISettings
                 UtilsUI.NextSection();
 
                 ImGui.SetNextItemWidth(100f.Scale());
-                ImGui.InputInt3("Button left/right padding", ref C.ButtonWidthArray[0]);
+                ImGui.InputInt3("Button left/right padding".Loc(), ref C.ButtonWidthArray[0]);
                 ImGui.SetNextItemWidth(100f.Scale());
-                ImGui.InputInt("Aetheryte button top/bottom padding", ref C.ButtonHeightAetheryte);
+                ImGui.InputInt("Aetheryte button top/bottom padding".Loc(), ref C.ButtonHeightAetheryte);
                 ImGui.SetNextItemWidth(100f.Scale());
-                ImGui.InputInt("World button top/bottom padding", ref C.ButtonHeightWorld);
+                ImGui.InputInt("World button top/bottom padding".Loc(), ref C.ButtonHeightWorld);
                 ImGui.Unindent();
 
-                ImGui.Checkbox("Left-align text on buttons", ref C.LeftAlignButtons);
+                ImGui.Checkbox("Left-align text on buttons".Loc(), ref C.LeftAlignButtons);
                 if(C.LeftAlignButtons)
                 {
                     ImGui.SetNextItemWidth(100f);
-                    ImGui.DragInt("Left padding, spaces", ref C.LeftAlignPadding, 0.1f, 0, 20);
+                    ImGui.DragInt("Left padding, spaces".Loc(), ref C.LeftAlignPadding, 0.1f, 0, 20);
                 }
             }
         })
 
-        .Section("Instance changer")
-        .Checkbox("Enabled", () => ref C.ShowInstanceSwitcher)
-        .Checkbox("Retry on failure", () => ref C.InstanceSwitcherRepeat)
-        .Checkbox("Return to the ground when flying before changing instance", () => ref C.EnableFlydownInstance)
-        .Widget("Display instance number in Server Info Bar", (x) =>
+        .Section("Instance changer".Loc())
+        .Checkbox("Enabled".Loc(), () => ref C.ShowInstanceSwitcher)
+        .Checkbox("Retry on failure".Loc(), () => ref C.InstanceSwitcherRepeat)
+        .Checkbox("Return to the ground when flying before changing instance".Loc(), () => ref C.EnableFlydownInstance)
+        .Widget("Display instance number in Server Info Bar".Loc(), (x) =>
         {
             if(ImGui.Checkbox(x, ref C.EnableDtrBar))
             {
                 S.DtrManager.Refresh();
             }
         })
-        .SliderInt(150f, "Extra button height", () => ref C.InstanceButtonHeight, 0, 50)
-        .Widget("Reset Instance Data", (x) =>
+        .SliderInt(150f, "Extra button height".Loc(), () => ref C.InstanceButtonHeight, 0, 50)
+        .Widget("Reset Instance Data".Loc(), (x) =>
         {
             if(ImGuiEx.Button(x, C.PublicInstances.Count > 0))
             {
@@ -337,8 +337,8 @@ internal static unsafe class UISettings
             }
         })
 
-        .Section("Game Window Integration")
-        .Checkbox($"Hide Lifestream if the following game windows are open", () => ref C.HideAddon)
+        .Section("Game Window Integration".Loc())
+        .Checkbox("Hide Lifestream if the following game windows are open".Loc(), () => ref C.HideAddon)
         .If(() => C.HideAddon)
         .Widget(() =>
         {
@@ -350,7 +350,7 @@ internal static unsafe class UISettings
                 ImGui.TableNextRow();
                 ImGui.TableNextColumn();
                 ImGuiEx.SetNextItemFullWidth();
-                ImGui.InputTextWithHint("##addnew", "Window name... /xldata ai - to find it", ref AddNew, 100);
+                ImGui.InputTextWithHint("##addnew", "Window name... /xldata ai - to find it".Loc(), ref AddNew, 100);
                 ImGui.TableNextColumn();
                 if(ImGuiEx.IconButton(FontAwesomeIcon.Plus))
                 {
@@ -377,7 +377,7 @@ internal static unsafe class UISettings
                         if(C.HideAddonList.Contains(name)) continue;
                         ImGui.TableNextRow();
                         ImGui.TableNextColumn();
-                        ImGuiEx.TextV(EColor.Green, $"Focused: {name}");
+                        ImGuiEx.TextV(EColor.Green, "Focused: ??".Loc(name));
                         ImGui.TableNextColumn();
                         ImGui.PushID(name);
                         if(ImGuiEx.IconButton(FontAwesomeIcon.Plus))
@@ -417,7 +417,7 @@ internal static unsafe class UISettings
         if(C.Hidden.Count > 0)
         {
             new NuiBuilder()
-            .Section("Hidden Aetherytes")
+            .Section("Hidden Aetherytes".Loc())
             .Widget(() =>
             {
                 uint toRem = 0;
@@ -425,7 +425,7 @@ internal static unsafe class UISettings
                 {
                     ImGuiEx.Text($"{Svc.Data.GetExcelSheet<Aetheryte>().GetRowOrDefault(x)?.AethernetName.ValueNullable?.Name.ToString() ?? x.ToString()}");
                     ImGui.SameLine();
-                    if(ImGui.SmallButton($"Delete##{x}"))
+                    if(ImGui.SmallButton("Delete".Loc() + $"##{x}"))
                     {
                         toRem = x;
                     }
@@ -442,27 +442,27 @@ internal static unsafe class UISettings
     private static void DrawExpert()
     {
         new NuiBuilder()
-        .Section("Expert Settings")
+        .Section("Expert Settings".Loc())
         .Widget(() =>
         {
-            ImGui.Checkbox($"Slow down aetheryte teleporting", ref C.SlowTeleport);
-            ImGuiEx.HelpMarker($"Slows down aethernet teleportation by specified amount.");
+            ImGui.Checkbox("Slow down aetheryte teleporting".Loc(), ref C.SlowTeleport);
+            ImGuiEx.HelpMarker("Slows down aethernet teleportation by specified amount.".Loc());
             if(C.SlowTeleport)
             {
                 ImGui.Indent();
                 ImGui.SetNextItemWidth(200f.Scale());
-                ImGui.DragInt("Teleport delay (ms)", ref C.SlowTeleportThrottle);
+                ImGui.DragInt("Teleport delay (ms)".Loc(), ref C.SlowTeleportThrottle);
                 ImGui.Unindent();
             }
-            ImGuiEx.CheckboxInverted($"Skip waiting until game screen is ready", ref C.WaitForScreenReady);
-            ImGuiEx.HelpMarker($"Enable this option for faster teleports but be careful that you may get stuck.");
-            ImGui.Checkbox($"Hide progress bar", ref C.NoProgressBar);
-            ImGuiEx.HelpMarker($"Hiding progress bar leaves you with no way to stop Lifestream from executing it's tasks.");
-            ImGuiEx.CheckboxInverted($"Don't walk to nearby aetheryte on world change command from greater distance", ref C.WalkToAetheryte);
-            ImGui.Checkbox($"Progress overlay at top of the sreen", ref C.ProgressOverlayToTop);
-            ImGui.Checkbox("Allow custom alias and house alias to override built-in commands", ref C.AllowCustomOverrides);
+            ImGuiEx.CheckboxInverted("Skip waiting until game screen is ready".Loc(), ref C.WaitForScreenReady);
+            ImGuiEx.HelpMarker("Enable this option for faster teleports but be careful that you may get stuck.".Loc());
+            ImGui.Checkbox("Hide progress bar".Loc(), ref C.NoProgressBar);
+            ImGuiEx.HelpMarker("Hiding progress bar leaves you with no way to stop Lifestream from executing it's tasks.".Loc());
+            ImGuiEx.CheckboxInverted("Don't walk to nearby aetheryte on world change command from greater distance".Loc(), ref C.WalkToAetheryte);
+            ImGui.Checkbox("Progress overlay at top of the sreen".Loc(), ref C.ProgressOverlayToTop);
+            ImGui.Checkbox("Allow custom alias and house alias to override built-in commands".Loc(), ref C.AllowCustomOverrides);
             ImGui.Indent();
-            ImGuiEx.TextWrapped(EColor.RedBright, "Warning! Other plugins may rely on built-in commands. Ensure that it is not the case if you decide to enable this option and override commands.");
+            ImGuiEx.TextWrapped(EColor.RedBright, "Warning! Other plugins may rely on built-in commands. Ensure that it is not the case if you decide to enable this option and override commands.".Loc());
             ImGui.Unindent();
         })
         .Draw();

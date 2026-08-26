@@ -12,24 +12,24 @@ public static unsafe class TabAddressBook
 {
     public static readonly Dictionary<ResidentialAetheryteKind, string> ResidentialNames = new()
     {
-        [ResidentialAetheryteKind.Gridania] = "Lavender Beds",
-        [ResidentialAetheryteKind.Limsa] = "Mist",
-        [ResidentialAetheryteKind.Uldah] = "Goblet",
-        [ResidentialAetheryteKind.Kugane] = "Shirogane",
-        [ResidentialAetheryteKind.Foundation] = "Empyreum",
+        [ResidentialAetheryteKind.Gridania] = "Lavender Beds".Loc(),
+        [ResidentialAetheryteKind.Limsa] = "Mist".Loc(),
+        [ResidentialAetheryteKind.Uldah] = "Goblet".Loc(),
+        [ResidentialAetheryteKind.Kugane] = "Shirogane".Loc(),
+        [ResidentialAetheryteKind.Foundation] = "Empyreum".Loc(),
     };
 
     public static readonly Dictionary<SortMode, string> SortModeNames = new()
     {
-        [SortMode.Manual] = "Manual (drag and drop)",
-        [SortMode.Name] = "Name (A-Z)",
-        [SortMode.NameReversed] = "Name (Z-A)",
-        [SortMode.World] = "World (A-Z)",
-        [SortMode.WorldReversed] = "World (Z-A)",
-        [SortMode.Plot] = "Plot (1-9)",
-        [SortMode.PlotReversed] = "Plot (9-1)",
-        [SortMode.Ward] = "Ward (1-9)",
-        [SortMode.WardReversed] = "Ward (9-1)",
+        [SortMode.Manual] = "Manual (drag and drop)".Loc(),
+        [SortMode.Name] = "Name (A-Z)".Loc(),
+        [SortMode.NameReversed] = "Name (Z-A)".Loc(),
+        [SortMode.World] = "World (A-Z)".Loc(),
+        [SortMode.WorldReversed] = "World (Z-A)".Loc(),
+        [SortMode.Plot] = "Plot (1-9)".Loc(),
+        [SortMode.PlotReversed] = "Plot (9-1)".Loc(),
+        [SortMode.Ward] = "Ward (1-9)".Loc(),
+        [SortMode.WardReversed] = "Ward (9-1)".Loc(),
     };
     private static Guid CurrentDrag = Guid.Empty;
 
@@ -37,7 +37,7 @@ public static unsafe class TabAddressBook
     {
         InputWardDetailDialog.Draw();
         var selector = S.AddressBookFileSystemManager.FileSystem.Selector;
-        selector.Draw(150f.Scale());
+        selector.Draw();
         ImGui.SameLine();
         if(C.AddressBookFolders.Count == 0)
         {
@@ -57,7 +57,7 @@ public static unsafe class TabAddressBook
                 {
                     selector.SelectByValue(value);
                 }
-                ImGuiEx.TextWrapped($"To begin, select an address book to use.");
+                ImGuiEx.TextWrapped("To begin, select an address book to use.".Loc());
             }
         }
         ImGui.EndChild();
@@ -102,7 +102,7 @@ public static unsafe class TabAddressBook
         {
             ImGuiEx.LineCentered(() =>
             {
-                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add New"))
+                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add New".Loc()))
                 {
                     var h = HousingManager.Instance();
                     var entry = GetNewAddressBookEntry();
@@ -110,7 +110,7 @@ public static unsafe class TabAddressBook
                     InputWardDetailDialog.Entry = entry;
                 }
                 ImGui.SameLine();
-                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Paste, "Paste"))
+                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Paste, "Paste".Loc()))
                 {
                     try
                     {
@@ -119,7 +119,7 @@ public static unsafe class TabAddressBook
                         {
                             if(!entry.IsValid(out var error))
                             {
-                                Notify.Error($"Could not paste from clipboard:\n{error}");
+                                Notify.Error("Could not paste from clipboard:\n??".Loc(error));
                             }
                             else
                             {
@@ -128,7 +128,7 @@ public static unsafe class TabAddressBook
                         }
                         else
                         {
-                            Notify.Error($"Could not paste from clipboard");
+                            Notify.Error("Could not paste from clipboard".Loc());
                         }
                     }
                     catch(Exception e)
@@ -139,32 +139,32 @@ public static unsafe class TabAddressBook
                         }
                         else
                         {
-                            Notify.Error($"Could not paste from clipboard:\n{e.Message}");
+                            Notify.Error("Could not paste from clipboard:\n??".Loc(e.Message));
                         }
                     }
                 }
                 ImGui.SameLine();
                 ImGui.SetNextItemWidth(100f.Scale());
                 ImGuiEx.EnumCombo("##sort", ref book.SortMode, SortModeNames);
-                ImGuiEx.Tooltip($"Select sort mode for this address book");
+                ImGuiEx.Tooltip("Select sort mode for this address book".Loc());
                 ImGui.SameLine();
-                if(ImGui.Checkbox($"Default", ref book.IsDefault))
+                if(ImGui.Checkbox("Default".Loc(), ref book.IsDefault))
                 {
                     if(book.IsDefault)
                     {
                         C.AddressBookFolders.Where(z => z != book).Each(z => z.IsDefault = false);
                     }
                 }
-                ImGuiEx.Tooltip($"Default book automatically opens when you open plugin first time in a game session.");
+                ImGuiEx.Tooltip("Default book automatically opens when you open plugin first time in a game session.".Loc());
             });
         }
 
         if(ImGui.BeginTable($"##addressbook", 4, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit))
         {
-            ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("World");
-            ImGui.TableSetupColumn("Ward");
-            ImGui.TableSetupColumn("Plot");
+            ImGui.TableSetupColumn("Name".Loc(), ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn("World".Loc());
+            ImGui.TableSetupColumn("Ward".Loc());
+            ImGui.TableSetupColumn("Plot".Loc());
             List<(Vector2 RowPos, Action AcceptDraw)> MoveCommands = [];
             ImGui.TableHeadersRow();
 
@@ -211,24 +211,24 @@ public static unsafe class TabAddressBook
                 }
                 if(ImGui.BeginPopup($"ABMenu {entry.GUID}"))
                 {
-                    if(ImGui.MenuItem("Copy chat-friendly name to clipboard"))
+                    if(ImGui.MenuItem("Copy chat-friendly name to clipboard".Loc()))
                     {
                         Copy(entry.GetAddressString());
                     }
                     ImGui.Separator();
-                    if(ImGui.MenuItem("Export to Clipboard"))
+                    if(ImGui.MenuItem("Export to Clipboard".Loc()))
                     {
                         Copy(EzConfig.DefaultSerializationFactory.Serialize(entry, false));
                     }
                     if(entry.Alias != "")
                     {
-                        ImGui.MenuItem($"Enable Alias: {entry.Alias}", null, ref entry.AliasEnabled);
+                        ImGui.MenuItem("Enable Alias: ??".Loc(entry.Alias), null, ref entry.AliasEnabled);
                     }
-                    if(ImGui.MenuItem("Edit..."))
+                    if(ImGui.MenuItem("Edit...".Loc()))
                     {
                         InputWardDetailDialog.Entry = entry;
                     }
-                    if(ImGui.MenuItem("Delete"))
+                    if(ImGui.MenuItem("Delete".Loc()))
                     {
                         if(ImGuiEx.Ctrl)
                         {
@@ -236,10 +236,10 @@ public static unsafe class TabAddressBook
                         }
                         else
                         {
-                            Svc.Toasts.ShowError($"Hold CTRL and click to delete an entry");
+                            Svc.Toasts.ShowError("Hold CTRL and click to delete an entry".Loc());
                         }
                     }
-                    ImGuiEx.Tooltip($"Hold CTRL and click to delete");
+                    ImGuiEx.Tooltip("Hold CTRL and click to delete".Loc());
                     ImGui.EndPopup();
                 }
                 if(ImGui.BeginDragDropSource())
@@ -249,11 +249,11 @@ public static unsafe class TabAddressBook
                     InternalLog.Verbose($"DragDropSource = {entry.GUID}");
                     if(book.SortMode == SortMode.Manual)
                     {
-                        ImGui.SetTooltip("Reorder or move to other folder");
+                        ImGui.SetTooltip("Reorder or move to other folder".Loc());
                     }
                     else
                     {
-                        ImGui.SetTooltip("Move to other folder");
+                        ImGui.SetTooltip("Move to other folder".Loc());
                     }
                     ImGui.EndDragDropSource();
                 }
@@ -330,7 +330,7 @@ public static unsafe class TabAddressBook
                 if(entry.PropertyType == PropertyType.House)
                 {
                     ImGuiEx.Text(Colors.TabGreen, Lang.SymbolPlot);
-                    ImGuiEx.Tooltip("Plot");
+                    ImGuiEx.Tooltip("Plot".Loc());
                     ImGui.SameLine(0, 0);
                     ImGuiEx.Text($"{entry.Plot.FancyDigits()}");
                 }
@@ -339,12 +339,12 @@ public static unsafe class TabAddressBook
                     if(!entry.ApartmentSubdivision)
                     {
                         ImGuiEx.Text(Colors.TabYellow, Lang.SymbolApartment);
-                        ImGuiEx.Tooltip("Apartment");
+                        ImGuiEx.Tooltip("Apartment".Loc());
                     }
                     else
                     {
                         ImGuiEx.Text(Colors.TabYellow, Lang.SymbolSubdivision);
-                        ImGuiEx.Tooltip("Subdivision Apartment");
+                        ImGuiEx.Tooltip("Subdivision Apartment".Loc());
                     }
                     ImGui.SameLine(0, 0);
                     ImGuiEx.Text($"{entry.Apartment.FancyDigits()}");

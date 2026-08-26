@@ -2,11 +2,11 @@
     "Author": "NightmareXIV",
     "Name": "Lifestream",
     "InternalName": "Lifestream",
-    "Description": "- One click to teleport to any world or aethernet destination\n- Click on aetheryte shards inside zone map to teleport to them",
+    "Description": "- 一鍵傳送至任何世界或以太之光目的地\n- 點擊區域地圖上的以太之光即可傳送過去",
     "ApplicableVersion": "any",
-    "Punchline": "A plugin to speed up Aethernet travel and World changing.",
-    "RepoUrl": "https://github.com/NightmareXIV/Lifestream",
+    "Punchline": "加速以太之光移動與跨世界旅行的插件。",
+    "RepoUrl": "https://github.com/ffxiv-tc-port/Lifestream",
     "AcceptsFeedback": false,
-    "IconUrl": "https://raw.githubusercontent.com/NightmareXIV/MyDalamudPlugins/main/icons/lifestream.png",
+    "IconUrl": "https://raw.githubusercontent.com/ffxiv-tc-port/DalamudPluginsTC/main/icons/Lifestream.png",
     "DalamudApiLevel": 12
 }

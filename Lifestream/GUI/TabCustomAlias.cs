@@ -16,7 +16,7 @@ public static class TabCustomAlias
     public static void Draw()
     {
         var selector = S.CustomAliasFileSystemManager.FileSystem.Selector;
-        selector.Draw(150f);
+        selector.Draw();
         ImGui.SameLine();
         if(ImGui.BeginChild("Child"))
         {
@@ -27,7 +27,7 @@ public static class TabCustomAlias
             }
             else
             {
-                ImGuiEx.TextWrapped($"To begin, select an alias you want to edit or create a new one.");
+                ImGuiEx.TextWrapped("To begin, select an alias you want to edit or create a new one.".Loc());
             }
         }
         ImGui.EndChild();
@@ -36,12 +36,12 @@ public static class TabCustomAlias
     private static List<Action> PostTableActions = [];
     private static void DrawAlias(CustomAlias selected)
     {
-        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add new"))
+        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add new".Loc()))
         {
             selected.Commands.Add(new());
         }
         ImGui.SameLine();
-        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Paste, "Paste"))
+        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Paste, "Paste".Loc()))
         {
             try
             {
@@ -62,16 +62,16 @@ public static class TabCustomAlias
         if(!selected.Enabled) ImGui.BeginDisabled();
         ImGui.InputText($"##Alias", ref selected.Alias, 50);
         if(!selected.Enabled) ImGui.EndDisabled();
-        ImGuiEx.Tooltip("Enabled");
+        ImGuiEx.Tooltip("Enabled".Loc());
         ImGui.SameLine();
-        ImGuiEx.HelpMarker($"Will be available via \"/li {selected.Alias}\" command");
+        ImGuiEx.HelpMarker("Will be available via \"/li ??\" command".Loc(selected.Alias));
         ImGui.SameLine();
-        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Play, "Run", enabled: !Utils.IsBusy()))
+        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Play, "Run".Loc(), enabled: !Utils.IsBusy()))
         {
             selected.Enqueue();
         }
         ImGui.SameLine();
-        ImGuiEx.Text("Visualisation:");
+        ImGuiEx.Text("Visualisation:".Loc());
         ImGuiEx.PluginAvailabilityIndicator([new("Splatoon")]);
         DragDrop.Begin();
         var cursor = ImGui.GetCursorPos();
@@ -81,7 +81,7 @@ public static class TabCustomAlias
         }
         ImGui.SetCursorPos(cursor);
         PostTableActions.Clear();
-        if(ImGuiEx.BeginDefaultTable(["Control", "~Command"], false))
+        if(ImGuiEx.BeginDefaultTable(["Control".Loc(), "~" + "Command".Loc()], false))
         {
             for(var i = 0; i < selected.Commands.Count; i++)
             {
@@ -113,11 +113,11 @@ public static class TabCustomAlias
                                 });
                             });
                         }
-                        ImGuiEx.Tooltip($"Clone this command and set it's coordinates to player's coordinates");
+                        ImGuiEx.Tooltip("Clone this command and set it's coordinates to player's coordinates".Loc());
                     });
                 }
 
-                ImGuiEx.TreeNodeCollapsingHeader($"Command {i + 1}: {x.Kind.ToString().Replace('_', ' ')}{GetExtraText(x)}###{x.ID}", () => DrawCommand(x, selected), ImGuiTreeNodeFlags.CollapsingHeader);
+                ImGuiEx.TreeNodeCollapsingHeader("Command ??:".Loc(i + 1) + $" {x.Kind.ToString().Replace('_', ' ')}{GetExtraText(x)}###{x.ID}", () => DrawCommand(x, selected), ImGuiTreeNodeFlags.CollapsingHeader);
                 DrawSplatoon(x, i);
 
 
@@ -181,27 +181,27 @@ public static class TabCustomAlias
     private static void DrawCommand(CustomAliasCommand command, CustomAlias selected)
     {
         ImGui.PushID(command.ID);
-        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Copy, "Copy"))
+        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Copy, "Copy".Loc()))
         {
             Copy(EzConfig.DefaultSerializationFactory.Serialize(command, false));
         }
         ImGui.SameLine();
-        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "Delete", ImGuiEx.Ctrl))
+        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "Delete".Loc(), ImGuiEx.Ctrl))
         {
             new TickScheduler(() => selected.Commands.Remove(command));
         }
-        ImGuiEx.Tooltip("Press CTRL and click");
+        ImGuiEx.Tooltip("Press CTRL and click".Loc());
 
         ImGui.Separator();
         ImGui.SetNextItemWidth(150f.Scale());
-        ImGuiEx.EnumCombo("Alias kind", ref command.Kind);
+        ImGuiEx.EnumCombo("Alias kind".Loc(), ref command.Kind);
 
         if(command.Kind == CustomAliasKind.Teleport_to_Aetheryte)
         {
             ImGui.SetNextItemWidth(150f.Scale());
-            ImGuiEx.Combo("Select aetheryte to teleport to", ref command.Aetheryte, Aetherytes, names: AetherytePlaceNames);
+            ImGuiEx.Combo("Select aetheryte to teleport to".Loc(), ref command.Aetheryte, Aetherytes, names: AetherytePlaceNames);
             ImGui.SetNextItemWidth(60f.Scale());
-            ImGui.DragFloat("Skip teleport if already at aetheryte within this range", ref command.SkipTeleport, 0.01f);
+            ImGui.DragFloat("Skip teleport if already at aetheryte within this range".Loc(), ref command.SkipTeleport, 0.01f);
         }
 
         if(command.Kind.EqualsAny(CustomAliasKind.Move_to_point, CustomAliasKind.Navmesh_to_point))
@@ -212,7 +212,7 @@ public static class TabCustomAlias
             ImGui.SameLine();
             ImGui.SetNextItemWidth(50f);
             ImGui.SliderFloat($"##scatter", ref command.Scatter, 0f, 2f);
-            ImGuiEx.Tooltip("Scatter");
+            ImGuiEx.Tooltip("Scatter".Loc());
         }
 
         if(command.Kind.EqualsAny(CustomAliasKind.Move_to_point))
@@ -224,7 +224,7 @@ public static class TabCustomAlias
         {
             ImGui.SameLine();
             ImGuiEx.ButtonCheckbox(FontAwesomeIcon.FastForward, ref command.UseTA, EColor.Green);
-            ImGuiEx.Tooltip("Use TextAdvance for movement. Flight settings are inherited from TextAdvance.");
+            ImGuiEx.Tooltip("Use TextAdvance for movement. Flight settings are inherited from TextAdvance.".Loc());
             if(!command.UseTA)
             {
                 drawFlight();
@@ -235,7 +235,7 @@ public static class TabCustomAlias
         {
             ImGui.SameLine();
             ImGuiEx.ButtonCheckbox(FontAwesomeIcon.Plane, ref command.UseFlight, EColor.Green);
-            ImGuiEx.Tooltip("Fly for movement. Don't forget to use \"Mount Up\" command before. ");
+            ImGuiEx.Tooltip("Fly for movement. Don't forget to use \"Mount Up\" command before. ".Loc());
         }
 
         if(command.Kind == CustomAliasKind.Change_world)
@@ -243,17 +243,17 @@ public static class TabCustomAlias
             ImGui.SetNextItemWidth(150f.Scale());
             WorldSelector.Instance.Draw(ref command.World);
             ImGui.SameLine();
-            ImGuiEx.Text("Select world");
+            ImGuiEx.Text("Select world".Loc());
         }
 
         if(command.Kind == CustomAliasKind.Use_Aethernet)
         {
             ImGui.SetNextItemWidth(150f.Scale());
-            if(ImGui.BeginCombo("Select aethernet shard to teleport to", command.Aetheryte == 0 ? "- Not selected -" : Utils.KnownAetherytes.SafeSelect(command.Aetheryte, command.Aetheryte.ToString()), ImGuiComboFlags.HeightLarge))
+            if(ImGui.BeginCombo("Select aethernet shard to teleport to".Loc(), command.Aetheryte == 0 ? "- Not selected -".Loc() : Utils.KnownAetherytes.SafeSelect(command.Aetheryte, command.Aetheryte.ToString()), ImGuiComboFlags.HeightLarge))
             {
                 ref var filter = ref Ref<string>.Get($"Filter{command.ID}");
                 ImGui.SetNextItemWidth(200f);
-                ImGui.InputTextWithHint("##filter", "Filter", ref filter, 50);
+                ImGui.InputTextWithHint("##filter", "Filter".Loc(), ref filter, 50);
                 foreach(var x in Utils.KnownAetherytesByCategories)
                 {
                     bool shouldHide(ref string filter, KeyValuePair<uint, string> v) => filter.Length > 0 && !v.Value.Contains(filter, StringComparison.OrdinalIgnoreCase) && !x.Key.Contains(filter, StringComparison.OrdinalIgnoreCase);
@@ -291,30 +291,30 @@ public static class TabCustomAlias
                 ImGui.TableNextRow();
 
                 ImGui.TableNextColumn();
-                ImGuiEx.TextV($"Center point: ");
+                ImGuiEx.TextV("Center point: ".Loc());
                 ImGui.TableNextColumn();
                 Utils.DrawVector2Selector("center", ref command.CenterPoint);
 
                 ImGui.TableNextColumn();
-                ImGuiEx.TextV($"Exit point: ");
+                ImGuiEx.TextV("Exit point: ".Loc());
                 ImGui.TableNextColumn();
                 Utils.DrawVector3Selector($"exit{command.ID}", ref command.CircularExitPoint);
-                ImGui.Checkbox("Finish by walking to exit point", ref command.WalkToExit);
+                ImGui.Checkbox("Finish by walking to exit point".Loc(), ref command.WalkToExit);
 
                 ImGui.TableNextColumn();
-                ImGuiEx.TextV($"Precision: ");
+                ImGuiEx.TextV("Precision: ".Loc());
                 ImGui.TableNextColumn();
                 ImGui.SetNextItemWidth(100f.Scale());
                 ImGui.DragFloat("##precision", ref command.Precision.ValidateRange(4f, 100f), 0.01f);
 
                 ImGui.TableNextColumn();
-                ImGuiEx.TextV($"Tolerance: ");
+                ImGuiEx.TextV("Tolerance: ".Loc());
                 ImGui.TableNextColumn();
                 ImGui.SetNextItemWidth(100f.Scale());
                 ImGui.DragInt("##tol", ref command.Tolerance.ValidateRange(1, (int)(command.Precision * 0.75f)), 0.01f);
 
                 ImGui.TableNextColumn();
-                ImGuiEx.TextV($"Distance limit: ");
+                ImGuiEx.TextV("Distance limit: ".Loc());
                 ImGui.TableNextColumn();
                 var en = command.Clamp != null;
                 if(ImGui.Checkbox($"##clamp", ref en))
@@ -346,7 +346,7 @@ public static class TabCustomAlias
                     if(Svc.Targets.Target != null)
                     {
                         ImGui.SameLine();
-                        ImGuiEx.Text($"To target: {Player.DistanceTo(Svc.Targets.Target):F1}");
+                        ImGuiEx.Text("To target: ??".Loc(Player.DistanceTo(Svc.Targets.Target).ToString("F1")));
                     }
                 }
 
@@ -356,16 +356,16 @@ public static class TabCustomAlias
         if(command.Kind == CustomAliasKind.Interact)
         {
             ImGui.SetNextItemWidth(150f.Scale());
-            ImGuiEx.InputUint("Data ID", ref command.DataID);
+            ImGuiEx.InputUint("Data ID".Loc(), ref command.DataID);
             ImGui.SameLine();
-            if(ImGuiEx.Button("Target", Svc.Targets.Target?.DataId != 0))
+            if(ImGuiEx.Button("Target".Loc(), Svc.Targets.Target?.DataId != 0))
             {
                 command.DataID = Svc.Targets.Target.DataId;
             }
         }
         if(command.Kind.EqualsAny(CustomAliasKind.Select_Yes, CustomAliasKind.Select_List_Option))
         {
-            ImGuiEx.TextWrapped($"List entries that you would like to select/confirm:");
+            ImGuiEx.TextWrapped("List entries that you would like to select/confirm:".Loc());
             if(ImGuiEx.BeginDefaultTable("ItemLst", ["~1", "2"], false))
             {
                 for(var i = 0; i < command.SelectOption.Count; i++)
@@ -388,7 +388,7 @@ public static class TabCustomAlias
                     ImGui.PopID();
                 }
                 ImGui.EndTable();
-                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add New Option"))
+                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add New Option".Loc()))
                 {
                     command.SelectOption.Add("");
                 }
@@ -396,7 +396,7 @@ public static class TabCustomAlias
         }
         if(command.Kind.EqualsAny(CustomAliasKind.Select_Yes, CustomAliasKind.Select_List_Option, CustomAliasKind.Confirm_Contents_Finder))
         {
-            ImGui.Checkbox("Skip on screen fade", ref command.StopOnScreenFade);
+            ImGui.Checkbox("Skip on screen fade".Loc(), ref command.StopOnScreenFade);
         }
         ImGui.PopID();
     }

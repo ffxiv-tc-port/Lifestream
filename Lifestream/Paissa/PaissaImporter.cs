@@ -12,7 +12,7 @@ public class PaissaImporter
 {
     private static Guid CurrentDrag = Guid.Empty;
     private string ID;
-    private string folderText = "No folder yet...";
+    private string folderText = "No folder yet...".Loc();
     private bool buttonDisabled = false;
     private bool textToCopy = false;
     private DateTime disableEndTime;
@@ -38,7 +38,7 @@ public class PaissaImporter
         var isDisabled = buttonDisabled;
         if(isDisabled) ImGui.BeginDisabled();
 
-        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Download, "Import from PaissaDB", enabled: Player.Available))
+        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Download, "Import from PaissaDB".Loc(), enabled: Player.Available))
         {
             PluginLog.Debug("PaissaDB import process initiated!");
             buttonDisabled = true;
@@ -83,17 +83,17 @@ public class PaissaImporter
     {
         if(book.Entries.Count == 0)
         {
-            ImGuiEx.Text("No houses are currently available for bidding!");
+            ImGuiEx.Text("No houses are currently available for bidding!".Loc());
         }
         else if(ImGui.BeginTable($"##addressbook", 7, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit))
         {
-            ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("Size");
-            ImGui.TableSetupColumn("Bids");
-            ImGui.TableSetupColumn("Allowed Tenants");
-            ImGui.TableSetupColumn("World");
-            ImGui.TableSetupColumn("Ward");
-            ImGui.TableSetupColumn("Plot");
+            ImGui.TableSetupColumn("Name".Loc(), ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn("Size".Loc());
+            ImGui.TableSetupColumn("Bids".Loc());
+            ImGui.TableSetupColumn("Allowed Tenants".Loc());
+            ImGui.TableSetupColumn("World".Loc());
+            ImGui.TableSetupColumn("Ward".Loc());
+            ImGui.TableSetupColumn("Plot".Loc());
             List<(Vector2 RowPos, Action AcceptDraw)> MoveCommands = [];
             ImGui.TableHeadersRow();
 
@@ -140,24 +140,24 @@ public class PaissaImporter
                 }
                 if(ImGui.BeginPopup($"ABMenu {entry.GUID}"))
                 {
-                    if(ImGui.MenuItem("Copy chat-friendly name to clipboard"))
+                    if(ImGui.MenuItem("Copy chat-friendly name to clipboard".Loc()))
                     {
                         Copy(entry.GetAddressString());
                     }
                     ImGui.Separator();
-                    if(ImGui.MenuItem("Export to Clipboard"))
+                    if(ImGui.MenuItem("Export to Clipboard".Loc()))
                     {
                         Copy(EzConfig.DefaultSerializationFactory.Serialize(entry, false));
                     }
                     if(entry.Alias != "")
                     {
-                        ImGui.MenuItem($"Enable Alias: {entry.Alias}", null, ref entry.AliasEnabled);
+                        ImGui.MenuItem("Enable Alias: ??".Loc(entry.Alias), null, ref entry.AliasEnabled);
                     }
-                    if(ImGui.MenuItem("Edit..."))
+                    if(ImGui.MenuItem("Edit...".Loc()))
                     {
                         InputWardDetailDialog.Entry = entry;
                     }
-                    if(ImGui.MenuItem("Delete"))
+                    if(ImGui.MenuItem("Delete".Loc()))
                     {
                         if(ImGuiEx.Ctrl)
                         {
@@ -165,10 +165,10 @@ public class PaissaImporter
                         }
                         else
                         {
-                            Svc.Toasts.ShowError($"Hold CTRL and click to delete an entry");
+                            Svc.Toasts.ShowError("Hold CTRL and click to delete an entry".Loc());
                         }
                     }
-                    ImGuiEx.Tooltip($"Hold CTRL and click to delete");
+                    ImGuiEx.Tooltip("Hold CTRL and click to delete".Loc());
                     ImGui.EndPopup();
                 }
                 if(ImGui.BeginDragDropSource())
@@ -178,11 +178,11 @@ public class PaissaImporter
                     InternalLog.Verbose($"DragDropSource = {entry.GUID}");
                     if(book.SortMode == SortMode.Manual)
                     {
-                        ImGui.SetTooltip("Reorder or move to other folder");
+                        ImGui.SetTooltip("Reorder or move to other folder".Loc());
                     }
                     else
                     {
-                        ImGui.SetTooltip("Move to other folder");
+                        ImGui.SetTooltip("Move to other folder".Loc());
                     }
                     ImGui.EndDragDropSource();
                 }
@@ -235,7 +235,7 @@ public class PaissaImporter
 
                 ImGuiEx.Text($"{PaissaUtils.GetSizeString(entry.Size)}");
                 ImGui.SameLine();
-                ImGuiEx.Tooltip("Size");
+                ImGuiEx.Tooltip("Size".Loc());
 
                 ImGui.TableNextColumn();
 
@@ -243,7 +243,7 @@ public class PaissaImporter
 
                 ImGuiEx.Text($"{entry.Bids}");
                 ImGui.SameLine();
-                ImGuiEx.Tooltip("Bids");
+                ImGuiEx.Tooltip("Bids".Loc());
 
                 ImGui.TableNextColumn();
 
@@ -251,7 +251,7 @@ public class PaissaImporter
 
                 ImGuiEx.Text($"{PaissaUtils.GetAllowedTenantsStringFromPurchaseSystem(entry.AllowedTenants)}");
                 ImGui.SameLine();
-                ImGuiEx.Tooltip("Allowed Tenants");
+                ImGuiEx.Tooltip("Allowed Tenants".Loc());
 
                 ImGui.TableNextColumn();
 
@@ -282,7 +282,7 @@ public class PaissaImporter
                 if(entry.PropertyType == PropertyType.House)
                 {
                     ImGuiEx.Text(Colors.TabGreen, Lang.SymbolPlot);
-                    ImGuiEx.Tooltip("Plot");
+                    ImGuiEx.Tooltip("Plot".Loc());
                     ImGui.SameLine(0, 0);
                     ImGuiEx.Text($"{entry.Plot.FancyDigits()}");
                 }
@@ -291,12 +291,12 @@ public class PaissaImporter
                     if(!entry.ApartmentSubdivision)
                     {
                         ImGuiEx.Text(Colors.TabYellow, Lang.SymbolApartment);
-                        ImGuiEx.Tooltip("Apartment");
+                        ImGuiEx.Tooltip("Apartment".Loc());
                     }
                     else
                     {
                         ImGuiEx.Text(Colors.TabYellow, Lang.SymbolSubdivision);
-                        ImGuiEx.Tooltip("Subdivision Apartment");
+                        ImGuiEx.Tooltip("Subdivision Apartment".Loc());
                     }
                     ImGui.SameLine(0, 0);
                     ImGuiEx.Text($"{entry.Apartment.FancyDigits()}");

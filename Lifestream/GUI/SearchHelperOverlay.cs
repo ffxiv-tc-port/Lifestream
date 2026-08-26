@@ -75,10 +75,10 @@ public unsafe class SearchHelperOverlay : Window
 
         var additionalDescriptions = new Dictionary<string, string>
         {
-            ["help"] = "Show command help",
-            ["?"] = "Show command help",
-            ["commands"] = "Show command help",
-            ["stop"] = "Stop all tasks"
+            ["help"] = "Show command help".Loc(),
+            ["?"] = "Show command help".Loc(),
+            ["commands"] = "Show command help".Loc(),
+            ["stop"] = "Stop all tasks".Loc()
         };
 
         foreach(var kvp in additionalDescriptions)
@@ -108,7 +108,7 @@ public unsafe class SearchHelperOverlay : Window
         {
             var description = CommandDescriptions.TryGetValue(cmd, out var desc)
                 ? desc
-                : "Built-in command";
+                : "Built-in command".Loc();
             AddUniqueSuggestion(cmd, "Built-in", description);
         }
 
@@ -125,8 +125,8 @@ public unsafe class SearchHelperOverlay : Window
         {
             var stepCount = alias.Commands?.Count ?? 0;
             var desc = stepCount > 0
-                ? $"Custom sequence with {stepCount} step{(stepCount != 1 ? "s" : "")}"
-                : "Custom alias";
+                ? (stepCount != 1 ? "Custom sequence with ?? steps".Loc(stepCount) : "Custom sequence with ?? step".Loc(stepCount))
+                : "Custom alias".Loc();
             AddUniqueSuggestion(alias.Alias, "Custom Alias", desc);
         }
 
@@ -142,7 +142,7 @@ public unsafe class SearchHelperOverlay : Window
         {
             foreach(var world in S.Data.DataStore.Worlds)
             {
-                AddUniqueSuggestion(world, "World", $"Travel to {world}");
+                AddUniqueSuggestion(world, "World", "Travel to ??".Loc(world));
             }
         }
 
@@ -150,7 +150,7 @@ public unsafe class SearchHelperOverlay : Window
         {
             foreach(var world in S.Data.DataStore.DCWorlds)
             {
-                AddUniqueSuggestion(world, "DC World", $"Travel to {world} (cross-DC)");
+                AddUniqueSuggestion(world, "DC World", "Travel to ?? (cross-DC)".Loc(world));
             }
         }
     }
@@ -221,13 +221,13 @@ public unsafe class SearchHelperOverlay : Window
         if(FilteredSuggestions.Count == 0)
         {
             ImGui.PushStyleColor(ImGuiCol.Text, 0xFF808080);
-            ImGui.Text("No matching commands found");
+            ImGui.Text("No matching commands found".Loc());
             ImGui.PopStyleColor();
             return;
         }
 
         ImGui.PushStyleColor(ImGuiCol.Text, 0xFFFFFFFF);
-        ImGui.Text($"Lifestream Commands{(string.IsNullOrEmpty(FilterText) ? "" : $" matching '{FilterText}'")}:");
+        ImGui.Text(string.IsNullOrEmpty(FilterText) ? "Lifestream Commands:".Loc() : "Lifestream Commands matching '??':".Loc(FilterText));
         ImGui.PopStyleColor();
         ImGui.Separator();
 
@@ -281,7 +281,7 @@ public unsafe class SearchHelperOverlay : Window
 
         ImGui.Separator();
         ImGui.PushStyleColor(ImGuiCol.Text, 0xFF808080);
-        ImGui.Text("Click to complete");
+        ImGui.Text("Click to complete".Loc());
         ImGui.PopStyleColor();
         WindowSize = ImGui.GetWindowSize();
     }

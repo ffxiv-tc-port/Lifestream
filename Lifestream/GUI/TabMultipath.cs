@@ -14,7 +14,7 @@ public static class TabMultipath
     public static void Draw()
     {
         if(IsKeyPressed((int)System.Windows.Forms.Keys.LButton)) Cursor = -1;
-        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add"))
+        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add".Loc()))
         {
             var x = new MultiPath();
             C.MultiPathes.Add(x);
@@ -22,12 +22,12 @@ public static class TabMultipath
             x.Name = x.GUID.ToString();
         }
         ImGui.SameLine();
-        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Paste, "Paste"))
+        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Paste, "Paste".Loc()))
         {
             Safe(() =>
             {
                 var mp = EzConfig.DefaultSerializationFactory.Deserialize<MultiPath>(Paste());
-                mp.Name += " - copy";
+                mp.Name += " - copy".Loc();
                 mp.GUID = Guid.NewGuid();
                 C.MultiPathes.Add(mp);
                 Selected = mp;
@@ -52,25 +52,25 @@ public static class TabMultipath
             ImGui.SetNextItemWidth(200f.Scale());
             ImGui.InputText($"##name", ref Selected.Name, 100);
             ImGui.SameLine();
-            if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.FastForward, "Execute", !P.TaskManager.IsBusy && Player.Interactable))
+            if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.FastForward, "Execute".Loc(), !P.TaskManager.IsBusy && Player.Interactable))
             {
                 TaskMultipathExecute.Enqueue(Selected);
             }
             ImGui.SameLine();
-            if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "Delete", ImGuiEx.Ctrl))
+            if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "Delete".Loc(), ImGuiEx.Ctrl))
             {
                 new TickScheduler(() => C.MultiPathes.Remove(Selected));
                 Selected = null;
             }
             ImGui.SameLine();
-            if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Copy, "Copy"))
+            if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Copy, "Copy".Loc()))
             {
                 Copy(EzConfig.DefaultSerializationFactory.Serialize(Selected, false));
             }
             var currentPath = Selected?.Entries.FirstOrDefault(x => x.Territory == P.Territory);
             if(currentPath == null)
             {
-                if(ImGui.Button($"Create for {ExcelTerritoryHelper.GetName(P.Territory)}"))
+                if(ImGui.Button("Create for ??".Loc(ExcelTerritoryHelper.GetName(P.Territory))))
                 {
                     Selected.Entries.Add(new() { Territory = P.Territory });
                 }
@@ -78,7 +78,7 @@ public static class TabMultipath
             else
             {
                 if(!P.TaskManager.IsBusy) S.Ipc.SplatoonManager.RenderPath(currentPath.Points, false);
-                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add at current position", EditMode))
+                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add at current position".Loc(), EditMode))
                 {
                     currentPath.Points.Add(Player.Object.Position);
                 }
@@ -87,7 +87,7 @@ public static class TabMultipath
                     currentPath.Points.Insert(0, Player.Object.Position);
                 }
                 ImGui.SameLine();
-                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.MousePointer, "Add at cursor", EditMode))
+                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.MousePointer, "Add at cursor".Loc(), EditMode))
                 {
                     currentPath.Points.Add(Player.Object.Position);
                     Cursor = currentPath.Points.Count - 1;
@@ -98,14 +98,14 @@ public static class TabMultipath
                     Cursor = 0;
                 }
                 ImGui.SameLine();
-                ImGui.Checkbox("Sprint", ref currentPath.Sprint);
+                ImGui.Checkbox("Sprint".Loc(), ref currentPath.Sprint);
                 ImGui.SameLine();
-                ImGui.Checkbox("Edit", ref EditMode);
+                ImGui.Checkbox("Edit".Loc(), ref EditMode);
                 if(ImGui.BeginTable("Multipath", 3, ImGuiTableFlags.SizingFixedFit))
                 {
-                    ImGui.TableSetupColumn("Sort");
-                    ImGui.TableSetupColumn("Point", ImGuiTableColumnFlags.WidthStretch);
-                    ImGui.TableSetupColumn("Control");
+                    ImGui.TableSetupColumn("Sort".Loc());
+                    ImGui.TableSetupColumn("Point".Loc(), ImGuiTableColumnFlags.WidthStretch);
+                    ImGui.TableSetupColumn("Control".Loc());
                     for(var i = 0; i < currentPath.Points.Count; i++)
                     {
                         var x = currentPath.Points[i];
@@ -128,17 +128,17 @@ public static class TabMultipath
 
                         ImGui.TableNextColumn();
 
-                        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.MapPin, "To my pos", EditMode))
+                        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.MapPin, "To my pos".Loc(), EditMode))
                         {
                             currentPath.Points[i] = Player.Object.Position;
                         }
                         ImGui.SameLine(0, 1);
-                        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.MousePointer, "To cursor", EditMode))
+                        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.MousePointer, "To cursor".Loc(), EditMode))
                         {
                             Cursor = i;
                         }
                         ImGui.SameLine(0, 1);
-                        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "Del", ImGuiEx.Ctrl && EditMode))
+                        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "Del".Loc(), ImGuiEx.Ctrl && EditMode))
                         {
                             var idx = i;
                             new TickScheduler(() => currentPath.Points.RemoveAt(idx));

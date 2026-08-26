@@ -21,11 +21,11 @@ public static unsafe class UIHouseReg
     {
         if(Player.Available)
         {
-            NuiTools.ButtonTabs([[new("Private House", DrawPrivate), new("Free Company House", DrawFC), new("Custom House", DrawCustom), new("Overview", DrawOverview)]]);
+            NuiTools.ButtonTabs([[new("Private House".Loc(), DrawPrivate), new("Free Company House".Loc(), DrawFC), new("Custom House".Loc(), DrawCustom), new("Overview".Loc(), DrawOverview)]]);
         }
         else
         {
-            ImGuiEx.TextWrapped("Please log in to be able to create and edit registrations. ");
+            ImGuiEx.TextWrapped("Please log in to be able to create and edit registrations. ".Loc());
             DrawOverview();
         }
     }
@@ -37,7 +37,7 @@ public static unsafe class UIHouseReg
     {
         DisplayCurrent = true,
         ShouldHideWorld = (x) => !C.HousePathDatas.Any(s => Utils.GetWorldFromCID(s.CID) == ExcelWorldHelper.GetName(x)),
-        EmptyName = "All Worlds",
+        EmptyName = "All Worlds".Loc(),
         DefaultAllOpen = true,
     };
 
@@ -45,7 +45,7 @@ public static unsafe class UIHouseReg
     {
         ImGuiEx.InputWithRightButtonsArea(() =>
         {
-            ImGui.InputTextWithHint("##search", "Search...", ref Search, 50);
+            ImGui.InputTextWithHint("##search", "Search...".Loc(), ref Search, 50);
         }, () =>
         {
             ImGui.SetNextItemWidth(200f.Scale());
@@ -57,7 +57,7 @@ public static unsafe class UIHouseReg
             charaDatas.Add((x, C.HousePathDatas.FirstOrDefault(z => z.IsPrivate && z.CID == x), C.HousePathDatas.FirstOrDefault(z => !z.IsPrivate && z.CID == x)));
         }
         DragDropPathData.Begin();
-        if(ImGuiEx.BeginDefaultTable("##charaTable", ["##move", "~Name or CID", "Private", "##privateCtl", "##privateCtl2", "##privateDlm", "FC", "##FCCtl", "Workshop", "##workshopCtl", "##fcCtl", "##fcCtl2"]))
+        if(ImGuiEx.BeginDefaultTable("##charaTable", ["##move", "~" + "Name or CID".Loc(), "Private".Loc(), "##privateCtl", "##privateCtl2", "##privateDlm", "FC".Loc(), "##FCCtl", "Workshop".Loc(), "##workshopCtl", "##fcCtl", "##fcCtl2"]))
         {
             for(var i = 0; i < charaDatas.Count; i++)
             {
@@ -81,13 +81,13 @@ public static unsafe class UIHouseReg
                 {
                     NuiTools.RenderResidentialIcon((uint)priv.ResidentialDistrict.GetResidentialTerritory());
                     ImGui.SameLine();
-                    ImGuiEx.Text($"W{priv.Ward + 1}, P{priv.Plot + 1}{(priv.PathToEntrance.Count > 0 ? ", +path" : "")}");
+                    ImGuiEx.Text($"W{priv.Ward + 1}, P{priv.Plot + 1}{(priv.PathToEntrance.Count > 0 ? ", +path".Loc() : "")}");
                     ImGui.TableNextColumn();
                     if(ImGuiEx.IconButton((FontAwesomeIcon)'\ue50b', "DelePrivate", enabled: ImGuiEx.Ctrl))
                     {
                         new TickScheduler(() => C.HousePathDatas.RemoveAll(z => z.IsPrivate && z.CID == charaData.CID));
                     }
-                    ImGuiEx.Tooltip("Remove private house registration. Hold CTRL and click.");
+                    ImGuiEx.Tooltip("Remove private house registration. Hold CTRL and click.".Loc());
                     if(priv.PathToEntrance.Count > 0)
                     {
                         ImGui.SameLine();
@@ -95,7 +95,7 @@ public static unsafe class UIHouseReg
                         {
                             priv.PathToEntrance.Clear();
                         }
-                        ImGuiEx.Tooltip("Remove path to private house. Hold CTRL and click.");
+                        ImGuiEx.Tooltip("Remove path to private house. Hold CTRL and click.".Loc());
                     }
 
                     ImGui.SameLine();
@@ -103,12 +103,12 @@ public static unsafe class UIHouseReg
                     {
                         Copy(EzConfig.DefaultSerializationFactory.Serialize(priv)!);
                     }
-                    ImGuiEx.Tooltip("Copy private registration data to clipboard");
+                    ImGuiEx.Tooltip("Copy private registration data to clipboard".Loc());
                     ImGui.SameLine();
                 }
                 else
                 {
-                    ImGuiEx.TextV(ImGuiColors.DalamudGrey3, "Not registered");
+                    ImGuiEx.TextV(ImGuiColors.DalamudGrey3, "Not registered".Loc());
                     ImGui.TableNextColumn();
                 }
 
@@ -118,7 +118,7 @@ public static unsafe class UIHouseReg
                 {
                     ImportFromClipboard(charaData.CID, true);
                 }
-                ImGuiEx.Tooltip("Paste private registration data from clipboard");
+                ImGuiEx.Tooltip("Paste private registration data from clipboard".Loc());
 
                 ImGui.TableNextColumn();
                 //delimiter
@@ -129,13 +129,13 @@ public static unsafe class UIHouseReg
                 {
                     NuiTools.RenderResidentialIcon((uint)fc.ResidentialDistrict.GetResidentialTerritory());
                     ImGui.SameLine();
-                    ImGuiEx.Text($"W{fc.Ward + 1}, P{fc.Plot + 1}{(fc.PathToEntrance.Count > 0 ? ", +path" : "")}");
+                    ImGuiEx.Text($"W{fc.Ward + 1}, P{fc.Plot + 1}{(fc.PathToEntrance.Count > 0 ? ", +path".Loc() : "")}");
                     ImGui.TableNextColumn();
                     if(ImGuiEx.IconButton((FontAwesomeIcon)'\ue50b', "DeleFc", enabled: ImGuiEx.Ctrl))
                     {
                         new TickScheduler(() => C.HousePathDatas.RemoveAll(z => !z.IsPrivate && z.CID == charaData.CID));
                     }
-                    ImGuiEx.Tooltip("Remove FC house registration. Hold CTRL and click.");
+                    ImGuiEx.Tooltip("Remove FC house registration. Hold CTRL and click.".Loc());
                     if(fc.PathToEntrance.Count > 0)
                     {
                         ImGui.SameLine();
@@ -143,30 +143,30 @@ public static unsafe class UIHouseReg
                         {
                             fc.PathToEntrance.Clear();
                         }
-                        ImGuiEx.Tooltip("Remove path to FC house. Hold CTRL and click.");
+                        ImGuiEx.Tooltip("Remove path to FC house. Hold CTRL and click.".Loc());
                     }
                 }
                 else
                 {
-                    ImGuiEx.TextV(ImGuiColors.DalamudGrey3, "Not registered");
+                    ImGuiEx.TextV(ImGuiColors.DalamudGrey3, "Not registered".Loc());
                     ImGui.TableNextColumn();
                 }
 
                 ImGui.TableNextColumn();
                 if(fc == null || fc.PathToWorkshop.Count == 0)
                 {
-                    ImGuiEx.TextV(ImGuiColors.DalamudGrey3, "Not registered");
+                    ImGuiEx.TextV(ImGuiColors.DalamudGrey3, "Not registered".Loc());
                     ImGui.TableNextColumn();
                 }
                 else
                 {
-                    ImGuiEx.TextV($"{fc.PathToWorkshop.Count} points");
+                    ImGuiEx.TextV("?? points".Loc(fc.PathToWorkshop.Count));
                     ImGui.TableNextColumn();
                     if(ImGuiEx.IconButton((FontAwesomeIcon)'\ue566', "DeleFcWorkshopPath", enabled: ImGuiEx.Ctrl))
                     {
                         fc.PathToWorkshop.Clear();
                     }
-                    ImGuiEx.Tooltip("Remove path to workshop. Hold CTRL and click.");
+                    ImGuiEx.Tooltip("Remove path to workshop. Hold CTRL and click.".Loc());
                 }
 
                 ImGui.TableNextColumn();
@@ -177,7 +177,7 @@ public static unsafe class UIHouseReg
                     {
                         Copy(EzConfig.DefaultSerializationFactory.Serialize(fc)!);
                     }
-                    ImGuiEx.Tooltip("Copy free company registration data to clipboard");
+                    ImGuiEx.Tooltip("Copy free company registration data to clipboard".Loc());
                     ImGui.SameLine();
                 }
 
@@ -186,7 +186,7 @@ public static unsafe class UIHouseReg
                 {
                     ImportFromClipboard(charaData.CID, false);
                 }
-                ImGuiEx.Tooltip("Paste free company registration data from clipboard");
+                ImGuiEx.Tooltip("Paste free company registration data from clipboard".Loc());
                 ImGui.PopID();
             }
 
@@ -226,7 +226,7 @@ public static unsafe class UIHouseReg
                 }
                 else
                 {
-                    Notify.Error($"A different {(isPrivate ? "private house plot" : "FC house plot")} is already registered for this character. If you want to override it, hold CTRL and click paste button.");
+                    Notify.Error("A different ?? is already registered for this character. If you want to override it, hold CTRL and click paste button.".Loc((isPrivate ? "private house plot" : "FC house plot").Loc()));
                 }
             }
             catch(Exception e)
@@ -255,14 +255,14 @@ public static unsafe class UIHouseReg
         {
             if(C.HousePathDatas.TryGetFirst(x => x.ResidentialDistrict == kind && x.Ward == ward && x.Plot == plot, out var regData))
             {
-                ImGuiEx.TextWrapped($"This house is already registered as {(regData.IsPrivate ? "private house" : "FC house")} for character {Utils.GetCharaName(regData.CID)} and can not be registered as a custom house.");
+                ImGuiEx.TextWrapped("This house is already registered as ?? for character ?? and can not be registered as a custom house.".Loc((regData.IsPrivate ? "private house" : "FC house").Loc(), Utils.GetCharaName(regData.CID)));
             }
             else
             {
                 var data = C.CustomHousePathDatas.FirstOrDefault(x => x.Ward == ward && x.Plot == plot && x.ResidentialDistrict == kind);
                 if(data == null)
                 {
-                    if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Register this house as custom house"))
+                    if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Register this house as custom house".Loc()))
                     {
                         C.CustomHousePathDatas.Add(new()
                         {
@@ -274,7 +274,7 @@ public static unsafe class UIHouseReg
                 }
                 else
                 {
-                    if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "Unregister this house", ImGuiEx.Ctrl))
+                    if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "Unregister this house".Loc(), ImGuiEx.Ctrl))
                     {
                         new TickScheduler(() => C.CustomHousePathDatas.Remove(data));
                     }
@@ -284,7 +284,7 @@ public static unsafe class UIHouseReg
         }
         else
         {
-            ImGuiEx.TextWrapped($"Please navigate to the plot to register it as custom house. Registering custom house will allow it's path to be used for shared estate teleports and address book teleports.");
+            ImGuiEx.TextWrapped("Please navigate to the plot to register it as custom house. Registering custom house will allow it's path to be used for shared estate teleports and address book teleports.".Loc());
         }
     }
 
@@ -293,10 +293,10 @@ public static unsafe class UIHouseReg
         var plotDataAvailable = TryGetCurrentPlotInfo(out var kind, out var ward, out var plot);
         if(data == null)
         {
-            ImGuiEx.Text($"No data found. ");
+            ImGuiEx.Text("No data found. ".Loc());
             if(plotDataAvailable && Player.IsInHomeWorld)
             {
-                if(ImGui.Button($"Register {kind.GetName()}, ward {ward + 1}, plot {plot + 1} as {(isPrivate ? "private" : "free company")} house."))
+                if(ImGui.Button("Register ??, ward ??, plot ?? as ?? house.".Loc(kind.GetName(), ward + 1, plot + 1, (isPrivate ? "private" : "free company").Loc())))
                 {
                     var newData = new HousePathData()
                     {
@@ -311,17 +311,17 @@ public static unsafe class UIHouseReg
             }
             else
             {
-                ImGuiEx.Text($"Go to your plot to register the data.");
+                ImGuiEx.Text("Go to your plot to register the data.".Loc());
             }
         }
         else
         {
-            ImGuiEx.TextWrapped(ImGuiColors.ParsedGreen, $"{data.ResidentialDistrict.GetName()}, Ward {data.Ward + 1}, Plot {data.Plot + 1} is registered as {(data.IsPrivate ? "private" : "free company")} house.");
-            if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "Remove registration", ImGuiEx.Ctrl))
+            ImGuiEx.TextWrapped(ImGuiColors.ParsedGreen, "??, Ward ??, Plot ?? is registered as ?? house.".Loc(data.ResidentialDistrict.GetName(), data.Ward + 1, data.Plot + 1, (data.IsPrivate ? "private" : "free company").Loc()));
+            if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "Remove registration".Loc(), ImGuiEx.Ctrl))
             {
                 C.HousePathDatas.Remove(data);
             }
-            ImGui.Checkbox("Override teleport behavior", ref data.EnableHouseEnterModeOverride);
+            ImGui.Checkbox("Override teleport behavior".Loc(), ref data.EnableHouseEnterModeOverride);
             if(data.EnableHouseEnterModeOverride)
             {
                 ImGui.SameLine();
@@ -340,10 +340,10 @@ public static unsafe class UIHouseReg
             {
                 var path = data.PathToEntrance;
                 new NuiBuilder()
-                    .Section("Path to house")
+                    .Section("Path to house".Loc())
                     .Widget(() =>
                     {
-                        ImGuiEx.TextWrapped($"Create path from plot entrance to house entrance. A path should have it's first point slightly inside your plot to which you can run in a straight line after teleporting and last point next to house entrance from where you can enter the house.");
+                        ImGuiEx.TextWrapped("Create path from plot entrance to house entrance. A path should have it's first point slightly inside your plot to which you can run in a straight line after teleporting and last point next to house entrance from where you can enter the house.".Loc());
 
                         ImGui.PushID($"path{isPrivate}");
                         DrawPathEditor(path, data);
@@ -355,10 +355,10 @@ public static unsafe class UIHouseReg
             {
                 var path = data.PathToWorkshop;
                 new NuiBuilder()
-                    .Section("Path to workshop")
+                    .Section("Path to workshop".Loc())
                     .Widget(() =>
                     {
-                        ImGuiEx.TextWrapped($"Create path from house entrance to workshop/private chambers entrance.");
+                        ImGuiEx.TextWrapped("Create path from house entrance to workshop/private chambers entrance.".Loc());
 
                         ImGui.PushID($"workshop");
                         DrawPathEditor(path, data);
@@ -368,12 +368,12 @@ public static unsafe class UIHouseReg
             }
             else
             {
-                ImGuiEx.TextWrapped("Go to registered plot to edit path");
+                ImGuiEx.TextWrapped("Go to registered plot to edit path".Loc());
             }
         }
         else
         {
-            ImGuiEx.TextWrapped("Go to registered plot to edit path");
+            ImGuiEx.TextWrapped("Go to registered plot to edit path".Loc());
         }
     }
 
@@ -381,15 +381,15 @@ public static unsafe class UIHouseReg
     {
         if(!TerritoryWatcher.IsDataReliable())
         {
-            ImGuiEx.Text(EColor.RedBright, $"You can not edit house path right now. \nPlease exit and enter your house.");
+            ImGuiEx.Text(EColor.RedBright, "You can not edit house path right now. \nPlease exit and enter your house.".Loc());
             return;
         }
-        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add to the end of the list"))
+        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add to the end of the list".Loc()))
         {
             path.Add(Player.Position);
         }
         ImGui.SameLine();
-        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add to the beginning of the list"))
+        if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add to the beginning of the list".Loc()))
         {
             path.Insert(0, Player.Position);
         }
@@ -399,22 +399,18 @@ public static unsafe class UIHouseReg
             if(entryPoint != null)
             {
                 ImGui.SameLine();
-                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Play, "Test", data.ResidentialDistrict.GetResidentialTerritory() == P.Territory && Vector3.Distance(Player.Position, entryPoint.Value) < 10f))
+                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Play, "Test".Loc(), data.ResidentialDistrict.GetResidentialTerritory() == P.Territory && Vector3.Distance(Player.Position, entryPoint.Value) < 10f))
                 {
                     P.FollowPath.Move(data.PathToEntrance, true);
                 }
                 ImGui.SameLine();
-                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Play, "Test Workshop", data.PathToWorkshop.Count > 0 && Utils.IsInsideHouse()))
+                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Play, "Test Workshop".Loc(), data.PathToWorkshop.Count > 0 && Utils.IsInsideHouse()))
                 {
                     P.FollowPath.Move(data.PathToWorkshop, true);
                 }
                 if(ImGui.IsItemHovered())
                 {
-                    ImGuiEx.Tooltip($"""
-                        ResidentialDistrict territory: {data.ResidentialDistrict.GetResidentialTerritory()}
-                        Player territory: {P.Territory}
-                        Distance to entry point: {Vector3.Distance(Player.Position, entryPoint.Value)}
-                        """);
+                    ImGuiEx.Tooltip("ResidentialDistrict territory: ??\nPlayer territory: ??\nDistance to entry point: ??".Loc(data.ResidentialDistrict.GetResidentialTerritory(), P.Territory, Vector3.Distance(Player.Position, entryPoint.Value)));
                 }
             }
         }
@@ -423,7 +419,7 @@ public static unsafe class UIHouseReg
         {
             ImGui.TableSetupColumn("##num");
             ImGui.TableSetupColumn("##move");
-            ImGui.TableSetupColumn("Coords", ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn("Coords".Loc(), ImGuiTableColumnFlags.WidthStretch);
             ImGui.TableSetupColumn("##control");
             ImGui.TableHeadersRow();
 
@@ -431,7 +427,7 @@ public static unsafe class UIHouseReg
             ImGui.TableNextColumn();
             ImGui.TableNextColumn();
             ImGui.TableNextColumn();
-            ImGuiEx.Text($"Entrance to plot");
+            ImGuiEx.Text("Entrance to plot".Loc());
 
             for(var i = 0; i < path.Count; i++)
             {
@@ -450,13 +446,13 @@ public static unsafe class UIHouseReg
                 Visualise();
 
                 ImGui.TableNextColumn();
-                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.MapPin, "To my position"))
+                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.MapPin, "To my position".Loc()))
                 {
                     path[i] = Player.Position;
                 }
                 Visualise();
                 ImGui.SameLine();
-                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "Delete", ImGuiEx.Ctrl))
+                if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Trash, "Delete".Loc(), ImGuiEx.Ctrl))
                 {
                     var toRem = i;
                     new TickScheduler(() => path.RemoveAt(toRem));
@@ -482,7 +478,7 @@ public static unsafe class UIHouseReg
             ImGui.TableNextColumn();
             ImGui.TableNextColumn();
             ImGui.TableNextColumn();
-            ImGuiEx.Text($"Entrance to the house");
+            ImGuiEx.Text("Entrance to the house".Loc());
 
             ImGui.EndTable();
         }

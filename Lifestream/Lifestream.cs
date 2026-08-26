@@ -71,6 +71,7 @@ public unsafe class Lifestream : IDalamudPlugin
     {
         P = this;
         ECommonsMain.Init(pluginInterface, this, Module.SplatoonAPI);
+        ECommons.LanguageHelpers.Localization.Init("ChineseTraditional");
 #if CUSTOMCS
         PluginLog.Warning($"Using custom FFXIVClientStructs");
         var gameVersion = DalamudReflector.TryGetDalamudStartInfo(out var ver) ? ver.GameVersion.ToString() : "unknown";
