@@ -34,6 +34,12 @@ public class SplatoonManager
     public void RenderPath(IReadOnlyList<Vector3> path, bool addPlayer = true, bool addNumbers = false)
     {
         if(!Splatoon.IsConnected()) return;
+        // Player.Object 在登出/切角色/區域轉換期間為 null(2026-08-26 實機 log 實證:
+        // 本行的 NullReferenceException 讓 ProgressOverlay.Draw() 連兩幀擲例外,
+        // 進而被 Dalamud 鎖進錯誤視窗狀態,使用者的進度條就此消失)。
+        // 拿不到玩家位置時,只是不畫「玩家 → 第一個路徑點」那一條線,其餘照畫。
+        // 注意原本的寫法在 addPlayer=false 時也會先解參考 Player.Object,所以那條路徑同樣會炸。
+        Vector3? playerPos = Player.Available ? Player.Object.Position : null;
         Vector3? prev = null;
         if(path != null && path.Count > 0)
         {
@@ -41,12 +47,13 @@ public class SplatoonManager
             {
                 var point = GetNextPoint(addNumbers ? (i + 1).ToString() : "");
                 point.SetRefCoord(path[i]);
+                var offCoord = prev ?? playerPos;
                 var line = GetNextLine();
                 line.SetRefCoord(path[i]);
-                line.SetOffCoord(prev ?? Player.Object.Position);
+                line.SetOffCoord(offCoord ?? path[i]);
                 line.color = (prev != null ? ImGuiColors.DalamudYellow : ImGuiColors.HealerGreen).ToUint();
                 Splatoon.DisplayOnce(point);
-                if(prev != null || addPlayer)
+                if(offCoord != null && (prev != null || addPlayer))
                 {
                     Splatoon.DisplayOnce(line);
                 }

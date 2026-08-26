@@ -633,6 +633,13 @@ internal static unsafe class UISettings
             ImGuiEx.HelpMarker("Hiding progress bar leaves you with no way to stop Lifestream from executing it's tasks.".Loc());
             ImGuiEx.CheckboxInverted("Don't walk to nearby aetheryte on world change command from greater distance".Loc(), ref C.WalkToAetheryte);
             ImGui.Checkbox("Progress overlay at top of the sreen".Loc(), ref C.ProgressOverlayToTop);
+            if(ImGui.Button("Reset progress bar".Loc()))
+            {
+                C.NoProgressBar = false;
+                ProgressOverlay.ResetOverlay();
+                Notify.Success("Progress bar has been reset.".Loc());
+            }
+            ImGuiEx.HelpMarker("Use this if the progress bar has stopped showing up. It re-enables the bar and re-creates its window, which also clears the error state that Dalamud locks a window into after a drawing error. The bar's position is recalculated from the current screen size every frame, so it can not get stuck off-screen.".Loc());
             ImGui.Checkbox("Allow custom alias and house alias to override built-in commands".Loc(), ref C.AllowCustomOverrides);
             ImGui.Indent();
             ImGuiEx.TextWrapped(EColor.RedBright, "Warning! Other plugins may rely on built-in commands. Ensure that it is not the case if you decide to enable this option and override commands.".Loc());
