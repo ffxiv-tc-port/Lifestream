@@ -13,49 +13,57 @@ internal static class Lang
     public const string SymbolSubdivision = "";
     public static readonly (string Normal, string GameFont) Digits = ("0123456789", "");
 
-    public static readonly string Help = $"""
-    -- Main Travel --
-
-    /li → go to your home world
-    /li <world> → go to specified world
-    /li <datacenter> → go to a random world of specified data center
-    /li <aethernet> → go to specified aethernet destination
-    /li <world>, tp <location> → go to specified aetheryte destination of specified world
-    /li <world>, tp <aethernet> → go to specified aethernet destination of specified world
-
-    -- Market Board --
-
-    /li mb → go to market board
-    /li <world> mb → go to market board of specified world
-
-    -- Estates --
-
-    /li auto → go to your private estate, shared estate, FC estate or apartment, based on configured preference
-    /li shared → go to your shared estate, based on configured preference
-    /li home → go to your private estate, alias: /li home|house|private
-    /li fc → go to your FC estate, alias: /li fc|free|company|free company
-    /li apt → go to your apartment, alias: /li apt|apartment
-    /li ws → go to your FC's workshop, alias: /li ws|workshop
-
-    /li <district> <ward> <plot> → go to specified plot in current world
-    /li <world> <district> <ward> <plot> → go to specified plot of specified world
-    Examples: /li lavender 1 30, /li goblet 1 30, /li mist 1 30
-
-    -- Grand Company --
-
-    /li gc → go to your grand company, alias: /li gc|hcc
-    /li gc <grandcompany> → go to specified grand company, alias: /li gc|hcc <grandcompany>
-    /li gcc → go to your grand company city's FC chest, alias: /li gc|hcc
-    /li gcc <grandcompany> → go to specified grand company city's FC chest, alias: /li gc|hcc <grandcompany>
-    Using "hc" or "hcc" instead of "gc" or "gcc" moves to you to your home world first
-
-    -- Others --
-
-    /li cosmic → go to Sinus Ardorum, alias: /li cosmic|moon|ardorum
-    /li island → go to Island Sanctuary
-    /li w → open world travel window, alias: /li w|world|open|select
-    /lifestream → open plugin configuration 
-    """;
+    // Localized line by line rather than as one giant block, so each line stays a clean
+    // single-line ini key. SearchHelperOverlay.ParseCommandDescriptions() parses this text
+    // with regexes, so every translation MUST keep the literal "/li <command>" prefix, the
+    // "→" separator and any "alias: /li a|b|c" fragment intact.
+    public static string Help => string.Join("\n", new string[]
+    {
+        "-- Main Travel --".Loc(),
+        "",
+        "/li → go to your home world".Loc(),
+        "/li <world> → go to specified world".Loc(),
+        "/li <datacenter> → go to a random world of specified data center".Loc(),
+        "/li <aethernet> → go to specified aethernet destination".Loc(),
+        "/li <world>, tp <location> → go to specified aetheryte destination of specified world".Loc(),
+        "/li <world>, tp <aethernet> → go to specified aethernet destination of specified world".Loc(),
+        "",
+        "-- Market Board --".Loc(),
+        "",
+        "/li mb → go to market board".Loc(),
+        "/li <world> mb → go to market board of specified world".Loc(),
+        "",
+        "-- Estates --".Loc(),
+        "",
+        "/li auto → go to your private estate, shared estate, FC estate or apartment, based on configured preference".Loc(),
+        "/li shared → go to your shared estate, based on configured preference".Loc(),
+        "/li home → go to your private estate, alias: /li home|house|private".Loc(),
+        "/li fc → go to your FC estate, alias: /li fc|free|company|free company".Loc(),
+        "/li apt → go to your apartment, alias: /li apt|apartment".Loc(),
+        "/li ws → go to your FC's workshop, alias: /li ws|workshop".Loc(),
+        "",
+        "/li <district> <ward> <plot> → go to specified plot in current world".Loc(),
+        "/li <world> <district> <ward> <plot> → go to specified plot of specified world".Loc(),
+        "Examples: /li lavender 1 30, /li goblet 1 30, /li mist 1 30".Loc(),
+        "",
+        "-- Grand Company --".Loc(),
+        "",
+        "/li gc → go to your grand company, alias: /li gc|hcc".Loc(),
+        "/li gc <grandcompany> → go to specified grand company, alias: /li gc|hcc <grandcompany>".Loc(),
+        "/li gcc → go to your grand company city's FC chest, alias: /li gc|hcc".Loc(),
+        "/li gcc <grandcompany> → go to specified grand company city's FC chest, alias: /li gc|hcc <grandcompany>".Loc(),
+        "Using \"hc\" or \"hcc\" instead of \"gc\" or \"gcc\" moves to you to your home world first".Loc(),
+        "",
+        "-- Others --".Loc(),
+        "",
+        "/li cosmic → go to Sinus Ardorum, alias: /li cosmic|moon|ardorum".Loc(),
+        "/li island → go to Island Sanctuary".Loc(),
+        "/li goto <name> → go to a saved custom destination (teleport + navigation)".Loc(),
+        "/li panel → open the teleport panel (search, favorites, remarks, map preview)".Loc(),
+        "/li fav → open the favorites window (custom order and categories), alias: /li fav|favorites".Loc(),
+        "/li w → open world travel window, alias: /li w|world|open|select".Loc(),
+        "/lifestream → open plugin configuration".Loc(),
+    });
     internal static string[] AdditionalChambersEntrance =>
     [
         Svc.Data.GetExcelSheet<EObjName>().GetRow(2004353).Singular.GetText(),
@@ -104,6 +112,49 @@ internal static class Lang
     //0	TEXT_AETHERYTEISHGARD_HWD_WARP<Gui(69)/> Himmelsstadt
     //0	TEXT_AETHERYTEISHGARD_HWD_WARP	<Gui(69)/> Azurée
     internal static readonly string[] TravelToFirmament = ["Travel to the Firmament.", "蒼天街転送", "Himmelsstadt", "Azurée", "传送到天穹街", "傳送到蒼天街", "창천 거리 이동"];
+
+    //transport/AetheryteBestwaysBurrow	1	TEXT_AETHERYTEBESTWAYSBURROW_SYSTEM_C1W1	<Gui(69)/> 前往渴望灣 (TC 7.20 離線 dump 實測)
+    //比照蒼天街:嘆息海「最佳威兔洞」乙太之光(175)的選單有直達渴望灣的選項。
+    //顯示文字執行期從表解析(語言無關);寫死的只是表讀不到時的最後防線。
+    internal static string[] TravelToSinusArdorum
+    {
+        get
+        {
+            field ??= BuildSheetMatchers(
+                () => Svc.Data.GetExcelSheet<ECommons.ExcelServices.Sheets.QuestDialogueText>(name: "transport/AetheryteBestwaysBurrow").GetRowOrDefault(1)?.Value.ExtractText(),
+                "前往渴望灣");
+            return field;
+        }
+    }
+
+    //Addon#2091	隨意（自動選擇） — 「前往渴望灣」之後可能出現的副本區選擇選單的自動選項
+    internal static string[] AnyInstance
+    {
+        get
+        {
+            field ??= BuildSheetMatchers(
+                () => Svc.Data.GetExcelSheet<Addon>().GetRowOrDefault(2091)?.Text.ExtractText(),
+                "隨意（自動選擇）");
+            return field;
+        }
+    }
+
+    private static string[] BuildSheetMatchers(Func<string> resolver, params string[] fallbacks)
+    {
+        try
+        {
+            var resolved = resolver()?.Trim();
+            if(resolved != null && resolved != "")
+            {
+                return [resolved, .. fallbacks.Where(x => x != resolved)];
+            }
+        }
+        catch(Exception e)
+        {
+            e.Log();
+        }
+        return fallbacks;
+    }
 
     //2	TEXT_AETHERYTE_HOUSING_WARP	<Gui(69)/> Residential District Aethernet.
     //2	TEXT_AETHERYTE_HOUSING_WARP	<Gui(69)/> 冒険者居住区転送

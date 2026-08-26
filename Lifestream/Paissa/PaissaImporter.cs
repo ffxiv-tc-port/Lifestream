@@ -140,7 +140,7 @@ public class PaissaImporter
                 }
                 if(ImGui.BeginPopup($"ABMenu {entry.GUID}"))
                 {
-                    if(ImGui.MenuItem("Copy chat-friendly name to clipboard".Loc()))
+                    if(ImGui.MenuItem(LocText.CopyChatFriendlyName.Loc()))
                     {
                         Copy(entry.GetAddressString());
                     }
@@ -165,7 +165,7 @@ public class PaissaImporter
                         }
                         else
                         {
-                            Svc.Toasts.ShowError("Hold CTRL and click to delete an entry".Loc());
+                            Svc.Toasts.ShowError(LocText.HoldCtrlToDeleteEntry.Loc());
                         }
                     }
                     ImGuiEx.Tooltip("Hold CTRL and click to delete".Loc());
@@ -178,7 +178,7 @@ public class PaissaImporter
                     InternalLog.Verbose($"DragDropSource = {entry.GUID}");
                     if(book.SortMode == SortMode.Manual)
                     {
-                        ImGui.SetTooltip("Reorder or move to other folder".Loc());
+                        ImGui.SetTooltip(LocText.ReorderOrMoveToOtherFolder.Loc());
                     }
                     else
                     {

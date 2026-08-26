@@ -26,6 +26,7 @@ public class Config : IEzConfig
     public Dictionary<uint, string> Renames = [];
     public WorldChangeAetheryte WorldChangeAetheryte = WorldChangeAetheryte.Uldah;
     public bool Firmament = true;
+    public bool SinusArdorum = true;
     public bool WalkToAetheryte = true;
     public bool LeavePartyBeforeWorldChange = true;
     public bool AllowDcTransfer = true;
@@ -52,6 +53,8 @@ public class Config : IEzConfig
     public Dictionary<uint, int> PublicInstances = [];
     public bool ShowInstanceSwitcher = true;
     public bool InstanceSwitcherRepeat = true;
+    public bool InstanceTpToAetheryte = false;
+    public bool InstanceRemount = false;
     public int InstanceButtonHeight = 10;
     public bool UseSprintPeloton = true;
     public bool UsePeloton = true;
@@ -73,6 +76,7 @@ public class Config : IEzConfig
     public int RetryWorldVisitInterval = 30;
     public int RetryWorldVisitIntervalDelta = 10;
     public List<CustomAlias> CustomAliases = [];
+    public List<CustomDestination> CustomDestinations = [];
     public bool UseGuestWorldTravel = false;
     public bool AllowDCTravelFromCharaSelect = true;
     public List<TravelBanInfo> TravelBans = [];
@@ -96,4 +100,67 @@ public class Config : IEzConfig
     public bool AutoCompletionWindowBottom = false;
     public bool AutoCompletionWindowRight = false;
     public Vector2 AutoCompletionWindowOffset = Vector2.Zero;
+
+    // ── 傳送面板(移植自 DailyRoutines BetterTeleport) ─────────────────────────────
+    public bool TeleportPanelShowMap = true;
+    public bool TeleportPanelHideAethernetInParty = false;
+    public float TeleportPanelMapZoom = 1f;
+
+    /// <summary>
+    /// 每座乙太之光的自訂落點，鍵是 Aetheryte 表的 RowId ——
+    /// 與 DailyRoutines BetterTeleport 的 <c>Positions</c> 同一個鍵空間，可直接匯入。
+    /// </summary>
+    public Dictionary<uint, Vector3> AetheryteLandings = [];
+
+    /// <summary>傳送後自動前往自訂落點。預設關。開啟後走 vnavmesh(與 <c>/li goto</c> 同一套)。</summary>
+    public bool EnableAetheryteLanding = false;
+
+    /// <summary>🔴 改用「直接寫記憶體座標瞬移」抵達落點。預設關，需先開 <see cref="EnableAetheryteLanding"/>。</summary>
+    public bool AetheryteLandingDirectWrite = false;
+
+    /// <summary>🔴 「允許傳送到目前所在的乙太之光」記憶體修補。預設關。</summary>
+    public bool SameAethernetTeleport = false;
+
+    // ── 我的最愛：自訂排序與分類 ────────────────────────────────────────────────
+    // ⚠️ <see cref="Favorites"/> 是 HashSet(無序)，而且浮動視窗/指令都在讀它 ——
+    // **完全不動它**。排序與分類一律另存在下面這幾個新欄位裡，純加法、不需要設定檔遷移：
+    // 舊使用者第一次開，順序表與分類表都是空的 → 全部落回既有的字母序與「未分類」，
+    // 看到的東西跟以前一模一樣，也不會少任何一筆。
+
+    /// <summary>
+    /// 我的最愛的自訂顯示順序(Aetheryte RowId)。**只是一份排名**，不是成員名單 ——
+    /// 沒列在這裡的我的最愛不會消失，只是排在有排名的項目之後、彼此照字母序。
+    /// </summary>
+    public List<uint> FavoriteOrder = [];
+
+    /// <summary>我的最愛的自訂分類定義。清單順序就是顯示順序。</summary>
+    public List<FavoriteCategory> FavoriteCategories = [];
+
+    /// <summary>我的最愛 → 分類 Id。查不到、或指向已被刪除的分類，一律落到「未分類」。</summary>
+    public Dictionary<uint, uint> FavoriteCategoryAssignment = [];
+
+    // ── 野外導航 ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 野外導航(自訂落點 / <c>/li goto</c>)時，路徑夠長就先上坐騎再走。
+    /// 📌 預設開 = 刻意不沿用舊行為(這條路徑原本是寫死不上坐騎的)。只影響移動方式，
+    /// 上坐騎本身用的是既有的 <see cref="Tasks.Utility.TaskMount"/>，遵守 <see cref="Mount"/> 偏好；
+    /// 城內/室內/戰鬥中/副本裡遊戲會直接拒絕，那些情況自動退回步行。
+    /// ⚠️ 既有使用者的設定檔已經寫過這個鍵時，反序列化會蓋掉這個預設值 —— 只有沒有該鍵的設定檔才會吃到開。
+    /// </summary>
+    public bool GotoUseMount = true;
+
+    /// <summary>路徑總長短於這個距離就不上坐騎 —— 上下馬的時間比省下來的還多。</summary>
+    public float GotoMountMinDistance = 60f;
+
+    /// <summary>
+    /// 城內快捷傳送時,若目的地乙太之光**與玩家同區**且直線距離小於這個值,就乾脆走過去、完全不用乙太網
+    /// (省下整整一次讀取畫面)。
+    ///
+    /// 🔴 <b>0 = 關,而且是預設值</b>。這會改變語意(點了傳送面板卻用走的),所以必須由使用者自己開。
+    /// 建議 60~80。
+    ///
+    /// 📌 只比直線距離,不用 vnavmesh 算路徑長度 —— 理由見 <see cref="Tasks.Utility.TaskAethernetRoute"/>。
+    /// </summary>
+    public float SkipAethernetIfCloserThan = 0f;
 }

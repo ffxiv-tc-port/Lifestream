@@ -106,7 +106,11 @@ internal static unsafe class DCChange
             PluginLog.Debug($"Select1-1");
             //if (!AgentLobby.Instance()->AgentInterface.IsAgentActive()) return false;
             PluginLog.Debug($"Select2");
-            if(AgentLobby.Instance()->TemporaryLocked) return false;
+            // AgentLobby 取得器合法回 null。拿不到就當作「還沒準備好」回 false,
+            // 讓這個工作下一幀重試 —— 比對 null 解參考 TemporaryLocked 安全。
+            var lobby = AgentLobby.Instance();
+            if(lobby == null) return false;
+            if(lobby->TemporaryLocked) return false;
             PluginLog.Debug($"Select3");
             if(Utils.TryGetCharacterIndex(name, world, out var index))
             {
@@ -209,7 +213,7 @@ internal static unsafe class DCChange
 
     internal static bool? ConfirmDcVisitIntention()
     {
-        if(TryGetAddonByName<AtkUnitBase>("LobbyDKTCheck", out var addon) && IsAddonReady(addon) && addon->UldManager.NodeList[3]->GetAsAtkComponentButton()->IsEnabled)
+        if(TryGetAddonByName<AtkUnitBase>("LobbyDKTCheck", out var addon) && IsAddonReady(addon) && IsButtonEnabled(GetNodeListButton(addon, 3)))
         {
             if(DCThrottle)
             {
@@ -230,13 +234,22 @@ internal static unsafe class DCChange
         if(TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon) && IsAddonReady(addon))
         {
             var reader = new ReaderLobbyDKTWorldList(addon);
-            var cw = GenericHelpers.ReadSeString(&addon->UldManager.NodeList[13]->GetAsAtkTextNode()->NodeText).GetText();
+            // ⚠️ cw 讀了之後在本方法裡從來沒被用過(上游就是這樣)。沒有明確指示不回退既有行為,
+            // 所以保留這次讀取,只補上判空。
+            TryGetNodeText(addon, 13, out var cw);
             if(reader.SelectedDataCenter == name)
             {
                 PluginLog.Information($"SelectTargetDataCenter complete");
                 return true;
             }
-            var list = addon->UldManager.SearchNodeById(21)->GetAsAtkComponentNode();
+            // 🔴 SearchNodeById 找不到時回 null,而 GetAsAtkComponentNode() 是原生 member function
+            // (this 走 RCX),對 null 呼叫＝當場 AVE。Component(偏移 0xB0)也是可為 null 的指標欄位。
+            // 這裡刻意**不提早 return** —— 讓後面的 reader.Regions.Count == 0 → DCRethrottle 照跑,
+            // 控制流完全不變;取不到時 listUld 留 null,迴圈裡的 GetNodeSafe 自然一路跳過。
+            var listNode = addon->UldManager.SearchNodeById(21);
+            var list = listNode == null ? null : listNode->GetAsAtkComponentNode();
+            AtkUldManager* listUld = null;
+            if(list != null && list->Component != null) listUld = &list->Component->UldManager;
             var addonItem = 0;
             var listIndex = 3;
             var category = 0;
@@ -249,8 +262,10 @@ internal static unsafe class DCChange
                 {
                     if(dc.Name == name)
                     {
-                        var t = list->Component->UldManager.NodeList[listIndex]->GetAsAtkComponentNode()->Component->UldManager.NodeList[8]->GetAsAtkTextNode();
-                        if(t->AtkResNode.Alpha_2 == 255)
+                        // 🔴 五跳裸鏈。真正的炸點是下一行的 t->AtkResNode.Alpha_2 ——
+                        // 取節點那一行算出毒指標時不會崩,要到讀 Alpha_2／NodeText 才炸。
+                        var t = GetTextNodeSafe(GetComponentNodeSafe(GetNodeSafe(listUld, listIndex), 8));
+                        if(t != null && t->AtkResNode.Alpha_2 == 255)
                         {
                             var text = GenericHelpers.ReadSeString(&t->NodeText).GetText();
                             if(text == name && DCThrottle && EzThrottler.Throttle("SelectTargetDataCenter"))
@@ -281,17 +296,27 @@ internal static unsafe class DCChange
     {
         if(TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon) && IsAddonReady(addon))
         {
-            var cw = GenericHelpers.ReadSeString(&addon->UldManager.NodeList[10]->GetAsAtkTextNode()->NodeText).GetText();
-            if(cw == name || (C.DcvUseAlternativeWorld && cw.EqualsAny(ExcelWorldHelper.GetPublicWorlds(Utils.GetDataCenter(name).RowId).Select(w => w.Name.ToString()))))
+            // cw 讀不到時**刻意不提早 return**:回 false 會把下面整段清單掃描與
+            // noAvailableWorldsAction 一起跳掉,而「讀不到目前世界名稱」不代表沒事可做 ——
+            // 掃清單本來就能找到目標世界並選下去。讀不到就留空字串,
+            // 讓 cw == name 單純比不中(＝「還沒確認到站」),控制流與原本一字不差。
+            TryGetNodeText(addon, 10, out var cw);
+            if(cw == name || (C.DcvUseAlternativeWorld && cw.EqualsAny(PublicWorlds.Get(Utils.GetDataCenter(name).RowId).Select(w => w.Name.ToString()))))
             {
                 return true;
             }
-            var list = addon->UldManager.NodeList[6]->GetAsAtkComponentNode();
+            // 取不到清單時 listUld 留 null,兩個迴圈裡的 GetNodeSafe 會一路跳過 ——
+            // num 維持 0 ⇒ 照樣走到既有的 DCRethrottle 與 noAvailableWorldsAction,控制流不變。
+            var listNode = GetNodeSafe(&addon->UldManager, 6);
+            var list = listNode == null ? null : listNode->GetAsAtkComponentNode();
+            AtkUldManager* listUld = null;
+            if(list != null && list->Component != null) listUld = &list->Component->UldManager;
             var num = 0;
             for(var i = 3; i < 3 + 8; i++)
             {
-                var t = list->Component->UldManager.NodeList[i]->GetAsAtkComponentNode()->Component->UldManager.NodeList[8]->GetAsAtkTextNode();
-                if(t->AtkResNode.Alpha_2 == 255)
+                // 🔴 五跳裸鏈;炸點在下一行讀 Alpha_2 的時候,不是在取節點那一行。
+                var t = GetTextNodeSafe(GetComponentNodeSafe(GetNodeSafe(listUld, i), 8));
+                if(t != null && t->AtkResNode.Alpha_2 == 255)
                 {
                     var text = GenericHelpers.ReadSeString(&t->NodeText).GetText();
                     if(text != "") num++;
@@ -308,12 +333,13 @@ internal static unsafe class DCChange
             {
                 for(var i = 3; i < 3 + 8; i++)
                 {
-                    var t = list->Component->UldManager.NodeList[i]->GetAsAtkComponentNode()->Component->UldManager.NodeList[8]->GetAsAtkTextNode();
-                    if(t->AtkResNode.Alpha_2 == 255)
+                    // 🔴 同上(替代世界那一輪)。
+                    var t = GetTextNodeSafe(GetComponentNodeSafe(GetNodeSafe(listUld, i), 8));
+                    if(t != null && t->AtkResNode.Alpha_2 == 255)
                     {
                         var text = GenericHelpers.ReadSeString(&t->NodeText).GetText();
                         if(text != "") num++;
-                        if(text.EqualsAny(ExcelWorldHelper.GetPublicWorlds(Utils.GetDataCenter(name).RowId).Select(w => w.Name.ToString())) && DCThrottle && EzThrottler.Throttle("SelectTargetWorld"))
+                        if(text.EqualsAny(PublicWorlds.Get(Utils.GetDataCenter(name).RowId).Select(w => w.Name.ToString())) && DCThrottle && EzThrottler.Throttle("SelectTargetWorld"))
                         {
                             PluginLog.Debug($"[DCChange] Selecting alternative target world {name} index {i}");
                             S.Memory.ConstructEvent(addon, 0, 2, 6, i - 2, i - 2);
@@ -327,7 +353,7 @@ internal static unsafe class DCChange
             {
                 DCRethrottle();
             }
-            if(noAvailableWorldsAction != null && TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon2) && IsAddonReady(addon2) && addon2->UldManager.NodeList[4]->GetAsAtkComponentButton()->IsEnabled)
+            if(noAvailableWorldsAction != null && TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon2) && IsAddonReady(addon2) && IsButtonEnabled(GetNodeListButton(addon2, 4)))
             {
                 var result = noAvailableWorldsAction();
                 if(result) return true;
@@ -344,13 +370,17 @@ internal static unsafe class DCChange
     {
         if(TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon) && IsAddonReady(addon))
         {
-            if(addon->UldManager.NodeList[4]->GetAsAtkComponentButton()->IsEnabled)
+            if(IsButtonEnabled(GetNodeListButton(addon, 4)))
             {
                 if(DCThrottle && EzThrottler.Throttle("CancelDcVisit", 5000))
                 {
-                    PluginLog.Debug($"[DCChange] Cancelling DC visit");
-                    addon->UldManager.NodeList[4]->GetAsAtkComponentButton()->ClickAddonButton(addon);
-                    return true;
+                    var button = GetNodeListButton(addon, 4);
+                    if(button != null)
+                    {
+                        PluginLog.Debug($"[DCChange] Cancelling DC visit");
+                        button->ClickAddonButton(addon);
+                        return true;
+                    }
                 }
             }
             else
@@ -369,7 +399,7 @@ internal static unsafe class DCChange
     {
         if(TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon) && IsAddonReady(addon))
         {
-            if(addon->UldManager.NodeList[5]->GetAsAtkComponentButton()->IsEnabled)
+            if(IsButtonEnabled(GetNodeListButton(addon, 5)))
             {
                 if(DCThrottle && EzThrottler.Throttle("ConfirmDcVisit", 5000))
                 {
@@ -394,7 +424,7 @@ internal static unsafe class DCChange
     {
         if(TryGetAddonByName<AtkUnitBase>("LobbyDKTCheckExec", out var addon) && IsAddonReady(addon))
         {
-            if(addon->UldManager.NodeList[3]->GetAsAtkComponentButton()->IsEnabled)
+            if(IsButtonEnabled(GetNodeListButton(addon, 3)))
             {
                 if(DCThrottle && EzThrottler.Throttle("ConfirmDcVisit", 5000))
                 {
@@ -445,7 +475,10 @@ internal static unsafe class DCChange
         if(TryGetAddonByName<AddonSelectString>("SelectString", out var addon) && IsAddonReady(&addon->AtkUnitBase)
             && addon->AtkUnitBase.UldManager.NodeListCount >= 4)
         {
-            var text = GenericHelpers.ReadSeString(&addon->AtkUnitBase.UldManager.NodeList[3]->GetAsAtkTextNode()->NodeText).GetText();
+            // 上界(NodeListCount >= 4)原本就有,缺的是**元素判空**與 GetAsAtkTextNode 的 null this
+            // —— 兩者是不同的關卡,只做上界擋不住元素為 null。
+            // 讀不到就回 false(等下一輪),不要拿空字串去和 Lobby 表比對後選錯服務帳號。
+            if(!TryGetNodeText(&addon->AtkUnitBase, 3, out var text)) return false;
             var compareTo = Svc.Data.GetExcelSheet<Lobby>()?.GetRow(11).Text.ToString();
             if(text == compareTo)
             {

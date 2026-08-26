@@ -195,6 +195,15 @@ internal static unsafe partial class Utils
                     {
                         dict[TaskAetheryteAethernetTeleport.FirmamentAethernetId] = "Firmament";
                     }
+                    if(x.Key.ID == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId)
+                    {
+                        // 175 沒有 AethernetName(master 名稱是空字串),改用地名;並比照蒼天街掛上渴望灣
+                        if(dict[x.Key.ID] == "")
+                        {
+                            dict[x.Key.ID] = Svc.Data.GetExcelSheet<Aetheryte>().GetRowOrDefault(x.Key.ID)?.PlaceName.ValueNullable?.Name.GetText() ?? x.Key.ID.ToString();
+                        }
+                        dict[TaskAetheryteAethernetTeleport.SinusArdorumAethernetId] = "Sinus Ardorum";
+                    }
                 }
                 foreach(var x in S.Data.ResidentialAethernet.ZoneInfo)
                 {
@@ -404,7 +413,7 @@ internal static unsafe partial class Utils
 
     public static bool IsPlayerFalling()
     {
-        var p = Svc.ClientState.LocalPlayer;
+        var p = Svc.Objects.LocalPlayer;
         if(p == null)
             return true;
 
@@ -422,17 +431,20 @@ internal static unsafe partial class Utils
 
     public static void DrawWorldSelector(ICollection<int> worldList)
     {
-        ImGuiEx.CollectionCheckbox("All", ExcelWorldHelper.GetPublicWorlds().Select(x => (int)x.RowId), worldList);
+        ImGuiEx.CollectionCheckbox("All", PublicWorlds.Get().Select(x => (int)x.RowId), worldList);
         ImGui.Indent();
-        var regions = Enum.GetValues<ExcelWorldHelper.Region>();
+        // 用 PublicWorlds.AllRegions() 而不是 Enum.GetValues<Region>()：ECommons 的列舉沒有台服的 8，
+        // 直接迭代列舉會讓陸行鳥資料中心與其底下的世界整組消失——而同一個畫面上方的
+        // PublicWorlds.Get()（全部聚合）是含台服的，兩者會不一致。
+        var regions = PublicWorlds.AllRegions();
         foreach(var r in regions)
         {
-            ImGuiEx.CollectionCheckbox(r.ToString(), ExcelWorldHelper.GetPublicWorlds(r).Select(x => (int)x.RowId), worldList);
+            ImGuiEx.CollectionCheckbox(PublicWorlds.RegionDisplayName(r), PublicWorlds.Get(r).Select(x => (int)x.RowId), worldList);
             var dc = ExcelWorldHelper.GetDataCenters(r);
             ImGui.Indent();
             foreach(var d in dc)
             {
-                var worlds = ExcelWorldHelper.GetPublicWorlds(d.RowId);
+                var worlds = PublicWorlds.Get(d.RowId);
                 ImGuiEx.CollectionCheckbox(d.Name.ToString(), worlds.Select(x => (int)x.RowId), worldList);
                 ImGui.Indent();
                 foreach(var w in worlds.OrderBy(x => x.Name.ToString()))
@@ -498,7 +510,7 @@ internal static unsafe partial class Utils
                 point = worldPos;
             }
             ImGui.BeginTooltip();
-            ImGuiEx.Text($"Point: {point:F2}\nLeft-click to finish");
+            ImGuiEx.Text(LocText.PointLeftClickToFinish.Loc(point.ToString("F2")));
             ImGui.EndTooltip();
             if(IsKeyPressed((int)Keys.LButton))
             {
@@ -528,7 +540,7 @@ internal static unsafe partial class Utils
                 point = worldPos.ToVector2();
             }
             ImGui.BeginTooltip();
-            ImGuiEx.Text($"Point: {point:F2}\nLeft-click to finish");
+            ImGuiEx.Text(LocText.PointLeftClickToFinish.Loc(point.ToString("F2")));
             ImGui.EndTooltip();
             if(IsKeyPressed((int)Keys.LButton))
             {
@@ -573,28 +585,32 @@ internal static unsafe partial class Utils
         {
             value = Player.Position.ToVector2();
         }
-        ImGuiEx.Tooltip("To player positon");
+        ImGuiEx.Tooltip("To player positon".Loc());
         ImGui.SameLine();
         if(ImGuiEx.IconButton(FontAwesomeIcon.Crosshairs, $"target{id}", enabled: Svc.Targets.Target != null))
         {
             value = Svc.Targets.Target.Position.ToVector2();
         }
-        ImGuiEx.Tooltip("To target positon");
+        ImGuiEx.Tooltip("To target positon".Loc());
         ImGui.SameLine();
         if(ImGuiEx.IconButton(FontAwesomeIcon.MousePointer, $"target{id}", enabled: Player.Interactable))
         {
             BeginScreenToWorldSelection(id, value);
         }
         ScreenToWorldSelector(id, ref value);
-        ImGuiEx.Tooltip("Select with mouse");
+        ImGuiEx.Tooltip("Select with mouse".Loc());
         ImGui.SameLine();
-        if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && AgentMap.Instance()->FlagMarkerCount > 0))
+        // AgentMap.Instance() 是 AgentGetterGenerator 產出的兩層可空取得器
+        // (`agentModule == null ? null : GetAgentByInternalId(...)`)——合法回 null。
+        // 這裡在繪製路徑每幀跑,取一次、判一次,拿不到就把按鈕停用(fail-closed)。
+        var flagAgent = AgentMap.Instance();
+        if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && flagAgent != null && flagAgent->FlagMarkerCount > 0))
         {
-            var marker = AgentMap.Instance()->FlagMapMarkers[0];
+            var marker = flagAgent->FlagMapMarkers[0];
             value = new(marker.XFloat, marker.YFloat);
         }
         ScreenToWorldSelector(id, ref value);
-        ImGuiEx.Tooltip("To map flag");
+        ImGuiEx.Tooltip("To map flag".Loc());
     }
 
     public static void DrawVector3Selector(string id, ref Vector3 value)
@@ -606,28 +622,30 @@ internal static unsafe partial class Utils
         {
             value = Player.Position;
         }
-        ImGuiEx.Tooltip("To player positon");
+        ImGuiEx.Tooltip("To player positon".Loc());
         ImGui.SameLine();
         if(ImGuiEx.IconButton(FontAwesomeIcon.Crosshairs, $"target{id}", enabled: Svc.Targets.Target != null))
         {
             value = Svc.Targets.Target.Position;
         }
-        ImGuiEx.Tooltip("To target positon");
+        ImGuiEx.Tooltip("To target positon".Loc());
         ImGui.SameLine();
         if(ImGuiEx.IconButton(FontAwesomeIcon.MousePointer, $"target{id}", enabled: Player.Interactable))
         {
             BeginScreenToWorldSelection(id, value);
         }
         ScreenToWorldSelector(id, ref value);
-        ImGuiEx.Tooltip("Select with mouse");
+        ImGuiEx.Tooltip("Select with mouse".Loc());
         ImGui.SameLine();
-        if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && AgentMap.Instance()->FlagMarkerCount > 0))
+        // 同上:AgentMap 取得器合法回 null,取一次、判一次,拿不到就停用按鈕。
+        var flagAgent = AgentMap.Instance();
+        if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && flagAgent != null && flagAgent->FlagMarkerCount > 0))
         {
-            var marker = AgentMap.Instance()->FlagMapMarkers[0];
+            var marker = flagAgent->FlagMapMarkers[0];
             value = new(marker.XFloat, 0, marker.YFloat);
         }
         ScreenToWorldSelector(id, ref value);
-        ImGuiEx.Tooltip("To map flag");
+        ImGuiEx.Tooltip("To map flag".Loc());
     }
 
     public static IEnumerable<uint> GetAllRegisteredAethernetDestinations()
@@ -668,11 +686,11 @@ internal static unsafe partial class Utils
     public static List<World> GetVisitableWorldsFrom(World source)
     {
         var ret = new List<World>();
-        foreach(var x in ExcelWorldHelper.GetPublicWorlds(source.GetRegion()))
+        foreach(var x in PublicWorlds.Get(source.GetRegion()))
         {
             ret.Add(x);
         }
-        foreach(var x in ExcelWorldHelper.GetPublicWorlds(ExcelWorldHelper.Region.OC))
+        foreach(var x in PublicWorlds.Get(ExcelWorldHelper.Region.OC))
         {
             if(!ret.Contains(x)) ret.Add(x);
         }
@@ -726,7 +744,7 @@ internal static unsafe partial class Utils
         {
             if(x.IsTargetable && x.Name.ToString().EqualsIgnoreCaseAny([.. Lang.Entrance]))
             {
-                var distance = Vector3.Distance(Svc.ClientState.LocalPlayer.Position, x.Position);
+                var distance = Vector3.Distance(Svc.Objects.LocalPlayer.Position, x.Position);
                 if(distance < currentDistance)
                 {
                     currentDistance = distance;
@@ -764,7 +782,7 @@ internal static unsafe partial class Utils
             if(x.RowId == 0 || x.Name == "") continue;
             if(x.Name.GetText().StartsWith(s, StringComparison.OrdinalIgnoreCase))
             {
-                var worlds = ExcelWorldHelper.GetPublicWorlds(x.RowId);
+                var worlds = PublicWorlds.Get(x.RowId);
                 if(worlds.Length > 0)
                 {
                     world = worlds[Random.Shared.Next(worlds.Length)].Name.ToString();
@@ -852,7 +870,7 @@ internal static unsafe partial class Utils
     public static string ReplaceAddressBookRegex(string str)
     {
         var cities = "goblet|the goblet|lavender beds|the lavender beds|lavender|lb|empy|empyreum|shiro|shirogane|mist";
-        var worlds = ExcelWorldHelper.GetPublicWorlds().Select(x => x.Name.ToString()).Join("|") + "|[a-z]{3,30}";
+        var worlds = PublicWorlds.Get().Select(x => x.Name.ToString()).Join("|") + "|[a-z]{3,30}";
         return str.Replace("%worlds", worlds)
             .Replace("%delimiter", @"[\s\.\,\-\(\)\t]{1,10}")
             .Replace("%optDelimiter", @"[\s\.\,\-\(\)\t]{0,10}")
@@ -866,7 +884,7 @@ internal static unsafe partial class Utils
         var world = ExcelWorldHelper.Get(worldStr, true);
         if(world == null)
         {
-            foreach(var x in ExcelWorldHelper.GetPublicWorlds())
+            foreach(var x in PublicWorlds.Get())
             {
                 if(x.Name.ToString().StartsWith(worldStr, StringComparison.OrdinalIgnoreCase))
                 {
@@ -930,6 +948,7 @@ internal static unsafe partial class Utils
     {
         var h = HousingManager.Instance();
         if(h == null) return false;
+        if(entry.World != Player.Object.CurrentWorld.RowId) return false;
         if(h->GetCurrentWard() != entry.Ward - 1) return false;
         if(Utils.GetResidentialAetheryteByTerritoryType(P.Territory) != entry.City) return false;
         if(entry.PropertyType == PropertyType.House)
@@ -1093,13 +1112,18 @@ internal static unsafe partial class Utils
 
     internal static bool CanAutoLogin()
     {
-        return !Svc.ClientState.IsLoggedIn
-            && !Svc.Condition.Any()
-            && TryGetAddonByName<AtkUnitBase>("_TitleMenu", out var title)
-            && IsAddonReady(title)
-            && title->UldManager.NodeListCount > 3
-            && title->UldManager.NodeList[3]->Color.A == 0xFF
-            && !TryGetAddonByName<AtkUnitBase>("TitleDCWorldMap", out _)
+        if(Svc.ClientState.IsLoggedIn || Svc.Condition.Any()) return false;
+        if(!TryGetAddonByName<AtkUnitBase>("_TitleMenu", out var title) || !IsAddonReady(title)) return false;
+        if(title->UldManager.NodeListCount <= 3) return false;
+
+        // 🔴 上界與元素判空是兩件事（見 AtkNodeSafety 的說明）：索引在範圍內時 NodeList[3]
+        //    仍然可能是 null，->Color 是對 null 加偏移後讀取，AVE 在 .NET Core 是
+        //    corrupted-state exception，try/catch 攔不到。
+        //    GetNodeSafe 的上界條件與上面那行等價（index 3 需要 NodeListCount > 3），上界維持不變。
+        var titleNode = GetNodeSafe(&title->UldManager, 3);
+        if(titleNode == null || titleNode->Color.A != 0xFF) return false;
+
+        return !TryGetAddonByName<AtkUnitBase>("TitleDCWorldMap", out _)
             && !TryGetAddonByName<AtkUnitBase>("TitleConnect", out _);
     }
 
@@ -1135,12 +1159,26 @@ internal static unsafe partial class Utils
             }
         }*/
         var agent = AgentLobby.Instance();
+        // AgentLobby 取得器合法回 null(角色選擇畫面之外、或 UIModule 尚未建立)。
+        // 拿不到就回空清單:呼叫端 TryGetCharacterIndex 會得到 index < 0 → 判定「找不到角色」,
+        // 流程停在原地重試,不會拿 null 去解參考 LobbyData。
+        if(agent == null) return ret;
         //if (agent->AgentInterface.IsAgentActive())
         {
             var charaSpan = agent->LobbyData.CharaSelectEntries.AsSpan();
             for(var i = 0; i < charaSpan.Length; i++)
             {
                 var s = charaSpan[i];
+                // 🔴 元素本身是可為 null 的指標(項目還沒填完就是 null),直接 s.Value->Name 是 AccessViolation。
+                // 🔴 但這裡不能用 continue 跳過:本清單的「索引」會被 DCChange.SelectCharacter 原封不動
+                // 當成 _CharaSelectListMenu 的角色索引送出去(Callback.Fire(addon, false, 29, 0, index)),
+                // 少一項就讓後面每個角色的索引往前位移一格 ⇒ 失敗形式是「登入到錯的角色」,比崩潰更糟。
+                // 填一個永遠不會被 IndexOf 命中的佔位項(空名字＋世界 0)來保住位置對齊。
+                if(s.Value == null)
+                {
+                    ret.Add(("", (ushort)0));
+                    continue;
+                }
                 ret.Add(($"{s.Value->Name.Read()}", s.Value->HomeWorldId));
             }
         }
@@ -1176,6 +1214,76 @@ internal static unsafe partial class Utils
             return a;
         }
         return null;
+    }
+
+    /// <summary>
+    /// 「值得嘗試鎖定+自動移動走過去用」的距離上限。刻意比 <see cref="GetReachableAetheryte"/>
+    /// 預設的 30y 寬:那個門檻是給「已經在互動範圍附近,頂多再修正幾步」的情境用的,
+    /// 而這裡是「要不要為了省一次傳送,花最多 20 秒鎖定+自動移動走過去」——使用者實測回報過
+    /// 「有一小段距離的也不會嘗試,而是直接傳送」,30y 對這個用途太保守。50y 是一般可鎖定
+    /// 目標的距離量級,而走位本身有 20 秒時限兜底(見 TaskGotoDestination.EnqueueAethernetRoute 的
+    /// WaitArriveAtNetworkNode),逾時就退回傳送,不會有「卡住」的風險。
+    /// </summary>
+    private const float AethernetNetworkNodeApproachRange = 50f;
+
+    /// <summary>
+    /// 找出「屬於指定以太之光網路」且摸得到的節點——主水晶本身,或它底下任一個子節點(城內以太之光)。
+    /// 用途:2.0 的城市各有兩張地圖(利姆薩上/下層甲板、烏爾達哈娜爾神殿/太陽神草原、格里達尼亞
+    /// 新/舊街),兩張圖屬於同一個以太之光網路,但只有其中一張圖上有主水晶本體。人站在沒有主水晶
+    /// 的那張圖時,<see cref="GetReachableMasterAetheryte"/> 永遠摸不到東西;這個方法改成只要是
+    /// 同一個網路的任何節點都算,身邊摸得到就能直接互動、不必先傳送到另一張圖的主水晶。
+    /// </summary>
+    /// <param name="root">要找哪一個乙太網的節點。</param>
+    /// <param name="excludeId">
+    /// 要排除的節點 ID,通常是「這趟的目的地本身」。用目的地自己開選單再選自己會被遊戲以
+    /// LogMessage 1478「此處為目前所在地。」拒絕,所以找可走節點時要把它排掉,讓流程退回原本的
+    /// 「傳送到主水晶再走乙太網」——那正是修改前的行為。
+    /// </param>
+    internal static IGameObject GetReachableAethernetNetworkNode(TinyAetheryte root, uint? excludeId = null)
+    {
+        if(!Player.Available) return null;
+        if(!S.Data.DataStore.Aetherytes.TryGetValue(root, out var children)) return null;
+        var a = Svc.Objects.OrderBy(x => Vector3.DistanceSquared(Player.Object.Position, x.Position))
+            .FirstOrDefault(x => Utils.TryGetTinyAetheryteFromIGameObjectLenient(x, out var ae)
+                && ae.Value.ID != excludeId
+                && (ae.Value.ID == root.ID || children.Any(c => c.ID == ae.Value.ID)));
+        if(a != null && a.IsTargetable && Vector3.Distance(a.Position, Player.Object.Position) < AethernetNetworkNodeApproachRange)
+        {
+            return a;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 找出「指定的那一座乙太之光」在物件表裡的實體。找不到代表它沒載入(太遠,或根本不在這一區),
+    /// 呼叫端必須要有退路。判定用寬鬆版,理由見 <see cref="TryGetTinyAetheryteFromIGameObjectLenient"/>。
+    ///
+    /// 🔴 回傳的 <see cref="IGameObject"/> **只在當下這一幀有效**,絕對不要跨幀保存 —— 呼叫端一律
+    /// 每次重查(<c>Address</c> 在物件建構時就凍結,不會重新解析)。
+    /// </summary>
+    internal static IGameObject GetAethernetNodeObject(TinyAetheryte node)
+    {
+        if(!Player.Available) return null;
+        if(node.TerritoryType != P.Territory) return null;
+        return Svc.Objects.FirstOrDefault(x => Utils.TryGetTinyAetheryteFromIGameObjectLenient(x, out var ae) && ae.Value.ID == node.ID);
+    }
+
+    /// <summary>
+    /// 目前 <see cref="Lifestream.ActiveAetheryte"/>(每幀依 <see cref="GetValidAetheryte"/> 更新,
+    /// 只在真的站到節點旁邊才會設值)是否已經是指定以太之光網路裡的節點——主水晶本身或任一子節點。
+    /// 用來判斷「走到能互動的節點了嗎」,不管走到的是主水晶還是網路裡的哪一個城內以太之光。
+    /// </summary>
+    /// <param name="root">要比對哪一個乙太網。</param>
+    /// <param name="excludeId">
+    /// 與 <see cref="GetReachableAethernetNetworkNode"/> 的同名參數同一個理由:走位途中剛好經過目的地
+    /// 本身時,不要把它當成「已抵達可用節點」而拿它開選單(選自己會被拒絕)。
+    /// </param>
+    internal static bool IsActiveAetheryteInNetwork(TinyAetheryte root, uint? excludeId = null)
+    {
+        if(P.ActiveAetheryte == null) return false;
+        if(P.ActiveAetheryte.Value.ID == excludeId) return false;
+        if(P.ActiveAetheryte.Value.ID == root.ID) return true;
+        return S.Data.DataStore.Aetherytes.TryGetValue(root, out var children) && children.Any(c => c.ID == P.ActiveAetheryte.Value.ID);
     }
 
     internal static bool IsDisallowedToChangeWorld()
@@ -1343,6 +1451,26 @@ internal static unsafe partial class Utils
     }
 
     internal static bool TryGetTinyAetheryteFromIGameObject(IGameObject a, out TinyAetheryte? t, uint? TerritoryType = null)
+        => TryGetTinyAetheryteFromIGameObjectCore(a, false, out t, TerritoryType);
+
+    /// <summary>
+    /// 跟 <see cref="TryGetTinyAetheryteFromIGameObject"/> 完全相同,只差在「什麼算乙太之光物件」的判定
+    /// 放寬成 <see cref="IsAetheryte(IGameObject)"/>:<see cref="ObjectKind.Aetheryte"/> 算,
+    /// DataId 落在 <see cref="AethernetShards"/> 裡的 EventObj 也算。
+    ///
+    /// 🔴 為什麼一定要有這一版:嚴格版硬性要求 <c>ObjectKind == ObjectKind.Aetheryte</c>,
+    /// 但 <see cref="IsAetheryte(IGameObject)"/> 這個擴充方法存在的唯一理由,就是「有些乙太之光在物件表裡
+    /// 不是這個 ObjectKind,只能靠 DataId 認出來」——而每幀決定 <see cref="Lifestream.ActiveAetheryte"/> 的
+    /// <see cref="GetValidAetheryte"/>(實機一直在用、已驗證可行)用的正是寬鬆版。
+    /// 拿嚴格版去找「身邊摸得到的同網路節點」,在那些城市會永遠回 null,而**失敗形式是完全靜默地退回傳送**
+    /// ——跟這個最佳化不存在時一模一樣,使用者只會看到「說改了卻沒改」。
+    ///
+    /// ⚠️ 嚴格版刻意維持原樣:它被用在世界移動/住宅區/主水晶身分比對等流程,放寬會連帶改變那些流程的行為。
+    /// </summary>
+    internal static bool TryGetTinyAetheryteFromIGameObjectLenient(IGameObject a, out TinyAetheryte? t, uint? TerritoryType = null)
+        => TryGetTinyAetheryteFromIGameObjectCore(a, true, out t, TerritoryType);
+
+    private static bool TryGetTinyAetheryteFromIGameObjectCore(IGameObject a, bool lenientObjectKind, out TinyAetheryte? t, uint? TerritoryType)
     {
         TerritoryType ??= P.Territory;
         if(a == null)
@@ -1350,7 +1478,7 @@ internal static unsafe partial class Utils
             t = default;
             return false;
         }
-        if(a.ObjectKind == ObjectKind.Aetheryte)
+        if(lenientObjectKind ? a.IsAetheryte() : a.ObjectKind == ObjectKind.Aetheryte)
         {
             var pos2 = a.Position.ToVector2();
             foreach(var x in S.Data.DataStore.Aetherytes)
@@ -1406,8 +1534,10 @@ internal static unsafe partial class Utils
                 if(addon == null) return null;
                 if(IsAddonReady(addon))
                 {
-                    var textNode = addon->UldManager.NodeList[15]->GetAsAtkTextNode();
-                    var text = GenericHelpers.ReadSeString(&textNode->NodeText).GetText().Replace(" ", "");
+                    // 讀不到就跳過這個 SelectYesno 繼續往下掃(fail-closed):
+                    // 不能拿空字串去比對,否則「讀不到」會被誤判成「內容為空的相符」而按下確認。
+                    if(!TryGetNodeText(addon, 15, out var rawText)) continue;
+                    var text = rawText.Replace(" ", "");
                     if(contains ?
                         text.ContainsAny(s.Select(x => x.Replace(" ", "")))
                         : text.EqualsAny(s.Select(x => x.Replace(" ", "")))
@@ -1434,8 +1564,10 @@ internal static unsafe partial class Utils
             List<string> arr = [];
             for(var i = 3; i <= 9; i++)
             {
-                var item = addon->UldManager.NodeList[4]->GetAsAtkComponentNode()->Component->UldManager.NodeList[i];
-                var text = GenericHelpers.ReadSeString(&item->GetAsAtkComponentNode()->Component->UldManager.NodeList[4]->GetAsAtkTextNode()->NodeText).GetText();
+                // 🔴 原本是六跳裸鏈。取不到就 break ＝ 與既有的「空字串代表清單到底了」同一條路徑,
+                // 回傳截短的清單(fail-closed:少列出目的地只會讓人手動處理,列出錯的才會傳錯地方)。
+                var item = GetComponentNodeSafe(addon, 4, i);
+                if(!TryGetNodeText(GetComponentNodeSafe(item, 4), out var text)) break;
                 if(text == "") break;
                 arr.Add(text);
             }
@@ -1451,8 +1583,11 @@ internal static unsafe partial class Utils
             List<string> arr = [];
             for(var i = 1; i <= 52; i++)
             {
-                var item = addon->UldManager.NodeList[16]->GetAsAtkComponentNode()->Component->UldManager.NodeList[i];
-                var text = GenericHelpers.ReadSeString(&item->GetAsAtkComponentNode()->Component->UldManager.NodeList[3]->GetAsAtkTextNode()->NodeText).GetText().Trim();
+                // 🔴 同上的六跳裸鏈;這裡的迴圈上限 52 也完全沒對 NodeListCount 驗過 ——
+                // GetComponentNodeSafe 會把上界與元素判空一起做掉。
+                var item = GetComponentNodeSafe(addon, 16, i);
+                if(!TryGetNodeText(GetComponentNodeSafe(item, 3), out var rawText)) break;
+                var text = rawText.Trim();
                 if(text == "") break;
                 arr.Add(text);
             }
@@ -1467,8 +1602,8 @@ internal static unsafe partial class Utils
         {
             if(x.IsAetheryte())
             {
-                var d2d = Vector2.Distance(Svc.ClientState.LocalPlayer.Position.ToVector2(), x.Position.ToVector2());
-                var d3d = Vector3.Distance(Svc.ClientState.LocalPlayer.Position, x.Position);
+                var d2d = Vector2.Distance(Svc.Objects.LocalPlayer.Position.ToVector2(), x.Position.ToVector2());
+                var d3d = Vector3.Distance(Svc.Objects.LocalPlayer.Position, x.Position);
                 if(S.Data.ResidentialAethernet.IsInResidentialZone() && d3d > 4.6f) continue;
                 if(S.Data.CustomAethernet.ZoneInfo.TryGetValue(P.Territory, out var zinfo) && d3d > zinfo.MaxInteractionDistance) continue;
 
@@ -1487,7 +1622,7 @@ internal static unsafe partial class Utils
     public static bool IsAetheryte(this IGameObject obj)
     {
         if(obj.ObjectKind == ObjectKind.Aetheryte) return true;
-        return Utils.AethernetShards.Contains(obj.DataId);
+        return Utils.AethernetShards.Contains(obj.BaseId);
     }
 
     internal static bool IsVPosValid(this IGameObject x)

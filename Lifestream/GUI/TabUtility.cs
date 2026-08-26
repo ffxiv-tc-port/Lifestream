@@ -10,7 +10,7 @@ public static class TabUtility
     private static WorldSelector WorldSelector = new()
     {
         DisplayCurrent = false,
-        EmptyName = "Disabled",
+        EmptyName = "Disabled".Loc(),
         ShouldHideWorld = (x) => x == Player.Object?.CurrentWorld.RowId
     };
     private static PaissaImporter PaissaImporter = new();
@@ -18,13 +18,13 @@ public static class TabUtility
     public static void Draw()
     {
         new NuiBuilder()
-            .Section("Shutdown game upon arriving to the world")
+            .Section("Shutdown game upon arriving to the world".Loc())
             .Widget(() =>
             {
                 ImGuiEx.SetNextItemFullWidth();
                 WorldSelector.Draw(ref TargetWorldID);
             })
-            .Section("Import house listings from PaissaDB")
+            .Section("Import house listings from PaissaDB".Loc())
             .Widget(() =>
             {
                 ImGuiEx.SetNextItemFullWidth();

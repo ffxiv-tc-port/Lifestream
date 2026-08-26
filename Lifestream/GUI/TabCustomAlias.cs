@@ -358,9 +358,9 @@ public static class TabCustomAlias
             ImGui.SetNextItemWidth(150f.Scale());
             ImGuiEx.InputUint("Data ID".Loc(), ref command.DataID);
             ImGui.SameLine();
-            if(ImGuiEx.Button("Target".Loc(), Svc.Targets.Target?.DataId != 0))
+            if(ImGuiEx.Button("Target".Loc(), Svc.Targets.Target?.BaseId != 0))
             {
-                command.DataID = Svc.Targets.Target.DataId;
+                command.DataID = Svc.Targets.Target.BaseId;
             }
         }
         if(command.Kind.EqualsAny(CustomAliasKind.Select_Yes, CustomAliasKind.Select_List_Option))

@@ -25,7 +25,7 @@ public static class TaskApproachAndInteractWithApartmentEntrance
         //2007402	apartment building entrance	0	apartment building entrances	0	1	1	0	0
         foreach(var x in Svc.Objects.OrderBy(x => Vector3.Distance(x.Position, Player.Object.Position)))
         {
-            if(x.DataId == 2007402)
+            if(x.BaseId == 2007402)
             {
                 if(!x.IsTarget())
                 {
@@ -48,7 +48,7 @@ public static class TaskApproachAndInteractWithApartmentEntrance
     {
         if(Player.IsAnimationLocked) return false;
         if(!Utils.DismountIfNeeded()) return false;
-        if(Svc.Targets.Target?.ObjectKind == ObjectKind.EventObj && Svc.Targets.Target?.DataId == 2007402)
+        if(Svc.Targets.Target?.ObjectKind == ObjectKind.EventObj && Svc.Targets.Target?.BaseId == 2007402)
         {
             if(EzThrottler.Throttle("InteractWithApartment", 5000))
             {

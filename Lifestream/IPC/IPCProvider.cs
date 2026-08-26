@@ -449,5 +449,49 @@ public class IPCProvider
         return true;
     }
 
+    #region Teleport panel favorites
+
+    // 讓別的外掛把「使用者已經在傳送面板收藏好的地點」直接當成導航目標。
+    // 🔴 這比讓呼叫端自己組路線安全得多:收藏項是**既知的乙太之光/乙太網點**,走的是面板按鈕
+    //    本來就在走的那條路(TaskTeleportPanelGo),不會出現自組跨區路線跑到別的城市那種事。
+
+    /// <summary>Teleport panel entries the user has starred, in the panel's own order.</summary>
+    /// <returns>(Id, SubIndex, DisplayName, Territory) for each favourite. DisplayName already honours the
+    /// user's rename. Id+SubIndex together identify an entry - the same aetheryte id can appear more than
+    /// once (housing sub-indices), so callers must keep both. Empty when nothing is starred.</returns>
+    [EzIPC]
+    public List<(uint Id, byte SubIndex, string Name, uint Territory)> GetTeleportFavorites()
+    {
+        var result = new List<(uint, byte, string, uint)>();
+        foreach(var x in Systems.TeleportPanel.TeleportPanelIndex.Get())
+        {
+            if(!C.Favorites.Contains(x.Id)) continue;
+            result.Add((x.Id, x.SubIndex, x.DisplayName, x.Territory));
+        }
+        return result;
+    }
+
+    /// <summary>Travels to a starred teleport panel entry, exactly as clicking it in the favourites window does.</summary>
+    /// <returns>False when the entry is not a current favourite, or travelling cannot start right now
+    /// (Lifestream busy, no interactable player) - in that case nothing was queued, so the caller should
+    /// stop rather than wait for a completion that will never come.</returns>
+    [EzIPC]
+    public bool TeleportToFavorite(uint id, byte subIndex)
+    {
+        if(!C.Favorites.Contains(id)) return false;
+        if(P.TaskManager.IsBusy) return false;
+        if(!Player.Interactable) return false;
+
+        foreach(var x in Systems.TeleportPanel.TeleportPanelIndex.Get())
+        {
+            if(x.Id != id || x.SubIndex != subIndex) continue;
+            Tasks.Utility.TaskTeleportPanelGo.Enqueue(x);
+            return true;
+        }
+        return false;
+    }
+
+    #endregion
+
     [EzIPCEvent] public System.Action OnHouseEnterError;
 }

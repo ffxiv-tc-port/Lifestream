@@ -3,6 +3,7 @@ using ECommons.Events;
 using ECommons.ExcelServices;
 using ECommons.GameHelpers;
 using Lifestream.Data;
+using Lifestream.Tasks.SameWorld;
 using Lifestream.Tasks.Shortcuts;
 using Lumina.Excel.Sheets;
 using static ECommons.Singletons.SingletonServiceManager;
@@ -36,7 +37,9 @@ public class DataStore
         StaticData = EzConfig.LoadConfiguration<StaticData>(Path.Combine(Svc.PluginInterface.AssemblyLocation.DirectoryName, FileName), false);
         Svc.Data.GetExcelSheet<Aetheryte>().Each(x =>
         {
-            if(x.AethernetGroup != 0)
+            // 「最佳威兔洞」(175)沒有 AethernetGroup,但比照蒼天街建模渴望灣需要它成為 master
+            // (ActiveAetheryte/overlay 機制只認得 Aetherytes 字典裡的乙太之光)。
+            if(x.AethernetGroup != 0 || x.RowId == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId)
             {
                 if(x.IsAetheryte)
                 {
@@ -94,7 +97,7 @@ public class DataStore
 
     internal void BuildWorlds()
     {
-        BuildWorlds(Svc.ClientState.LocalPlayer.CurrentWorld.Value.DataCenter.Value.RowId);
+        BuildWorlds(Svc.Objects.LocalPlayer.CurrentWorld.Value.DataCenter.Value.RowId);
         if(Player.Available)
         {
             if(P.AutoRetainerApi?.Ready == true && C.UseAutoRetainerAccounts)
@@ -114,9 +117,24 @@ public class DataStore
 
     internal void BuildWorlds(uint dc)
     {
-        Worlds = [.. Svc.Data.GetExcelSheet<World>().Where(x => x.DataCenter.Value.RowId == dc && x.IsPublic()).Select(x => x.Name.ToString()).Order()];
+        // 台服例外:八個正式世界的 World.IsPublic 全是 False,走一般路徑會得到空清單。
+        var playerWorld = Player.Object;
+        if(dc == PublicWorlds.TaiwanDataCenterId
+            || playerWorld != null
+            && (PublicWorlds.IsTaiwanWorld(playerWorld.CurrentWorld.RowId)
+                || PublicWorlds.IsTaiwanWorld(playerWorld.HomeWorld.RowId)))
+        {
+            Worlds = [.. PublicWorlds.GetTaiwanWorlds()
+                .Select(x => x.Name.ToString())
+                .Order()];
+            DCWorlds = [];
+            PluginLog.Debug($"Built Taiwan worlds: {Worlds.Print()}");
+            return;
+        }
+
+        Worlds = [.. Svc.Data.GetExcelSheet<World>().Where(x => x.DataCenter.Value.RowId == dc && PublicWorlds.IsPublic(x)).Select(x => x.Name.ToString()).Order()];
         PluginLog.Debug($"Built worlds: {Worlds.Print()}");
-        DCWorlds = Svc.Data.GetExcelSheet<World>().Where(x => x.DataCenter.Value.RowId != dc && x.IsPublic() && (x.DataCenter.Value.Region == Player.Object.HomeWorld.Value.DataCenter.Value.Region || x.DataCenter.Value.Region == 4)).Select(x => x.Name.ToString()).ToArray();
+        DCWorlds = Svc.Data.GetExcelSheet<World>().Where(x => x.DataCenter.Value.RowId != dc && PublicWorlds.IsPublic(x) && (x.DataCenter.Value.Region == Player.Object.HomeWorld.Value.DataCenter.Value.Region || x.DataCenter.Value.Region == 4)).Select(x => x.Name.ToString()).ToArray();
         PluginLog.Debug($"Built DCworlds: {DCWorlds.Print()}");
     }
 

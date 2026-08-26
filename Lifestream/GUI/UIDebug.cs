@@ -8,6 +8,7 @@ using Callback = ECommons.Automation.Callback;
 using ECommons.ExcelServices;
 using ECommons.EzSharedDataManager;
 using ECommons.GameHelpers;
+using ECommons.LanguageHelpers;
 using ECommons.MathHelpers;
 using ECommons.Reflection;
 using ECommons.Throttlers;
@@ -43,11 +44,11 @@ internal static unsafe class UIDebug
     {
         ImGuiEx.EzTabBar("debug",
             InternalLog.ImGuiTab(),
-            ("Data editor", Editor, null, true),
-            ("Housing data", Housing, null, true),
+            ("Data editor".Loc(), Editor, null, true),
+            ("Housing data".Loc(), Housing, null, true),
             ("AtkReader", Reader, null, true),
-            ("Debug", Debug, null, true),
-            ("Multipath", TabMultipath.Draw, null, true)
+            ("Debug".Loc(), Debug, null, true),
+            ("Multipath".Loc(), TabMultipath.Draw, null, true)
             );
     }
 
@@ -70,9 +71,9 @@ internal static unsafe class UIDebug
     {
         if(CurrentPath != null)
         {
-            if(ImGui.Begin($"Lifestream Edit Path"))
+            if(ImGui.Begin($"Lifestream {"Edit Path".Loc()}"))
             {
-                if(ImGui.Button("Finish"))
+                if(ImGui.Button("Finish".Loc()))
                 {
                     Svc.Framework.RunOnFrameworkThread(() =>
                     {
@@ -87,13 +88,13 @@ internal static unsafe class UIDebug
             }
             ImGui.End();
         }
-        if(ImGui.Button("Load from config folder"))
+        if(ImGui.Button("Load from config folder".Loc()))
         {
             var d = EzConfig.LoadConfiguration<HousingData>("GeneratedHousingData.json", true);
             if(d != null) S.Data.ResidentialAethernet.HousingData = d;
         }
         var data = S.Data.ResidentialAethernet.HousingData.Data;
-        if(ImGui.CollapsingHeader("Autotest"))
+        if(ImGui.CollapsingHeader("Autotest".Loc()))
         {
             if(DoAutotest)
             {
@@ -105,21 +106,21 @@ internal static unsafe class UIDebug
                 {
                     if(AutotestPlot >= 60)
                     {
-                        DuoLog.Information("Autotest complete");
+                        DuoLog.Information("Autotest complete".Loc());
                         DoAutotest = false;
                     }
                     else if(EzThrottler.Throttle("Autotest"))
                     {
                         AutotestPlot++;
-                        DuoLog.Information($"Now going to plot {AutotestPlot}");
+                        DuoLog.Information($"{"Now going to plot".Loc()} {AutotestPlot}");
                         TaskTpAndGoToWard.Enqueue(Player.CurrentWorld, AutotestKind, AutotestWard, AutotestPlot - 1, false, false);
                     }
                 }
             }
-            ImGui.Checkbox("Autotest active", ref DoAutotest);
-            ImGuiEx.EnumCombo("Autotest aetheryte", ref AutotestKind);
-            ImGui.InputInt("Autotest ward", ref AutotestWard);
-            ImGui.InputInt("Autotest current plot", ref AutotestPlot);
+            ImGui.Checkbox("Autotest active".Loc(), ref DoAutotest);
+            ImGuiEx.EnumCombo("Autotest aetheryte".Loc(), ref AutotestKind);
+            ImGui.InputInt("Autotest ward".Loc(), ref AutotestWard);
+            ImGui.InputInt("Autotest current plot".Loc(), ref AutotestPlot);
             if(DoAutotest && EzThrottler.Throttle("StuckAutocheck", 1000))
             {
                 if(P.FollowPath.Waypoints.Count > 0)
@@ -130,10 +131,10 @@ internal static unsafe class UIDebug
                         StuckRecords.RemoveAll(x => Environment.TickCount64 - x > 10000);
                         if(StuckRecords.Count > 1)
                         {
-                            DuoLog.Information($"Stuck at {AutotestPlot} - {AutotestKind}");
+                            DuoLog.Information($"{"Stuck at".Loc()} {AutotestPlot} - {AutotestKind}");
                             DoAutotest = false;
                             P.FollowPath.Stop();
-                            Utils.TryNotify("Stuck");
+                            Utils.TryNotify("Stuck".Loc());
                         }
                     }
                     LastPosition = Player.Position;
@@ -146,11 +147,11 @@ internal static unsafe class UIDebug
         }
         if(data.TryGetValue(P.Territory, out var plots))
         {
-            if(ImGui.CollapsingHeader("Control"))
+            if(ImGui.CollapsingHeader("Control".Loc()))
             {
-                ImGui.Checkbox($"Show pathes", ref ShowPathes);
+                ImGui.Checkbox($"{"Show pathes".Loc()}", ref ShowPathes);
                 ImGui.SameLine();
-                ImGui.Checkbox("Show first point", ref ShowFirstPoint);
+                ImGui.Checkbox("Show first point".Loc(), ref ShowFirstPoint);
                 if(ShowPathes)
                 {
                     var aetheryte = S.Data.ResidentialAethernet.ActiveAetheryte ?? S.Data.ResidentialAethernet.GetFromIGameObject(Svc.Targets.Target);
@@ -165,18 +166,31 @@ internal static unsafe class UIDebug
                         }
                     }
                 }
-                var curPlot = HousingManager.Instance()->GetCurrentPlot();
-                if(curPlot != -1) LastPlot = curPlot;
-                ImGuiEx.Text($"Plot: {curPlot + 1}");
+                // HousingManager.Instance() 是 [StaticAddress(..., isPointer: true)],不在住宅區/登入前是 null。
+                // 同 repo 其餘六處全都判過空(Utils.cs:943/963、UIHouseReg.cs:497、TabAddressBook.cs:69、
+                // 同檔 :749),只有這裡漏掉 —— 是個例不是慣例,所以照既有形狀補上。
+                var housingManager = HousingManager.Instance();
+                if(housingManager == null)
+                {
+                    // 「讀不到」和「不在地皮上」是兩件事:後者 GetCurrentPlot() 回 -1 會顯示成 Plot: 0,
+                    // 這裡不沿用那個顯示,免得把未知畫成一個看起來像數值的東西。LastPlot 也維持前值不動。
+                    ImGuiEx.Text("Plot: (housing manager unavailable)".Loc());
+                }
+                else
+                {
+                    var curPlot = housingManager->GetCurrentPlot();
+                    if(curPlot != -1) LastPlot = curPlot;
+                    ImGuiEx.Text($"{"Plot:".Loc()}{curPlot + 1}");
+                }
                 ImGui.SetNextItemWidth(150f.Scale());
-                ImGui.InputInt($"Resize", ref Resize);
+                ImGui.InputInt($"{"Resize".Loc()}", ref Resize);
                 ImGui.SameLine();
-                if(ImGui.Button("Resize arrays"))
+                if(ImGui.Button("Resize arrays".Loc()))
                 {
                     while(plots.Count > Resize) plots.RemoveAt(plots.Count - 1);
                     while(plots.Count < Resize) plots.Add(new());
                 }
-                if(ImGui.Button("Begin path calculation"))
+                if(ImGui.Button("Begin path calculation".Loc()))
                 {
                     Chat.ExecuteCommand("/clearlog");
                     var aetheryte = S.Data.ResidentialAethernet.ActiveAetheryte ?? S.Data.ResidentialAethernet.GetFromIGameObject(Svc.Targets.Target);
@@ -202,10 +216,10 @@ internal static unsafe class UIDebug
                                 TaskGeneratePath.EnqueueValidate(i, x, aetheryte.Value);
                             }
                         }
-                        P.TaskManager.Enqueue(() => P.NotificationMasterApi.DisplayTrayNotification("Path Completed"));
+                        P.TaskManager.Enqueue(() => P.NotificationMasterApi.DisplayTrayNotification("Path Completed".Loc()));
                     }
                 }
-                if(ImGui.Button($"For plot {LastPlot + 1}"))
+                if(ImGui.Button($"{"For plot".Loc()} {LastPlot + 1}"))
                 {
                     doCurPlot = true;
                 }
@@ -216,26 +230,26 @@ internal static unsafe class UIDebug
                 var index = i;
                 var plot = plots[i];
                 entries.Add(
-                    new("Num", () => ImGuiEx.Text($"{index + 1}")),
-                    new("Front", () => ImGuiEx.Text($"{plot.Front}")),
-                    new("Aethernet", () => ImGuiEx.Text($"{Svc.Data.GetExcelSheet<HousingAethernet>().GetRowOrDefault(plot.AethernetID)?.PlaceName.ValueNullable?.Name ?? plot.AethernetID.ToString()}")),
-                    new("Edit", () =>
+                    new("Num".Loc(), () => ImGuiEx.Text($"{index + 1}")),
+                    new("Front".Loc(), () => ImGuiEx.Text($"{plot.Front}")),
+                    new("Aethernet".Loc(), () => ImGuiEx.Text($"{Svc.Data.GetExcelSheet<HousingAethernet>().GetRowOrDefault(plot.AethernetID)?.PlaceName.ValueNullable?.Name ?? plot.AethernetID.ToString()}")),
+                    new("Edit".Loc(), () =>
                     {
-                        if(ImGui.Button($"Edit{index + 1}"))
+                        if(ImGui.Button($"{"Edit".Loc()}{index + 1}"))
                         {
                             CurrentPath = plots[index].Path;
                         }
                     }),
-                    new("Action", () =>
+                    new("Action".Loc(), () =>
                     {
-                        if(ImGui.Button($"Set{index + 1}") || (doCurPlot && index == LastPlot))
+                        if(ImGui.Button($"{"Set".Loc()}{index + 1}") || (doCurPlot && index == LastPlot))
                         {
                             LastPlot = -1;
                             doCurPlot = false;
                             Chat.ExecuteCommand("/clearlog");
-                            DuoLog.Information($"For plot {index + 1}");
+                            DuoLog.Information($"{"For plot".Loc()} {index + 1}");
                             plot.Front = Player.Object.Position;
-                            var candidates = Svc.Objects.Where(x => x.DataId.EqualsAny(Utils.AethernetShards) && Vector3.Distance(plot.Front, x.Position) < 100f && S.Data.ResidentialAethernet.GetFromIGameObject(x) != null);
+                            var candidates = Svc.Objects.Where(x => x.BaseId.EqualsAny(Utils.AethernetShards) && Vector3.Distance(plot.Front, x.Position) < 100f && S.Data.ResidentialAethernet.GetFromIGameObject(x) != null);
                             Task.Run(() =>
                             {
                                 var currentDistance = float.MaxValue;
@@ -268,9 +282,9 @@ internal static unsafe class UIDebug
                             });
                         }
                     }),
-                    new("Path", () =>
+                    new("Path".Loc(), () =>
                     {
-                        ImGuiEx.Text($"Points: {plot.Path.Count}, Distance: {Utils.CalculatePathDistance([Player.Object.Position, .. plot.Path])}");
+                        ImGuiEx.Text($"{"Points".Loc()}: {plot.Path.Count}, {"Distance".Loc()}: {Utils.CalculatePathDistance([Player.Object.Position, .. plot.Path])}");
                         if(ImGui.IsItemHovered())
                         {
                             S.Ipc.SplatoonManager.RenderPath(plot.Path);
@@ -286,7 +300,7 @@ internal static unsafe class UIDebug
         }
         else
         {
-            if(ImGui.Button($"Create data for {ExcelTerritoryHelper.GetName(P.Territory)}"))
+            if(ImGui.Button($"{"Create data for".Loc()} {ExcelTerritoryHelper.GetName(P.Territory)}"))
             {
                 data[P.Territory] = [];
             }
@@ -341,16 +355,16 @@ internal static unsafe class UIDebug
 
     private static void Debug()
     {
-        if(ImGui.CollapsingHeader("IPC test - travel from chara select screen"))
+        if(ImGui.CollapsingHeader("IPC test - travel from chara select screen".Loc()))
         {
             ref var name = ref Ref<string>.Get("name");
             ref var world = ref Ref<string>.Get("world");
             ref var dest = ref Ref<string>.Get("dest");
             ref var nologin = ref Ref<bool>.Get("nologin");
-            ImGui.InputText("Chara name", ref name, 100);
-            ImGui.InputText("Chara world", ref world, 100);
-            ImGui.InputText("Destination", ref dest, 100);
-            ImGui.Checkbox("No login", ref nologin);
+            ImGui.InputText("Chara name".Loc(), ref name, 100);
+            ImGui.InputText("Chara world".Loc(), ref world, 100);
+            ImGui.InputText("Destination".Loc(), ref dest, 100);
+            ImGui.Checkbox("No login".Loc(), ref nologin);
             ImGuiEx.Text($"CanInitiateTravelFromCharaSelectList: {S.Ipc.IPCProvider.CanInitiateTravelFromCharaSelectList()}");
             ImGuiEx.Text($"CanAutoLogin: {S.Ipc.IPCProvider.CanAutoLogin()}");
             if(ImGui.Button("ConnectAndOpenCharaSelect")) DuoLog.Information($"{S.Ipc.IPCProvider.ConnectAndOpenCharaSelect(name, world)}");
@@ -373,21 +387,24 @@ internal static unsafe class UIDebug
                 ImGui.Unindent();
             }
         }
-        if(ImGui.CollapsingHeader("Agent Map debug"))
+        if(ImGui.CollapsingHeader("Agent Map debug".Loc()))
         {
             if(TryGetAddonByName<AddonAreaMap>("AreaMap", out var addon))
             {
                 ImGuiEx.Text($"{addon->HoveredCoords} - press ctrl to copy");
-                if(ImGuiEx.Ctrl && EzThrottler.Throttle("Copy") && !CSFramework.Instance()->WindowInactive)
+                // Framework 是 [StaticAddress(..., isPointer: true)],合法回 null。
+                // 拿不到就當作「視窗非作用中」→ 不複製(fail-closed)。
+                var fw = CSFramework.Instance();
+                if(ImGuiEx.Ctrl && EzThrottler.Throttle("Copy") && fw != null && !fw->WindowInactive)
                 {
                     Copy($", new({addon->HoveredCoords.X}f, {addon->HoveredCoords.Y}f)");
                 }
             }
         }
-        if(ImGui.CollapsingHeader("IPC debug"))
+        if(ImGui.CollapsingHeader("IPC debug".Loc()))
         {
             ref var id = ref Ref<int>.Get("aetheryteId");
-            ImGui.InputInt("aetheryte id", ref id);
+            ImGui.InputInt("aetheryte id".Loc(), ref id);
             if(ImGui.Button("AethernetTeleportById")) DuoLog.Information($"{S.Ipc.IPCProvider.AethernetTeleportById((uint)id)}");
             if(ImGui.Button("HousingAethernetTeleportById")) DuoLog.Information($"{S.Ipc.IPCProvider.HousingAethernetTeleportById((uint)id)}");
             if(ImGui.Button("AethernetTeleportByPlaceNameId")) DuoLog.Information($"{S.Ipc.IPCProvider.AethernetTeleportByPlaceNameId((uint)id)}");
@@ -395,16 +412,16 @@ internal static unsafe class UIDebug
             if(ImGui.Button("GetActiveAetheryte")) DuoLog.Information($"{S.Ipc.IPCProvider.GetActiveAetheryte()}");
             if(ImGui.Button("GetActiveResidentialAetheryte")) DuoLog.Information($"{S.Ipc.IPCProvider.GetActiveResidentialAetheryte()}");
         }
-        ImGuiEx.Text($"Active aetheryte: {P.ActiveAetheryte}");
-        if(ImGui.CollapsingHeader("Chat"))
+        ImGuiEx.Text($"{"Active aetheryte".Loc()}: {P.ActiveAetheryte}");
+        if(ImGui.CollapsingHeader("Chat".Loc()))
         {
-            if(ImGui.Button("Send message (echo)")) Chat.ExecuteCommand($"/e Test test test {Random.Shared.Next()}");
-            if(ImGui.Button("Send message (current channel)")) Chat.SendMessage($"Password: {Random.Shared.Next()}");
-            if(ImGui.Button("Use sprint")) Chat.ExecuteAction(3);
-            if(ImGui.Button("Use jump")) Chat.ExecuteGeneralAction(2);
+            if(ImGui.Button("Send message (echo)".Loc())) Chat.ExecuteCommand($"/e Test test test {Random.Shared.Next()}");
+            if(ImGui.Button("Send message (current channel)".Loc())) Chat.SendMessage($"Password: {Random.Shared.Next()}");
+            if(ImGui.Button("Use sprint".Loc())) Chat.ExecuteAction(3);
+            if(ImGui.Button("Use jump".Loc())) Chat.ExecuteGeneralAction(2);
             try
             {
-                if(ImGui.Button("Try invalid string")) Chat.ExecuteCommand("/e \u000012345");
+                if(ImGui.Button("Try invalid string".Loc())) Chat.ExecuteCommand("/e \u000012345");
             }
             catch(Exception e)
             {
@@ -466,7 +483,7 @@ internal static unsafe class UIDebug
                 ImGui.Unindent();
             }
         }
-        if(ImGui.CollapsingHeader("Context"))
+        if(ImGui.CollapsingHeader("Context".Loc()))
         {
             if(TryGetAddonMaster<AddonMaster.ContextMenu>(out var m))
             {
@@ -476,7 +493,7 @@ internal static unsafe class UIDebug
                 }
             }
         }
-        if(ImGui.CollapsingHeader("CharaSelect"))
+        if(ImGui.CollapsingHeader("CharaSelect".Loc()))
         {
             if(TryGetAddonMaster<AddonMaster._CharaSelectListMenu>(out var m))
             {
@@ -486,9 +503,9 @@ internal static unsafe class UIDebug
                 }
             }
         }
-        if(ImGui.CollapsingHeader("Custom aethernet"))
+        if(ImGui.CollapsingHeader("Custom aethernet".Loc()))
         {
-            if(ImGui.Button("Copy target") && Svc.Targets.Target != null)
+            if(ImGui.Button("Copy target".Loc()) && Svc.Targets.Target != null)
             {
                 var pname = TerritoryInfo.Instance()->AreaPlaceNameId;
                 var pname2 = TerritoryInfo.Instance()->SubAreaPlaceNameId;
@@ -500,10 +517,22 @@ internal static unsafe class UIDebug
             ImGuiEx.Text($"Valid: {Utils.GetValidAetheryte()}");
             if(Utils.GetValidAetheryte() != null) ImGuiEx.Text($"FromIGameObject: {S.Data.CustomAethernet.GetFromIGameObject(Utils.GetValidAetheryte())}");
         }
-        if(ImGui.Button("Get file list")) Utils.ReadClipboardFiles();
-        if(ImGui.Button("Open PF self"))
+        if(ImGui.Button("Get file list".Loc())) Utils.ReadClipboardFiles();
+        if(ImGui.Button("Open PF self".Loc()))
         {
-            S.Memory.OpenPartyFinderInfoDetour(AgentModule.Instance()->GetAgentByInternalId(AgentId.LookingForGroup), Player.CID);
+            // AgentModule.Instance() 在 UIModule 尚未建立時回 null;GetAgentByInternalId 本身也可能回 null。
+            // 這個指標最後會被交給原生的 OpenPartyFinderInfo(hook Original),傳 null 會崩在遊戲裡,
+            // 所以兩層都要判,拿不到就整個不呼叫。
+            var lfgAgentModule = AgentModule.Instance();
+            var lfgAgent = lfgAgentModule == null ? null : lfgAgentModule->GetAgentByInternalId(AgentId.LookingForGroup);
+            if(lfgAgent == null)
+            {
+                DuoLog.Warning("AgentLookingForGroup 尚未就緒,略過。");
+            }
+            else
+            {
+                S.Memory.OpenPartyFinderInfoDetour(lfgAgent, Player.CID);
+            }
         }
         if(ImGui.CollapsingHeader("Lobby2"))
         {
@@ -515,7 +544,7 @@ internal static unsafe class UIDebug
                 }
             }
         }
-        if(ImGui.CollapsingHeader("Curcular movelemt"))
+        if(ImGui.CollapsingHeader("Curcular movelemt".Loc()))
         {
             ImGuiEx.Text($"{MathHelper.IsPointPerpendicularToLineSegment(Player.Position.ToVector2(), new(-135f, -85f), new(-125.000f, -80f))}");
             ImGuiEx.Text($"{MathHelper.FindClosestPointOnLine(Player.Position.ToVector2(), new(-135f, -85f), new(-125.000f, -80f))}");
@@ -529,7 +558,7 @@ internal static unsafe class UIDebug
             ref var lim1 = ref Ref<float>.Get("lim1");
             ref var lim2 = ref Ref<float>.Get("lim2");
             ref var auto = ref Ref<bool>.Get("autocalc");
-            if(ImGui.Button("Import"))
+            if(ImGui.Button("Import".Loc()))
             {
                 try
                 {
@@ -546,23 +575,23 @@ internal static unsafe class UIDebug
                     e.LogDuo();
                 }
             }
-            if(ImGui.Button("Set target")) target = Svc.Targets.Target?.Position ?? default;
+            if(ImGui.Button("Set target".Loc())) target = Svc.Targets.Target?.Position ?? default;
             ImGui.SameLine();
             ImGuiEx.Text($"{target}");
-            if(ImGui.Button("Set exit")) exit = Player.Position;
+            if(ImGui.Button("Set exit".Loc())) exit = Player.Position;
             ImGui.SameLine();
             ImGuiEx.Text($"{exit}");
-            ImGui.InputFloat("Precision", ref prec);
-            ImGui.InputInt("Tolerance", ref tol);
-            ImGui.InputFloat("Limit1", ref lim1);
-            ImGui.InputFloat("Limit2", ref lim2);
-            if(ImGui.Button("Calculate") || (auto && EzThrottler.Throttle("AutoRec", 100)))
+            ImGui.InputFloat("Precision".Loc(), ref prec);
+            ImGui.InputInt("Tolerance".Loc(), ref tol);
+            ImGui.InputFloat("Limit1".Loc(), ref lim1);
+            ImGui.InputFloat("Limit2".Loc(), ref lim2);
+            if(ImGui.Button("Calculate".Loc()) || (auto && EzThrottler.Throttle("AutoRec", 100)))
             {
                 (float, float)? lmt = lim2 > lim1 ? (lim1, lim2) : null;
                 list = MathHelper.CalculateCircularMovement(target, Player.Position, exit, out listList, prec, tol, lmt);
             }
             ImGui.SameLine();
-            ImGui.Checkbox("AutoCalc", ref auto);
+            ImGui.Checkbox("AutoCalc".Loc(), ref auto);
             if(list != null)
             {
                 ImGuiEx.Text($"List: {list.Print()}");
@@ -582,27 +611,51 @@ internal static unsafe class UIDebug
         }
         if(ImGui.CollapsingHeader("CharaSelectListMenu"))
         {
-            var list = RaptureAtkUnitManager.Instance()->FocusedUnitsList;
-            foreach(var x in list.Entries)
+            // 🔴 RaptureAtkUnitManager.Instance() 是 CS 裡的**手寫**包裝
+            //    （`raptureAtkModule == null ? null : &raptureAtkModule->RaptureAtkUnitManager`），
+            //    不是產生器的 [StaticAddress] —— 它會合法回 null（UIModule/RaptureAtkModule
+            //    任一層還沒建好時）。裸解參考是攔不到的 AVE（corrupted-state exception）。
+            //    這是偵錯視窗的每幀繪製路徑：不記 log，取不到就顯示一行說明。
+            var raptureAtkUnitManager = RaptureAtkUnitManager.Instance();
+            if(raptureAtkUnitManager == null)
             {
-                if(x.Value == null) continue;
-                ImGuiEx.Text($"{x.Value->NameString}");
+                ImGuiEx.Text("RaptureAtkUnitManager 尚未就緒");
+            }
+            else
+            {
+                var list = raptureAtkUnitManager->FocusedUnitsList;
+                foreach(var x in list.Entries)
+                {
+                    if(x.Value == null) continue;
+                    ImGuiEx.Text($"{x.Value->NameString}");
+                }
             }
             { if(TryGetAddonMaster<AddonMaster._CharaSelectListMenu>(out var m)) ImGuiEx.Text($"Selected chara: {m.Characters.FirstOrDefault(x => x.IsSelected)?.Name}"); }
         }
         ImGui.Checkbox("DisableHousePathData", ref P.DisableHousePathData);
         if(ImGui.CollapsingHeader("HUD"))
         {
+            // 🔴 同一個家族的第三種來源：[Agent(AgentId.Hud)] 產生的 Instance() 樣板是
+            //    `agentModule == null ? null : (T*)agentModule->GetAgentByInternalId(...)`
+            //    —— 一樣會合法回 null（AgentGetterGenerator.cs:44 直證）。
+            //    ⚠️ 這一處不在原掃描清單裡，是修上面那處時同檔同形一併掃到的。
             var hud = AgentHUD.Instance();
-            for(var i = 0; i < hud->MapMarkers.Count; i++)
+            if(hud == null)
             {
-                var marker = hud->MapMarkers[i];
-                var pos = new Vector3(marker.Position.X, marker.Position.Y, marker.Position.Z);
-                ImGuiEx.Text($"Marker {marker.IconId}, pos: {pos:F1}, distance: {Vector3.Distance(Player.Position, pos):f1}");
-                if(ThreadLoadImageHandler.TryGetIconTextureWrap(marker.IconId, false, out var w))
+                ImGuiEx.Text("AgentHUD 尚未就緒");
+            }
+            else
+            {
+                for(var i = 0; i < hud->MapMarkers.Count; i++)
                 {
-                    ImGui.SameLine();
-                    ImGui.Image(w.Handle, new(30f));
+                    var marker = hud->MapMarkers[i];
+                    var pos = new Vector3(marker.Position.X, marker.Position.Y, marker.Position.Z);
+                    ImGuiEx.Text($"Marker {marker.IconId}, pos: {pos:F1}, distance: {Vector3.Distance(Player.Position, pos):f1}");
+                    if(ThreadLoadImageHandler.TryGetIconTextureWrap(marker.IconId, false, out var w))
+                    {
+                        ImGui.SameLine();
+                        ImGui.Image(w.Handle, new(30f));
+                    }
                 }
             }
         }
@@ -626,16 +679,26 @@ internal static unsafe class UIDebug
         {
             if(TryGetAddonByName<AddonSelectYesno>("SelectYesno", out var addon))
             {
-                foreach(var x in addon->PromptText->NodeText.Read().Payloads)
+                // PromptText 是 addon 上的節點指標,節點還沒建好時是 null,
+                // 直接解參考 NodeText 就是 AccessViolation(try/catch 攔不到)。
+                // 這是使用者按按鈕觸發的除錯路徑,取不到就明講,不要安靜地什麼都不印。
+                if(addon->PromptText == null)
                 {
-                    PluginLog.Information($"Payload {x.Type}, text: {x.ToString()}");
+                    PluginLog.Information("PromptText 節點取不到（尚未建立）");
+                }
+                else
+                {
+                    foreach(var x in addon->PromptText->NodeText.Read().Payloads)
+                    {
+                        PluginLog.Information($"Payload {x.Type}, text: {x.ToString()}");
+                    }
                 }
             }
         }
         ImGui.InputText("##copyaddon", ref text, 300);
-        if(ImGui.CollapsingHeader("Misc"))
+        if(ImGui.CollapsingHeader("Misc".Loc()))
         {
-            if(ImGui.Button("Switch"))
+            if(ImGui.Button("Switch".Loc()))
             {
                 bool Do()
                 {
@@ -655,22 +718,27 @@ internal static unsafe class UIDebug
                 }
             }
         }
-        if(ImGui.CollapsingHeader("Instance"))
+        if(ImGui.CollapsingHeader("Instance".Loc()))
         {
+            // MaxInstances 的 StaticAddress sig 在台服掃不到時欄位為 null,裸解參考會擲例外。
+            // 除錯視窗顯示「N/A」而不是崩掉(把「不知道」畫成看似正常的值也會誤導看視窗的人)。
             ImGuiEx.Text($"""
-                Max instances: {*S.Memory.MaxInstances}
+                Max instances: {(S.Memory.MaxInstances == null ? "N/A (sig unresolved)" : (*S.Memory.MaxInstances).ToString())}
                 Initialized: {S.InstanceHandler.InstancesInitizliaed(out var maxInstances)} {maxInstances}
                 GetInstance: {S.InstanceHandler.GetInstance()}
                 DrawConditions: {S.Gui.Overlay.DrawConditions()}
                 """);
-            if(ImGui.Button("instance data reset")) C.PublicInstances.Clear();
-            if(ImGui.Button("game version reset")) C.GameVersion = "";
+            if(ImGui.Button("instance data reset".Loc())) C.PublicInstances.Clear();
+            if(ImGui.Button("game version reset".Loc())) C.GameVersion = "";
         }
         ImGuiEx.Text($"Player interactable: {Player.Interactable}");
-        ImGuiEx.Text($"Is moving: {AgentMap.Instance()->IsPlayerMoving}");
+        // AgentMap 取得器合法回 null。拿不到時印 "?" 而不是 false ——
+        // 把「不知道」畫成一個看起來正常的值會直接誤導看偵錯視窗的人。
+        var dbgMap = AgentMap.Instance();
+        ImGuiEx.Text($"Is moving: {(dbgMap == null ? "?" : $"{dbgMap->IsPlayerMoving}")}");
         ImGuiEx.Text($"IsOccupied: {IsOccupied()}");
         ImGuiEx.Text($"Casting: {Player.Object?.IsCasting}");
-        if(ImGui.CollapsingHeader("Data test"))
+        if(ImGui.CollapsingHeader("Data test".Loc()))
         {
             foreach(var x in S.Data.DataStore.Aetherytes)
             {
@@ -698,9 +766,9 @@ internal static unsafe class UIDebug
                 }
             }
         }
-        if(ImGui.CollapsingHeader("Lobby test"))
+        if(ImGui.CollapsingHeader("Lobby test".Loc()))
         {
-            ImGui.InputText("Chara name", ref CharaName, 100);
+            ImGui.InputText("Chara name".Loc(), ref CharaName, 100);
             WorldSelector.Instance.Draw(ref WorldSel);
             if(ImGui.Button("Select"))
             {
@@ -710,16 +778,35 @@ internal static unsafe class UIDebug
             {
                 DCChange.OpenContextMenuForChara(CharaName, (uint)WorldSel, (uint)WorldSel);
             }
+            // AgentLobby 取得器合法回 null(不在角色選擇畫面時本來就沒有這個 agent)。
             var agent = AgentLobby.Instance();
-            ImGuiEx.Text($"Active: {agent->IsAgentActive()}");
-            for(var i = 0; i < agent->LobbyData.CharaSelectEntries.Count; i++)
+            if(agent == null)
             {
-                var c = agent->LobbyData.CharaSelectEntries[i].Value;
-                ImGuiEx.Text($"Locked: {agent->TemporaryLocked}");
-                ImGuiEx.Text($"{i}: {c->Name.Read()}/{c->HomeWorldName.Read()}");
+                ImGuiEx.Text("AgentLobby 尚未就緒");
+            }
+            else
+            {
+                ImGuiEx.Text($"Active: {agent->IsAgentActive()}");
+                for(var i = 0; i < agent->LobbyData.CharaSelectEntries.Count; i++)
+                {
+                    var c = agent->LobbyData.CharaSelectEntries[i].Value;
+                    ImGuiEx.Text($"Locked: {agent->TemporaryLocked}");
+                    // CharaSelectEntries 的元素本身是可為 null 的指標(項目還沒填完就是 null),
+                    // 直接 c->Name.Read() 是 AccessViolation。
+                    // 這是每影格的 ImGui 繪製路徑,不寫 log；「取不到」直接畫在列上,
+                    // 不要靜默跳過整列害人以為角色少了一個。
+                    if(c == null)
+                    {
+                        ImGuiEx.Text($"{i}: (空項目)");
+                    }
+                    else
+                    {
+                        ImGuiEx.Text($"{i}: {c->Name.Read()}/{c->HomeWorldName.Read()}");
+                    }
+                }
             }
         }
-        if(ImGui.CollapsingHeader("Addon test"))
+        if(ImGui.CollapsingHeader("Addon test".Loc()))
         {
             if(TryGetAddonByName<AddonSelectString>("SelectString", out var addon))
             {
@@ -734,35 +821,35 @@ internal static unsafe class UIDebug
                 }
             }
         }
-        if(ImGui.Button("Refresh color"))
+        if(ImGui.Button("Refresh color".Loc()))
         {
             DalamudReflector.GetService("Dalamud.Plugin.Ipc.Internal.DataShare").GetFoP<System.Collections.IDictionary>("caches").Remove("ECommonsPatreonBannerRandomColor");
             ((System.Collections.IDictionary)typeof(EzSharedData).GetFieldPropertyUnion("Cache", ReflectionHelper.AllFlags).GetValue(null)).Remove("ECommonsPatreonBannerRandomColor");
         }
-        if(ImGui.CollapsingHeader("Render"))
+        if(ImGui.CollapsingHeader("Render".Loc()))
         {
 
-            if(ImGui.Button("Save")) Svc.Data.GetFile("ui/uld/Teleport_hr1.tex").SaveFile("d:\\file.tex");
+            if(ImGui.Button("Save".Loc())) Svc.Data.GetFile("ui/uld/Teleport_hr1.tex").SaveFile("d:\\file.tex");
         }
-        if(ImGui.CollapsingHeader("Housing manager"))
+        if(ImGui.CollapsingHeader("Housing manager".Loc()))
         {
             var h = HousingManager.Instance();
             if(h == null)
             {
-                ImGuiEx.Text("null");
+                ImGuiEx.Text("null".Loc());
             }
             else
             {
-                ImGuiEx.Text($"Ward: {h->GetCurrentWard()}");
-                ImGuiEx.Text($"Plot: {h->GetCurrentPlot()}");
-                ImGuiEx.Text($"Division: {h->GetCurrentDivision()}");
+                ImGuiEx.Text($"{"Ward:".Loc()} {h->GetCurrentWard()}");
+                ImGuiEx.Text($"{"Plot:".Loc()} {h->GetCurrentPlot()}");
+                ImGuiEx.Text($"{"Division:".Loc()} {h->GetCurrentDivision()}");
             }
         }
         if(ImGui.CollapsingHeader("Path"))
         {
-            if(ImGui.Button("Add")) DebugPath.Add(Player.Object.Position);
+            if(ImGui.Button("Add".Loc())) DebugPath.Add(Player.Object.Position);
             //if (ImGui.Button("Go")) P.FollowPath.Waypoints.AddRange(Enumerable.Reverse(DebugPath));
-            if(ImGui.Button("Copy")) Copy($"new Vector3({Player.Object.Position.X}f, {Player.Object.Position.Y}f, {Player.Object.Position.Z}f);");
+            if(ImGui.Button("Copy".Loc())) Copy($"new Vector3({Player.Object.Position.X}f, {Player.Object.Position.Y}f, {Player.Object.Position.Z}f);");
             for(var i = 0; i < DebugPath.Count; i++)
             {
                 ImGuiEx.Text($"{DebugPath[i]}");
@@ -775,21 +862,21 @@ internal static unsafe class UIDebug
         }
         if(ImGui.CollapsingHeader("TPW"))
         {
-            ImGui.InputText("World", ref World, 100);
+            ImGui.InputText("World".Loc(), ref World, 100);
             ImGuiEx.EnumCombo("Resi", ref ResiA);
-            ImGui.InputInt("Ward", ref Ward);
-            if(ImGui.Button("Go"))
+            ImGui.InputInt("Ward".Loc(), ref Ward);
+            if(ImGui.Button("Go".Loc()))
             {
                 TaskTpAndGoToWard.Enqueue(World, ResiA, Ward, 1, false, false);
             }
         }
-        if(ImGui.CollapsingHeader("State"))
+        if(ImGui.CollapsingHeader("State".Loc()))
         {
             ImGuiEx.Text($"CanUseAetheryte = {Utils.CanUseAetheryte()}");
             ImGuiEx.Text($"ResidentialAethernet.ActiveAetheryte = {S.Data.ResidentialAethernet.ActiveAetheryte}");
             ImGuiEx.Text($"GetValidAetheryte = {Utils.GetValidAetheryte()}");
         }
-        if(ImGui.CollapsingHeader("Housing aethernet"))
+        if(ImGui.CollapsingHeader("Housing aethernet".Loc()))
         {
             foreach(var x in S.Data.ResidentialAethernet.ZoneInfo)
             {
@@ -805,16 +892,23 @@ internal static unsafe class UIDebug
         }
         if(ImGui.CollapsingHeader("DCV"))
         {
-            if(ImGui.Button("Unlock all worlds")) UnlockAllWorlds();
+            if(ImGui.Button("Unlock all worlds".Loc())) UnlockAllWorlds();
             if(ImGui.Button("Enable AtkComponentTreeList_vf31Hook hook"))
             {
                 S.Memory.AtkComponentTreeList_vf31Hook.Enable();
             }
             {
-                if(TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon) && ImGui.Button("Try event"))
+                if(TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon) && ImGui.Button("Try event".Loc()))
                 {
                     //S.Memory.ConstructEvent(addon);
-                    ImGuiEx.Text($"PTR: {(nint)(addon->UldManager.NodeList[7]->GetAsAtkComponentList() + 456):X16}");
+                    // 🔴 NodeList[7] 上界與元素都沒驗;GetAsAtkComponentList() 是 [MemberFunction],
+                    //    對 null 節點呼叫等於把 this = 0 交給遊戲原生碼。
+                    //    取不到就顯示 "?" —— 這是診斷欄,把「不知道」畫成一個位址會直接誤導判讀。
+                    //    ⚠️ `+ 456` 是**指標運算**(456 × sizeof(AtkComponentList))而不是位元組偏移,
+                    //    看起來很可疑;但這一行只是把數字印出來、從來沒有解參考,所以維持原樣不動。
+                    var dktNode = GetNodeSafe(&addon->UldManager, 7);
+                    var dktList = dktNode == null ? null : dktNode->GetAsAtkComponentList();
+                    ImGuiEx.Text($"PTR: {(dktList == null ? "?" : $"{(nint)(dktList + 456):X16}")}");
                 }
             }
             if(ImGui.Button($"{nameof(DCChange.Logout)}")) PluginLog.Information($"{DCChange.Logout()}");
@@ -823,21 +917,21 @@ internal static unsafe class UIDebug
             if(ImGui.Button($"{nameof(DCChange.TitleScreenClickStart)}")) PluginLog.Information($"{DCChange.TitleScreenClickStart()}");
             //if (ImGui.Button($"{nameof(DCChange.OpenContextMenuForChara)}")) PluginLog.Information($"{DCChange.OpenContextMenuForChara(str)}");
             ImGui.SameLine();
-            ImGui.InputText($"Chara name", ref str, 100);
+            ImGui.InputText($"{"Chara name".Loc()}", ref str, 100);
             if(ImGui.Button($"{nameof(DCChange.SelectVisitAnotherDC)}")) PluginLog.Information($"{DCChange.SelectVisitAnotherDC()}");
             if(ImGui.Button($"{nameof(DCChange.SelectTargetDataCenter)}")) PluginLog.Information($"{DCChange.SelectTargetDataCenter(str2)}");
             ImGui.SameLine();
-            ImGui.InputText($"dc name", ref str2, 100);
+            ImGui.InputText($"{"dc name".Loc()}", ref str2, 100);
             if(ImGui.Button($"{nameof(DCChange.SelectTargetWorld)}")) PluginLog.Information($"{DCChange.SelectTargetWorld(str3, null)}");
             ImGui.SameLine();
-            ImGui.InputText($"w name", ref str3, 100);
+            ImGui.InputText($"{"w name".Loc()}", ref str3, 100);
             if(ImGui.Button($"{nameof(DCChange.ConfirmDcVisit)}")) PluginLog.Information($"{DCChange.ConfirmDcVisit()}");
             if(ImGui.Button($"{nameof(DCChange.ConfirmDcVisit2)}")) PluginLog.Information($"{DCChange.ConfirmDcVisit2(default, default, default, default)}");
             if(ImGui.Button($"{nameof(DCChange.SelectOk)}")) PluginLog.Information($"{DCChange.SelectOk()}");
             if(ImGui.Button($"{nameof(DCChange.ConfirmDcVisitIntention)}")) PluginLog.Information($"{DCChange.ConfirmDcVisitIntention()}");
             if(ImGui.Button($"{nameof(DCChange.SelectYesLogin)}")) PluginLog.Information($"{DCChange.SelectYesLogin()}");
-            ImGui.InputInt("Index", ref index);
-            if(ImGui.Button("Open context menu"))
+            ImGui.InputInt("Index".Loc(), ref index);
+            if(ImGui.Button("Open context menu".Loc()))
             {
                 if(TryGetAddonByName<AtkUnitBase>("_CharaSelectListMenu", out var addon) && IsAddonReady(addon))
                 {
@@ -862,12 +956,22 @@ internal static unsafe class UIDebug
     {
         if(TryGetAddonByName<AtkUnitBase>("LobbyDKTWorldList", out var addon) && IsAddonReady(addon))
         {
-            var list = addon->UldManager.NodeList[6]->GetAsAtkComponentNode();
+            // 🔴 這裡有兩個不同的問題:
+            //    ①六跳裸鏈(NodeList[6] → Component → NodeList[i] → Component → NodeList[8] → 文字節點),
+            //      上界與元素全程沒驗;真正的炸點是下面讀/寫 Alpha_2 那兩行,不是取節點那一行。
+            //    ②addon->AtkValues[160 + …] 是**寫入**,而陣列長度是 AtkValuesCount(ushort),
+            //      原本連上界都沒看 —— 越界寫比越界讀更糟,踩到的是相鄰的原生記憶體,
+            //      失敗形式是別的地方莫名其妙壞掉,完全指不回這一行。
+            //    取不到就跳過該筆(這是除錯用的「解鎖全部世界」按鈕,少改一筆的代價只是沒解鎖)。
             for(var i = 3; i < 3 + 8; i++)
             {
-                addon->AtkValues[160 + (i - 3) * 8].Int = 0;
-                var t = list->Component->UldManager.NodeList[i]->GetAsAtkComponentNode()->Component->UldManager.NodeList[8]->GetAsAtkTextNode();
-                if(t->Alpha_2 != 255)
+                var valueIndex = 160 + (i - 3) * 8;
+                if(addon->AtkValues != null && valueIndex < addon->AtkValuesCount)
+                {
+                    addon->AtkValues[valueIndex].Int = 0;
+                }
+                var t = GetTextNodeSafe(GetComponentNodeSafe(GetComponentNodeSafe(addon, 6, i), 8));
+                if(t != null && t->Alpha_2 != 255)
                 {
                     t->Alpha_2 = 255;
                 }
@@ -878,7 +982,7 @@ internal static unsafe class UIDebug
     private static void Editor()
     {
         var bsize = ImGuiHelpers.GetButtonSize("A") with { X = 280 };
-        if(ImGui.Button("Save"))
+        if(ImGui.Button("Save".Loc()))
         {
             ImGui.SetClipboardText(JsonConvert.SerializeObject(S.Data.DataStore.StaticData));
             S.Data.DataStore.StaticData.SaveConfiguration(Path.Combine(Svc.PluginInterface.AssemblyLocation.DirectoryName, S.Data.DataStore.FileName));
@@ -909,10 +1013,10 @@ internal static unsafe class UIDebug
                 if(Svc.Targets.Target != null)
                 {
                     ImGui.SameLine();
-                    if(ImGui.Button("Pos##" + x.Key.ID))
+                    if(ImGui.Button("Pos".Loc() + "##" + x.Key.ID))
                     {
                         S.Data.DataStore.StaticData.CustomPositions[x.Key.ID] = Svc.Targets.Target.Position;
-                        DuoLog.Information($"Written {Svc.Targets.Target.Position} for {x.Key.ID}");
+                        DuoLog.Information("Written ?? for ??".Loc(Svc.Targets.Target.Position, x.Key.ID));
                     }
                 }
             }
@@ -938,16 +1042,16 @@ internal static unsafe class UIDebug
                     if(Svc.Targets.Target != null)
                     {
                         ImGui.SameLine();
-                        if(ImGui.Button("Pos##" + l.ID))
+                        if(ImGui.Button("Pos".Loc() + "##" + l.ID))
                         {
                             S.Data.DataStore.StaticData.CustomPositions[l.ID] = Svc.Targets.Target.Position;
-                            DuoLog.Information($"Written {Svc.Targets.Target.Position} for {l.ID}");
+                            DuoLog.Information("Written ?? for ??".Loc(Svc.Targets.Target.Position, l.ID));
                         }
                     }
                 }
             }
         }
         ImGuiEx.Text(Utils.GetAvailableAethernetDestinations().Join("\n"));
-        if(ImGui.Button($"null")) DebugAetheryte = null;
+        if(ImGui.Button("null".Loc())) DebugAetheryte = null;
     }
 }

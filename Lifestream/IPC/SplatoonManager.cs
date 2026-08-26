@@ -20,7 +20,10 @@ public class SplatoonManager
 
     private unsafe void ResetOnFrameChange()
     {
-        var frame = CSFramework.Instance()->FrameCounter;
+        // Framework 是 isPointer: true 的靜態位址,合法回 null。拿不到就這一次不重設快取。
+        var framework = CSFramework.Instance();
+        if(framework == null) return;
+        var frame = framework->FrameCounter;
         if(frame != Frame)
         {
             Frame = frame;

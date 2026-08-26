@@ -3,6 +3,8 @@ using ECommons.ExcelServices;
 using ECommons.GameHelpers;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using Lifestream.Data;
+using Lifestream.Systems;
+using Lifestream.Systems.TeleportPanel;
 using Lifestream.Tasks.Shortcuts;
 using Lumina.Excel.Sheets;
 using NightmareUI;
@@ -17,13 +19,145 @@ internal static unsafe class UISettings
     private static string AddNew = "";
     internal static void Draw()
     {
-        NuiTools.ButtonTabs([[new("General".Loc(), () => Wrapper(DrawGeneral)), new("Overlay".Loc(), () => Wrapper(DrawOverlay))], [new("Expert".Loc(), () => Wrapper(DrawExpert)), new("Service Accounts".Loc(), () => Wrapper(UIServiceAccount.Draw)), new("Travel Block".Loc(), TabTravelBan.Draw)]]);
+        NuiTools.ButtonTabs([[new("General".Loc(), () => Wrapper(DrawGeneral)), new("Overlay".Loc(), () => Wrapper(DrawOverlay)), new("Teleport Panel".Loc(), () => Wrapper(DrawTeleportPanel))], [new("Expert".Loc(), () => Wrapper(DrawExpert)), new("Service Accounts".Loc(), () => Wrapper(UIServiceAccount.Draw)), new("Travel Block".Loc(), TabTravelBan.Draw)]]);
     }
 
     private static void Wrapper(Action action)
     {
         ImGui.Dummy(new(5f));
         action();
+    }
+
+    /// <summary>
+    /// 傳送面板的設定，以及兩個有帳號風險、預設關閉的進階選項。
+    /// 這兩個選項的說明文字刻意寫得很直白 —— 使用者是在知情的前提下自行承擔風險，
+    /// 所以說明不能含糊。
+    /// </summary>
+    private static void DrawTeleportPanel()
+    {
+        new NuiBuilder()
+        .Section("Teleport Panel".Loc())
+        .Widget(() =>
+        {
+            ImGuiEx.TextWrapped("A searchable teleport window with favorites, renames and a map preview. Open it with \"/li panel\".".Loc());
+            if(ImGui.Button("Open teleport panel".Loc())) S.Gui.TeleportPanelWindow.IsOpen = true;
+            ImGui.SameLine();
+            if(ImGui.Button($"★ {"Open favorites window".Loc()}")) S.Gui.TeleportFavoritesWindow.IsOpen = true;
+            ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "The favorites window (\"/li fav\") is a separate list where you can put your favorites in your own order and sort them into your own categories. The teleport panel itself is unchanged.".Loc());
+            ImGui.Checkbox("Show map preview".Loc(), ref C.TeleportPanelShowMap);
+            ImGui.Checkbox("Hide city aethernet shards while in a party".Loc(), ref C.TeleportPanelHideAethernetInParty);
+            ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "Favorites and renames are shared with the Lifestream overlay - anything you star here also stars there.".Loc());
+        })
+        .Draw();
+
+        new NuiBuilder()
+        .Section("Import from DailyRoutines".Loc())
+        .Widget(() =>
+        {
+            ImGuiEx.TextWrapped("Imports favorites, remarks and custom landing positions from DailyRoutines' BetterTeleport module. Both plugins key this data by aetheryte row id, so it transfers 1:1. Existing entries are never overwritten.".Loc());
+            var exists = DailyRoutinesImport.Exists;
+            if(ImGuiEx.Button("Import BetterTeleport.json".Loc(), exists))
+            {
+                DailyRoutinesImport.Import();
+            }
+            if(!exists)
+            {
+                ImGuiEx.Text(ImGuiColors.DalamudGrey, $"{"File not found:".Loc()} {DailyRoutinesImport.DefaultPath}");
+            }
+            if(DailyRoutinesImport.LastResult != null)
+            {
+                ImGuiEx.TextWrapped(ImGuiColors.DalamudYellow, DailyRoutinesImport.LastResult);
+            }
+        })
+        .Draw();
+
+        new NuiBuilder()
+        .Section("Custom landing positions".Loc())
+        .Widget(() =>
+        {
+            ImGuiEx.TextWrapped("You can save a custom landing spot for each aetheryte. After teleporting there, Lifestream will bring you to that spot instead of leaving you at the crystal. Set them from the right-click menu in the teleport panel.".Loc());
+            ImGui.Checkbox("Enable custom landing positions".Loc(), ref C.EnableAetheryteLanding);
+            ImGuiEx.HelpMarker("Off by default. When enabled, the safe route is used: normal teleport, then vnavmesh walks you to the spot. Nothing is written to game memory.".Loc());
+
+            if(C.EnableAetheryteLanding)
+            {
+                ImGui.Indent();
+                ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "Safe mode: teleport + vnavmesh pathfinding. If vnavmesh is not installed the spot is flagged on your map instead.".Loc());
+                ImGui.Dummy(new(5f));
+
+                ImGui.Checkbox("Use direct position write instead of walking".Loc(), ref C.AetheryteLandingDirectWrite);
+                ImGui.Indent();
+                ImGuiEx.TextWrapped(EColor.RedBright, LocText.MemoryTeleportWarning.Loc());
+                ImGuiEx.TextWrapped(EColor.RedBright, "DailyRoutines, where this feature comes from, keeps its own list of zones with server-side movement-speed detection, and on the CN/TC clients it refuses to position-teleport inside those zones unless the account is premium - that is their own evidence that it is detectable.".Loc());
+                ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, LocText.MemoryTeleportRefusalNote.Loc());
+                ImGui.Unindent();
+                ImGui.Unindent();
+            }
+
+            if(C.AetheryteLandings.Count > 0)
+            {
+                ImGui.Dummy(new(5f));
+                ImGuiEx.Text($"{"Saved landing positions".Loc()}: {C.AetheryteLandings.Count}");
+                uint toRemove = 0;
+                foreach(var (id, pos) in C.AetheryteLandings)
+                {
+                    var row = Svc.Data.GetExcelSheet<Aetheryte>().GetRowOrDefault(id);
+                    var name = C.Renames.TryGetValue(id, out var rn) && rn != "" ? rn
+                        : row?.PlaceName.ValueNullable?.Name.ToString() is { Length: > 0 } pn ? pn
+                        : row?.AethernetName.ValueNullable?.Name.ToString() is { Length: > 0 } an ? an
+                        : $"#{id}";
+                    ImGuiEx.Text($"{name}  ({pos.X:F1}, {pos.Y:F1}, {pos.Z:F1})");
+                    ImGui.SameLine();
+                    if(ImGui.SmallButton($"{"Delete".Loc()}##landing{id}")) toRemove = id;
+                }
+                if(toRemove > 0)
+                {
+                    C.AetheryteLandings.Remove(toRemove);
+                    EzConfig.Save();
+                }
+            }
+        })
+        .Draw();
+
+        new NuiBuilder()
+        .Section("Teleport to the aethernet shard you are standing on".Loc())
+        .Widget(() =>
+        {
+            ImGuiEx.TextWrapped("The game refuses an aethernet teleport when the destination is the shard you are already standing at (\"This is your current location.\"). This option patches that check out, which is useful together with custom landing positions - you can re-teleport to snap back to your saved spot.".Loc());
+            ImGuiEx.TextWrapped(EColor.RedBright, "WARNING - use at your own risk. This is a memory patch: it rewrites two bytes of the game's code so it stops refusing, and the client then sends a teleport request the unmodified client would never send. Off by default.".Loc());
+            ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "The \"you have not attuned to this aetheryte\" check is left untouched. The patch is verified before it is written: each signature must match exactly once and the byte found must be the expected conditional jump, otherwise nothing is patched at all. The original bytes are restored when you turn this off or unload the plugin.".Loc());
+
+            var enabled = C.SameAethernetTeleport;
+            if(ImGui.Checkbox("Allow teleporting to the aethernet shard you are standing on".Loc(), ref enabled))
+            {
+                C.SameAethernetTeleport = enabled;
+                EzConfig.Save();
+                if(enabled)
+                {
+                    if(!SameAethernetTeleportPatch.Enable())
+                    {
+                        // 解析或寫入失敗：把設定退回關閉，免得下次啟動又白試一次。
+                        C.SameAethernetTeleport = false;
+                        EzConfig.Save();
+                    }
+                }
+                else
+                {
+                    SameAethernetTeleportPatch.Disable();
+                }
+            }
+
+            if(SameAethernetTeleportPatch.IsApplied)
+            {
+                ImGuiEx.Text(ImGuiColors.HealerGreen, "Patch active.".Loc());
+            }
+            else if(SameAethernetTeleportPatch.ResolveError != null)
+            {
+                ImGuiEx.TextWrapped(EColor.RedBright, $"{"Patch not applied:".Loc()} {SameAethernetTeleportPatch.ResolveError}");
+                ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "This usually means the game updated and the signature moved. Nothing was written - the feature is simply off.".Loc());
+            }
+        })
+        .Draw();
     }
 
     private static void DrawGeneral()
@@ -44,14 +178,22 @@ internal static unsafe class UISettings
                 ImGui.Checkbox("Only teleport from command but not from overlay".Loc(), ref C.WorldVisitTPOnlyCmd);
                 ImGui.Unindent();
             }
+            // 目的地就在同一區又很近時,乾脆用走的 —— 省下整整一次讀取畫面。
+            // 🔴 預設 0(關):這會改變語意(點了傳送面板卻用走的),所以必須由使用者自己開,而且門檻可調。
+            ImGui.SetNextItemWidth(200f.Scale());
+            ImGui.SliderFloat("Walk instead of using the aethernet when closer than, yalms".Loc(), ref C.SkipAethernetIfCloserThan, 0f, 150f, "%.0f");
+            ImGuiEx.HelpMarker("0 turns this off (default). When the destination aethernet shard is in the zone you are already in and closer than this, Lifestream simply walks there instead of taking the aethernet - that saves a whole loading screen. Straight-line distance, not path length. If it cannot walk there in time it falls back to the normal aethernet route.".Loc());
             ImGui.Checkbox("Add firmament location into Foundation aetheryte".Loc(), ref C.Firmament);
+            ImGuiEx.HelpMarker("Also lists the Firmament and its eight city aethernet shards in the teleport panel, grouped under the Foundation aetheryte - that is what lets you add them to your favorites.".Loc());
+            ImGui.Checkbox("Add Sinus Ardorum location into Bestways Burrow aetheryte".Loc(), ref C.SinusArdorum);
+            ImGuiEx.HelpMarker("Also lists Sinus Ardorum in the teleport panel, grouped under the Bestways Burrow aetheryte - that is what lets you add it to your favorites.".Loc());
             ImGui.Checkbox("Automatically leave non cross-world party upon changing world".Loc(), ref C.LeavePartyBeforeWorldChange);
             ImGui.Checkbox("Show teleport destination in chat".Loc(), ref C.DisplayChatTeleport);
             ImGui.Checkbox("Show teleport destination in popup notifications".Loc(), ref C.DisplayPopupNotifications);
             ImGui.Checkbox("Retry same-world failed world visits".Loc(), ref C.RetryWorldVisit);
             ImGui.Indent();
             ImGui.SetNextItemWidth(100f.Scale());
-            ImGui.InputInt("Interval between retries, seconds".Loc() + "##2", ref C.RetryWorldVisitInterval.ValidateRange(1, 120));
+            ImGui.InputInt(LocText.IntervalBetweenRetriesSeconds.Loc() + "##2", ref C.RetryWorldVisitInterval.ValidateRange(1, 120));
             ImGui.SameLine();
             ImGuiEx.Text("+ up to".Loc());
             ImGui.SameLine();
@@ -168,7 +310,7 @@ internal static unsafe class UISettings
             ImGui.SetNextItemWidth(150f.Scale());
             ImGui.InputInt("Max retries".Loc(), ref C.MaxDcvRetries.ValidateRange(1, int.MaxValue));
             ImGui.SetNextItemWidth(150f.Scale());
-            ImGui.InputInt("Interval between retries, seconds".Loc(), ref C.DcvRetryInterval.ValidateRange(10, 1000));
+            ImGui.InputInt(LocText.IntervalBetweenRetriesSeconds.Loc(), ref C.DcvRetryInterval.ValidateRange(10, 1000));
             ImGui.Unindent();
         })
 
@@ -191,6 +333,22 @@ internal static unsafe class UISettings
         })
         .Checkbox("Use Sprint when auto-moving".Loc(), () => ref C.UseSprintPeloton)
         .Checkbox("Use Peloton when auto-moving".Loc(), () => ref C.UsePeloton)
+        .Widget(() =>
+        {
+            // 「自動移動時使用坐騎」(C.UseMount) 一直存在，但走 vnavmesh 的野外導航那條路
+            // (自訂落點 / /li goto) 是寫死不上坐騎的。這個選項只是把那條路接回既有的坐騎流程。
+            // 📌 預設開(使用者裁決)：不上坐騎的舊行為只是實作限制，不是想要的行為。
+            ImGui.Checkbox("Mount up for outdoor navigation".Loc(), ref C.GotoUseMount);
+            ImGuiEx.HelpMarker("Applies to custom landing positions and \"/li goto\". Uses the same mount settings as above. Whether mounting is possible at all is left to the game - in a city, indoors, in combat or in a duty it simply walks instead.".Loc());
+            if(C.GotoUseMount)
+            {
+                ImGui.Indent();
+                ImGui.SetNextItemWidth(200f.Scale());
+                ImGui.SliderFloat("Minimum path length to mount, yalms".Loc(), ref C.GotoMountMinDistance, 10f, 300f);
+                ImGuiEx.HelpMarker("Shorter paths are walked - getting on and off a mount costs more time than it saves. This is the length of the actual path, not the straight-line distance.".Loc());
+                ImGui.Unindent();
+            }
+        })
 
         .Section("Character Select Menu".Loc())
         .Checkbox("Enable Data center and World visit from Character Select Menu".Loc(), () => ref C.AllowDCTravelFromCharaSelect)
@@ -324,6 +482,8 @@ internal static unsafe class UISettings
         .Checkbox("Enabled".Loc(), () => ref C.ShowInstanceSwitcher)
         .Checkbox("Retry on failure".Loc(), () => ref C.InstanceSwitcherRepeat)
         .Checkbox("Return to the ground when flying before changing instance".Loc(), () => ref C.EnableFlydownInstance)
+        .Checkbox("Teleport to the zone's aetheryte first if none is nearby".Loc(), () => ref C.InstanceTpToAetheryte)
+        .Checkbox("Summon mount again after changing instance".Loc(), () => ref C.InstanceRemount)
         .Widget("Display instance number in Server Info Bar".Loc(), (x) =>
         {
             if(ImGui.Checkbox(x, ref C.EnableDtrBar))
@@ -365,10 +525,19 @@ internal static unsafe class UISettings
                 List<string> focused = [];
                 try
                 {
-                    foreach(var x in RaptureAtkUnitManager.Instance()->FocusedUnitsList.Entries)
+                    // 🔴 外面這層 try/catch 對這一行是**假安全**：RaptureAtkUnitManager.Instance()
+                    //    是 CS 的手寫包裝（RaptureAtkModule 為 null 時回 null），裸解參考產生的是
+                    //    AccessViolationException —— 在 .NET Core 屬 corrupted-state exception，
+                    //    catch(Exception) 攔不到，只能事前擋。try 保留給 NameString 那類受管理例外。
+                    //    取不到就維持空清單，畫面顯示「沒有聚焦中的視窗」，不崩潰。
+                    var raptureAtkUnitManager = RaptureAtkUnitManager.Instance();
+                    if(raptureAtkUnitManager != null)
                     {
-                        if(x.Value == null) continue;
-                        focused.Add(x.Value->NameString);
+                        foreach(var x in raptureAtkUnitManager->FocusedUnitsList.Entries)
+                        {
+                            if(x.Value == null) continue;
+                            focused.Add(x.Value->NameString);
+                        }
                     }
                 }
                 catch(Exception e) { e.Log(); }

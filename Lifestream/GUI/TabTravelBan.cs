@@ -12,11 +12,11 @@ public static class TabTravelBan
         ImGuiEx.Text(EColor.RedBright, FontAwesomeIcon.ExclamationTriangle.ToIconString());
         ImGui.PopFont();
         ImGui.SameLine();
-        ImGuiEx.TextWrapped(EColor.RedBright, "Be mindful that this function is meant to be the last chance to avoid unrecoverable mistakes. Using this function may break other plugins that rely on Lifestream. Blocking travel in a specific direction will block it only via Lifestream. You can still travel manually.");
+        ImGuiEx.TextWrapped(EColor.RedBright, "Be mindful that this function is meant to be the last chance to avoid unrecoverable mistakes. Using this function may break other plugins that rely on Lifestream. Blocking travel in a specific direction will block it only via Lifestream. You can still travel manually.".Loc());
 
         ImGuiEx.LineCentered(() =>
         {
-            if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add new entry"))
+            if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add new entry".Loc()))
             {
                 var entry = new TravelBanInfo();
                 if(Player.Available)
@@ -30,9 +30,9 @@ public static class TabTravelBan
         if(ImGui.BeginTable("Bantable", 5, ImGuiTableFlags.RowBg | ImGuiTableFlags.NoSavedSettings | ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.Borders))
         {
             ImGui.TableSetupColumn("##enabled");
-            ImGui.TableSetupColumn("Character name and world", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("Travel source");
-            ImGui.TableSetupColumn("Travel destination");
+            ImGui.TableSetupColumn("Character name and world".Loc() + "###charaworld", ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn("Travel source".Loc() + "###travelsource");
+            ImGui.TableSetupColumn("Travel destination".Loc() + "###traveldestination");
             ImGui.TableSetupColumn("##control");
 
             ImGui.TableHeadersRow();
@@ -46,7 +46,7 @@ public static class TabTravelBan
                 ImGui.TableNextColumn();
                 ImGuiEx.InputWithRightButtonsArea(() =>
                 {
-                    ImGui.InputTextWithHint("##chara", "Character name", ref entry.CharaName, 30);
+                    ImGui.InputTextWithHint("##chara", "Character name".Loc(), ref entry.CharaName, 30);
                 }, () =>
                 {
                     ImGuiEx.Text("@");

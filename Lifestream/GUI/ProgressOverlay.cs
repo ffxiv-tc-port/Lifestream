@@ -27,7 +27,7 @@ public class ProgressOverlay : Window
         if(ImGui.IsWindowHovered())
         {
             ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-            ImGui.SetTooltip("Right click to stop all tasks and movement");
+            ImGui.SetTooltip("Right click to stop all tasks and movement".Loc());
             if(ImGui.IsMouseClicked(ImGuiMouseButton.Right))
             {
                 P.TaskManager.Abort();

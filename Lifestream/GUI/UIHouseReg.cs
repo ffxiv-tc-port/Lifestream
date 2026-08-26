@@ -368,12 +368,12 @@ public static unsafe class UIHouseReg
             }
             else
             {
-                ImGuiEx.TextWrapped("Go to registered plot to edit path".Loc());
+                ImGuiEx.TextWrapped(LocText.GoToRegisteredPlotToEditPath.Loc());
             }
         }
         else
         {
-            ImGuiEx.TextWrapped("Go to registered plot to edit path".Loc());
+            ImGuiEx.TextWrapped(LocText.GoToRegisteredPlotToEditPath.Loc());
         }
     }
 

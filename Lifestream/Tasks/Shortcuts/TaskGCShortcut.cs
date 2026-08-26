@@ -76,7 +76,21 @@ public static unsafe class TaskGCShortcut
             DuoLog.Error("Player not available");
             return;
         }
-        companyNullable ??= fcgc ? (GrandCompany)InfoProxyFreeCompany.Instance()->GrandCompany : Player.GrandCompany;
+        if(companyNullable == null && fcgc)
+        {
+            // InfoProxyFreeCompany 走 InfoModule 鏈:UIModule／InfoModule 皆可能為 null,
+            // proxy 未註冊時 GetInfoProxyById 也回 null。這是使用者明確觸發的傳送,
+            // 取不到就照本檔既有慣例記錯誤並中止 —— 悄悄退回 Player.GrandCompany
+            // 會把人送去另一個大國,比不動更糟。
+            var freeCompany = InfoProxyFreeCompany.Instance();
+            if(freeCompany == null)
+            {
+                DuoLog.Error("Free company information is not available");
+                return;
+            }
+            companyNullable = (GrandCompany)freeCompany->GrandCompany;
+        }
+        companyNullable ??= Player.GrandCompany;
         if(companyNullable == GrandCompany.Unemployed)
         {
             if(Svc.AetheryteList.Any(x => x.AetheryteId == (int)WorldChangeAetheryte.Uldah))
@@ -115,14 +129,23 @@ public static unsafe class TaskGCShortcut
 
         void EnqueueFromStart()
         {
-            if(Player.GrandCompany == company && InventoryManager.Instance()->GetInventoryItemCount(CompanyItem[company]) > 0)
+            // ⚠️ 已經在目標城市裡的時候不要用傳送券。傳送券要詠唱、要過場載入,而人就在城裡時
+            // 走乙太網(底下的 moveCommand)本來就到得了,而且更快 —— 原本這裡只看「有沒有券」,
+            // 於是站在大國防聯軍旁邊的城內乙太水晶前面按下去,還是會先詠唱傳送一次。
+            // moveCommand 這條路徑本來就要處理任意起點(沒有券的人一直都走它),所以不必另外判斷位置。
+            if(P.Territory != CompanyTerritory[company]
+                && Player.GrandCompany == company
+                && InventoryManager.Instance()->GetInventoryItemCount(CompanyItem[company]) > 0)
             {
                 P.TaskManager.Enqueue(() =>
                 {
                     if(Player.IsAnimationLocked) return false;
                     if(EzThrottler.Throttle("GCUseTicket", 1000))
                     {
-                        AgentInventoryContext.Instance()->UseItem(CompanyItem[company]);
+                        // AgentInventoryContext 取得器合法回 null;拿不到就這次不用券,
+                        // 下面的 return false 會讓工作重試。
+                        var ctx = AgentInventoryContext.Instance();
+                        if(ctx != null) ctx->UseItem(CompanyItem[company]);
                     }
                     if(Svc.Condition[ConditionFlag.Casting] || Player.Object.IsCasting) return true;
                     return false;

@@ -34,6 +34,7 @@ using Lifestream.Tasks.CrossDC;
 using Lifestream.Tasks.CrossWorld;
 using Lifestream.Tasks.SameWorld;
 using Lifestream.Tasks.Shortcuts;
+using Lifestream.Tasks.Utility;
 using Lumina.Excel.Sheets;
 using NotificationMasterAPI;
 using GrandCompany = ECommons.ExcelServices.GrandCompany;
@@ -72,6 +73,9 @@ public unsafe class Lifestream : IDalamudPlugin
     {
         P = this;
         ECommonsMain.Init(pluginInterface, this, Module.SplatoonAPI);
+        // 讓「呼叫了對方沒有的 IPC 方法」不再完全靜默。
+        // 訂閱越早越好：事件只在 IPC **呼叫**當下才被查閱，在這裡訂閱就涵蓋往後所有呼叫。
+        EzIpcFailureLog.Enable();
         ECommons.LanguageHelpers.Localization.Init("ChineseTraditional");
 #if CUSTOMCS
         PluginLog.Warning($"Using custom FFXIVClientStructs");
@@ -85,6 +89,9 @@ public unsafe class Lifestream : IDalamudPlugin
             TerritoryWatcher.Initialize();
             Config = EzConfig.Init<Config>();
             Utils.CheckConfigMigration();
+            // 「允許傳送到目前所在的乙太之光」記憶體修補。預設關；開著才會去解析特徵碼。
+            // 解析失敗(命中數不是 1)時只會寫一行 log 並維持未修補狀態，不影響其餘功能。
+            if(Config.SameAethernetTeleport) GenericHelpers.Safe(() => SameAethernetTeleportPatch.Enable());
             EzConfigGui.Init(MainGui.Draw);
             TaskManager = new(new(showDebug: true));
             CharaSelectOverlay = new();
@@ -285,7 +292,9 @@ public unsafe class Lifestream : IDalamudPlugin
                     P.TPAndChangeWorld(Player.HomeWorld, !Player.IsInHomeDC, null, true, null, false, false);
                 }
                 P.TaskManager.Enqueue(() => Player.Interactable && Player.IsInHomeWorld && IsScreenReady());
-                StaticAlias.CosmicExploration.Enqueue(true);
+                // 走乙太之光 175 的「前往渴望灣」選單項,不再騎馬跑去找入口物件。
+                // 失敗時 TaskCosmicShortcut 會自己退回舊的 StaticAlias.CosmicExploration 流程。
+                TaskCosmicShortcut.Enqueue();
             }
             else
             {
@@ -302,6 +311,17 @@ public unsafe class Lifestream : IDalamudPlugin
             {
                 Notify.Error("Lifestream is busy");
             }
+        }
+        else if(arguments.EqualsIgnoreCase("panel"))
+        {
+            // 傳送面板(搜尋/我的最愛/備註/地圖預覽)。用 Toggle：再下一次指令會關掉，
+            // 跟其他外掛主視窗指令的慣例一致。
+            S.Gui.TeleportPanelWindow.IsOpen = !S.Gui.TeleportPanelWindow.IsOpen;
+        }
+        else if(arguments.EqualsIgnoreCase("fav") || arguments.EqualsIgnoreCase("favorites") || arguments.EqualsIgnoreCase("favourites"))
+        {
+            // 我的最愛視窗(自訂排序/分類)。跟傳送面板一樣用 Toggle。
+            S.Gui.TeleportFavoritesWindow.IsOpen = !S.Gui.TeleportFavoritesWindow.IsOpen;
         }
         else if(arguments.StartsWithAny(StringComparison.OrdinalIgnoreCase, "tp"))
         {
@@ -321,6 +341,39 @@ public unsafe class Lifestream : IDalamudPlugin
                 }
             }
         }
+        else if(arguments.EqualsIgnoreCase("goto") || arguments.StartsWith("goto ", StringComparison.OrdinalIgnoreCase))
+        {
+            // 自訂座標地點:傳送至該區最近以太之光 + vnavmesh 走路(安全版,非瞬移)
+            var destName = arguments.Length > 5 ? arguments[5..].Trim() : "";
+            if(destName == "")
+            {
+                if(C.CustomDestinations.Count == 0)
+                {
+                    DuoLog.Warning("No custom destinations saved. Add them on the Destinations tab.".Loc());
+                }
+                else
+                {
+                    ChatPrinter.Green($"[Lifestream] {"Saved destinations:".Loc()} {C.CustomDestinations.Select(d => d.Name).Print(", ")}");
+                }
+            }
+            else if(!P.TaskManager.IsBusy && Player.Interactable)
+            {
+                var dest = C.CustomDestinations.FirstOrDefault(d => d.Name.EqualsIgnoreCase(destName))
+                    ?? C.CustomDestinations.FirstOrDefault(d => d.Name.Contains(destName, StringComparison.OrdinalIgnoreCase));
+                if(dest == null)
+                {
+                    DuoLog.Error($"Destination not found: {destName}");
+                }
+                else
+                {
+                    TaskGotoDestination.Enqueue(dest);
+                }
+            }
+            else
+            {
+                DuoLog.Error("Lifestream is busy");
+            }
+        }
         else if(Utils.TryParseAddressBookEntry(arguments, out var entry))
         {
             ChatPrinter.Green($"[Lifestream] Address parsed: {entry.GetAddressString()}");
@@ -330,7 +383,9 @@ public unsafe class Lifestream : IDalamudPlugin
         {
             if(command.EqualsIgnoreCase("/lifestream") && arguments == "")
             {
-                EzConfigGui.Open();
+                // 用 Toggle 不用 Open：再下一次指令會關閉視窗，跟大多數外掛主指令的慣例一致。
+                // vnavmesh 的 DTR 右鍵就是呼叫這個指令，用 Open 的話「右鍵關閉」不會有反應。
+                EzConfigGui.Toggle();
             }
             else
             {
@@ -373,12 +428,14 @@ public unsafe class Lifestream : IDalamudPlugin
                     gateway = WorldChangeAetheryte.Uldah;
                 }
 
-                if(S.Data.DataStore.Worlds.TryGetFirst(x => x.StartsWith(primary == "" ? Player.HomeWorld : primary, StringComparison.OrdinalIgnoreCase), out var w))
+                // 台服別名(火神/風神/巴哈…)先正規化成 World 表的正式名稱再比對
+                var requestedWorld = PublicWorlds.NormalizeTaiwanWorldName(primary == "" ? Player.HomeWorld : primary);
+                if(S.Data.DataStore.Worlds.TryGetFirst(x => x.StartsWith(requestedWorld, StringComparison.OrdinalIgnoreCase), out var w))
                 {
                     PluginLog.Information($"Same dc/{primary}/{w}");
                     TPAndChangeWorld(w, false, gateway: gateway);
                 }
-                else if(S.Data.DataStore.DCWorlds.TryGetFirst(x => x.StartsWith(primary == "" ? Player.HomeWorld : primary, StringComparison.OrdinalIgnoreCase), out var dcw))
+                else if(S.Data.DataStore.DCWorlds.TryGetFirst(x => x.StartsWith(requestedWorld, StringComparison.OrdinalIgnoreCase), out var dcw))
                 {
                     PluginLog.Information($"Cross dc/{primary}/{w}");
                     TPAndChangeWorld(dcw, true, gateway: gateway);
@@ -527,7 +584,7 @@ public unsafe class Lifestream : IDalamudPlugin
     {
         YesAlreadyManager.Tick();
         followPath?.Update();
-        if(Svc.ClientState.LocalPlayer != null && S.Data.DataStore.Territories.Contains(P.Territory))
+        if(Svc.Objects.LocalPlayer != null && S.Data.DataStore.Territories.Contains(P.Territory))
         {
             UpdateActiveAetheryte();
         }
@@ -588,6 +645,9 @@ public unsafe class Lifestream : IDalamudPlugin
         Svc.Framework.Update -= Framework_Update;
         Svc.Toasts.ErrorToast -= Toasts_ErrorToast;
         followPath?.Dispose();
+        GenericHelpers.Safe(EzIpcFailureLog.Disable);
+        // 🔴 一定要還原記憶體修補 —— 外掛卸載後遊戲還帶著被改過的碼是最糟的殘留。
+        GenericHelpers.Safe(SameAethernetTeleportPatch.Disable);
         ECommonsMain.Dispose();
         P = null;
     }

@@ -4,6 +4,7 @@ using ECommons.GameHelpers;
 using ECommons.SimpleGui;
 using Lifestream.Enums;
 using Lifestream.Systems;
+using Lifestream.Systems.Custom;
 using Lifestream.Tasks;
 using Lifestream.Tasks.CrossDC;
 using Lifestream.Tasks.CrossWorld;
@@ -173,14 +174,18 @@ public class Overlay : Window
         if(!C.Hidden.Contains(master.ID))
         {
             var name = (C.Favorites.Contains(master.ID) ? "★ " : "") + (C.Renames.TryGetValue(master.ID, out var value) ? value : master.Name);
-            ResizeButton($"{Pad}{name}");
-            var md = P.ActiveAetheryte == master;
-            if(ImGuiEx.Button($"{Pad}{name}", ButtonSizeAetheryte, !md))
+            // 「最佳威兔洞」(175)這類沒有 AethernetName 的 master 名稱是空字串,不畫空按鈕
+            if(name != "")
             {
-                TaskRemoveAfkStatus.Enqueue();
-                TaskAethernetTeleport.Enqueue(master);
+                ResizeButton($"{Pad}{name}");
+                var md = P.ActiveAetheryte == master;
+                if(ImGuiEx.Button($"{Pad}{name}", ButtonSizeAetheryte, !md))
+                {
+                    TaskRemoveAfkStatus.Enqueue();
+                    TaskAethernetTeleport.Enqueue(master);
+                }
+                Popup(master);
             }
-            Popup(master);
         }
 
         foreach(var x in S.Data.DataStore.Aetherytes[master])
@@ -199,16 +204,43 @@ public class Overlay : Window
             }
         }
 
-        if(P.ActiveAetheryte.Value.ID == 70 && C.Firmament)
+        // 蒼天街與渴望灣這兩顆按鈕原本沒有星號、也沒有右鍵選單 —— 那正是「加不進我的最愛」的
+        // 另一半原因(傳送面板那一半在 TeleportPanelIndex)。它們用的是 Lifestream 自己的偽 id，
+        // 與傳送面板/我的最愛視窗**同一個鍵**，所以在任一邊加星號，另一邊都看得到。
+        if(P.ActiveAetheryte.Value.ID == TaskAetheryteAethernetTeleport.FirmamentRootAetheryteId && C.Firmament)
         {
-            var name = "Firmament";
-            ResizeButton($"{Pad}{name}");
-            if(ImGui.Button($"{Pad}{name}", ButtonSizeAetheryte))
-            {
-                TaskRemoveAfkStatus.Enqueue();
-                TaskFirmanentTeleport.Enqueue();
-            }
+            DrawGatewayButton(TaskAetheryteAethernetTeleport.FirmamentAethernetId,
+                TaskAetheryteAethernetTeleport.FirmamentTerritoryId, "Firmament".Loc(), TaskFirmanentTeleport.Enqueue);
         }
+
+        // 比照蒼天街:站在「最佳威兔洞」(175)旁時提供渴望灣按鈕
+        if(P.ActiveAetheryte.Value.ID == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId && C.SinusArdorum)
+        {
+            DrawGatewayButton(TaskAetheryteAethernetTeleport.SinusArdorumAethernetId,
+                TaskAetheryteAethernetTeleport.SinusArdorumTerritoryId, "Sinus Ardorum".Loc(), TaskSinusArdorumTeleport.Enqueue);
+        }
+    }
+
+    /// <summary>
+    /// 玄關目的地(蒼天街/渴望灣)的按鈕。與上面一般乙太之光的按鈕一樣支援星號、備註與隱藏，
+    /// 因為它們現在跟傳送面板共用同一個我的最愛鍵。
+    /// </summary>
+    /// <param name="id">Lifestream 給這個目的地的偽 id，也是我的最愛/備註/隱藏的鍵。</param>
+    /// <param name="territory">目的地區域。只用來填 <see cref="IAetheryte"/>，右鍵選單本身只認 id。</param>
+    /// <param name="defaultName">沒有備註時顯示的名稱(已在地化)。</param>
+    /// <param name="enqueue">按下去要排的傳送流程。</param>
+    private void DrawGatewayButton(uint id, uint territory, string defaultName, Action enqueue)
+    {
+        if(C.Hidden.Contains(id)) return;
+        var name = (C.Favorites.Contains(id) ? "★ " : "")
+            + (C.Renames.TryGetValue(id, out var value) && value != "" ? value : defaultName);
+        ResizeButton($"{Pad}{name}");
+        if(ImGui.Button($"{Pad}{name}", ButtonSizeAetheryte))
+        {
+            TaskRemoveAfkStatus.Enqueue();
+            enqueue();
+        }
+        Popup(new CustomAetheryte(default, territory, defaultName, id));
     }
 
     private void DrawResidentialAethernet(bool? subdivision = null)
@@ -282,13 +314,19 @@ public class Overlay : Window
         }
         else
         {
-            ImGuiEx.Text($"""
-                Instances available, 
-                but not initialized.
-
-                To initialize instances, 
-                access aetheryte once.
-                """);
+            // 上游這裡只留一句「請先手動點一次以太之光」的死路提示;
+            // 改為附一鍵按鈕自動跑同一套合法流程(互動水晶→讀分線清單→關閉選單)。
+            ImGuiEx.TextWrapped("Instance count unknown - the game only reveals it in the aetheryte's instance menu.".Loc());
+            var name = "Read instance list".Loc();
+            ResizeButton(name);
+            if(ImGuiEx.Button($"{Pad}{name}", ButtonSizeInstance, TaskInitInstanceData.CanInitialize()))
+            {
+                TaskInitInstanceData.EnqueueWithTeleport();
+            }
+            if(!TaskInitInstanceData.CanInitialize())
+            {
+                ImGuiEx.Text(ImGuiColors.DalamudGrey, "Stand near an aetheryte.".Loc());
+            }
         }
     }
 
@@ -300,15 +338,17 @@ public class Overlay : Window
         }
         if(ImGui.BeginPopup($"LifestreamPopup{x.ID}"))
         {
-            if(ImGuiEx.CollectionCheckbox("Favorite", x.ID, C.Favorites))
+            if(ImGuiEx.CollectionCheckbox("Favorite".Loc(), x.ID, C.Favorites))
             {
                 PluginLog.Debug($"Rebuilding data store");
+                // 取消我的最愛時把自訂排序/分類一併清掉，否則設定檔會靜默累積孤兒 id
+                Systems.TeleportPanel.FavoriteOrganizer.PruneIfNotFavorite(x.ID);
                 S.Data.DataStore = new();
                 EzConfig.Save();
             }
-            if(ImGuiEx.CollectionCheckbox("Hidden", x.ID, C.Hidden)) EzConfig.Save();
+            if(ImGuiEx.CollectionCheckbox("Hidden".Loc(), x.ID, C.Hidden)) EzConfig.Save();
             var newName = C.Renames.TryGetValue(x.ID, out var value) ? value : "";
-            ImGuiEx.Text($"Rename:");
+            ImGuiEx.Text("Rename:".Loc());
             ImGui.SetNextItemWidth(200f.Scale());
             if(ImGui.InputText($"##LifestreamRename", ref newName, 100))
             {
@@ -328,7 +368,7 @@ public class Overlay : Window
 
     private void DrawWorldVisit()
     {
-        var cWorld = Svc.ClientState.LocalPlayer?.CurrentWorld.ValueNullable?.Name.ToString();
+        var cWorld = Svc.Objects.LocalPlayer?.CurrentWorld.ValueNullable?.Name.ToString();
         foreach(var x in S.Data.DataStore.Worlds)
         {
             ResizeButton($"{Pad}{x}");

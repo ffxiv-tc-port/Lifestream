@@ -145,13 +145,27 @@ internal static class TaskTryTpToAethernetDestination
 
             if(P.ActiveAetheryte.Value.ID == 70 && C.Firmament)
             {
-                var name = "Firmament";
-                if(name.ContainsAny(StringComparison.OrdinalIgnoreCase, targetName))
+                // 也接受在地化名稱(例如 /li 蒼天街)
+                if(((string[])["Firmament", "Firmament".Loc()]).Any(n => n.ContainsAny(StringComparison.OrdinalIgnoreCase, targetName)))
                 {
                     P.TaskManager.InsertStack(() =>
                     {
                         TaskRemoveAfkStatus.Enqueue();
                         TaskFirmanentTeleport.Enqueue();
+                    });
+                    return;
+                }
+            }
+
+            // 比照蒼天街:站在「最佳威兔洞」(175)旁時 /li 渴望灣 直達
+            if(P.ActiveAetheryte.Value.ID == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId && C.SinusArdorum)
+            {
+                if(((string[])["Sinus Ardorum", "Sinus Ardorum".Loc()]).Any(n => n.ContainsAny(StringComparison.OrdinalIgnoreCase, targetName)))
+                {
+                    P.TaskManager.InsertStack(() =>
+                    {
+                        TaskRemoveAfkStatus.Enqueue();
+                        TaskSinusArdorumTeleport.Enqueue();
                     });
                     return;
                 }

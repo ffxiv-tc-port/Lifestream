@@ -73,7 +73,7 @@ public static unsafe class TaskISShortcut
             }
         });
 
-        IGameObject baldin() => Svc.Objects.FirstOrDefault(x => x.DataId == (uint)IslandNPC.Baldin);
+        IGameObject baldin() => Svc.Objects.FirstOrDefault(x => x.BaseId == (uint)IslandNPC.Baldin);
 
         void TravelToIsland()
         {
@@ -96,7 +96,7 @@ public static unsafe class TaskISShortcut
         bool ConfirmIslandTravel()
         {
             var addon = (AddonSelectYesno*)Utils.GetSpecificYesno(true, Lang.TravelToYourIsland);
-            if(addon != null && addon->YesButton->IsEnabled)
+            if(addon != null && IsButtonEnabled(addon->YesButton))
             {
                 if(EzThrottler.Throttle(nameof(ConfirmIslandTravel), 5000))
                 {
