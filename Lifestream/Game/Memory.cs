@@ -5,7 +5,6 @@ using ECommons.MathHelpers;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lifestream.Enums;
 using Lifestream.Tasks.SameWorld;
-using PInvoke;
 using System.Windows.Forms;
 
 namespace Lifestream.Game;
@@ -46,7 +45,7 @@ public unsafe class Memory : IDisposable
     private void AddonDKTWorldList_ReceiveEventDetour(nint a1, short a2, nint a3, AtkEvent* a4, InputData* a5)
     {
         PluginLog.Debug($"AddonDKTWorldCheck_ReceiveEventDetour: {a1:X16}, {a2}, {a3:X16}, {(nint)a4:X16}, {(nint)a5:X16}");
-        PluginLog.Debug($"  Event: {(nint)a4->Node:X16}, {(nint)a4->Target:X16}, {(nint)a4->Listener:X16}, {a4->Param}, {(nint)a4->NextEvent:X16}, {a4->State.EventType}, {a4->State.UnkFlags1}, {a4->State.StateFlags}");
+        PluginLog.Debug($"  Event: {(nint)a4->Node:X16}, {(nint)a4->Target:X16}, {(nint)a4->Listener:X16}, {a4->Param}, {(nint)a4->NextEvent:X16}, {a4->State.EventType}, {a4->State.ReturnFlags}, {a4->State.StateFlags}");
         PluginLog.Debug($"  Data: {(nint)a5->unk_8:X16}({*a5->unk_8:X16}/{*a5->unk_8:X16}), [{a5->unk_8s->unk_4}/{a5->unk_8s->SelectedItem}] {a5->unk_16}, {a5->unk_24} | "); //{a5->RawDumpSpan.ToArray().Print()}
         //var span = new Span<byte>((void*)*a5->unk_8, 0x40).ToArray().Select(x => $"{x:X2}");
         //PluginLog.Debug($"  Data 2, {a5->unk_8s->unk_4}, {MemoryHelper.ReadRaw((nint)a5->unk_8s->CategorySelection, 4).Print(",")},  :{string.Join(" ", span)}");
@@ -68,7 +67,7 @@ public unsafe class Memory : IDisposable
                 State = new()
                 {
                     EventType = AtkEventType.ListItemClick,
-                    UnkFlags1 = 0,
+                    ReturnFlags = 0,
                     StateFlags = 0,
                     UnkFlags3 = 0,
                 }

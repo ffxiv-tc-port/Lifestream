@@ -37,7 +37,7 @@ public static unsafe class TabAddressBook
     {
         InputWardDetailDialog.Draw();
         var selector = S.AddressBookFileSystemManager.FileSystem.Selector;
-        selector.Draw();
+        selector.Draw(150f.Scale());
         ImGui.SameLine();
         if(C.AddressBookFolders.Count == 0)
         {
@@ -222,7 +222,7 @@ public static unsafe class TabAddressBook
                     }
                     if(entry.Alias != "")
                     {
-                        ImGui.MenuItem("Enable Alias: ??".Loc(entry.Alias), null, ref entry.AliasEnabled);
+                        ImGui.MenuItem("Enable Alias: ??".Loc(entry.Alias), ref entry.AliasEnabled);
                     }
                     if(ImGui.MenuItem("Edit...".Loc()))
                     {

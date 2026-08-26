@@ -300,7 +300,11 @@ internal static unsafe class UISettings
                 UtilsUI.NextSection();
 
                 ImGui.SetNextItemWidth(100f.Scale());
-                ImGui.InputInt3("Button left/right padding".Loc(), ref C.ButtonWidthArray[0]);
+                fixed(int* ptr = &C.ButtonWidthArray[0])
+                fixed(byte* sptr = System.Text.Encoding.UTF8.GetBytes("Button left/right padding".Loc() + "\0"))
+                {
+                    ImGuiNative.InputInt3(sptr, ptr, ImGuiInputTextFlags.None);
+                }
                 ImGui.SetNextItemWidth(100f.Scale());
                 ImGui.InputInt("Aetheryte button top/bottom padding".Loc(), ref C.ButtonHeightAetheryte);
                 ImGui.SetNextItemWidth(100f.Scale());

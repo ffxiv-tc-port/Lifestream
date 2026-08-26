@@ -29,14 +29,15 @@ using Lifestream.Tasks.SameWorld;
 using Lumina.Excel.Sheets;
 using Lumina.Text.ReadOnly;
 using NightmareUI;
-using PInvoke;
 using System;
 using System.Collections.Specialized;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
+using TerraFX.Interop.Windows;
 using static FFXIVClientStructs.FFXIV.Client.UI.AddonAirShipExploration;
 using Action = System.Action;
 using CharaData = (string Name, ushort World);
+using FXWindows = TerraFX.Interop.Windows.Windows;
 
 namespace Lifestream;
 
@@ -553,9 +554,9 @@ internal static unsafe partial class Utils
             if(WindowFunctions.TryFindGameWindow(out var hwnd))
             {
                 var point = new POINT() { x = x, y = y };
-                if(User32.ClientToScreen(hwnd, ref point))
+                if(FXWindows.ClientToScreen(hwnd, &point))
                 {
-                    User32.SetCursorPos(point.x, point.y);
+                    FXWindows.SetCursorPos(point.x, point.y);
                 }
                 break;
             }
@@ -587,9 +588,9 @@ internal static unsafe partial class Utils
         ScreenToWorldSelector(id, ref value);
         ImGuiEx.Tooltip("Select with mouse");
         ImGui.SameLine();
-        if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && AgentMap.Instance()->IsFlagMarkerSet == true))
+        if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && AgentMap.Instance()->FlagMarkerCount > 0))
         {
-            var marker = AgentMap.Instance()->FlagMapMarker;
+            var marker = AgentMap.Instance()->FlagMapMarkers[0];
             value = new(marker.XFloat, marker.YFloat);
         }
         ScreenToWorldSelector(id, ref value);
@@ -620,9 +621,9 @@ internal static unsafe partial class Utils
         ScreenToWorldSelector(id, ref value);
         ImGuiEx.Tooltip("Select with mouse");
         ImGui.SameLine();
-        if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && AgentMap.Instance()->IsFlagMarkerSet == true))
+        if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && AgentMap.Instance()->FlagMarkerCount > 0))
         {
-            var marker = AgentMap.Instance()->FlagMapMarker;
+            var marker = AgentMap.Instance()->FlagMapMarkers[0];
             value = new(marker.XFloat, 0, marker.YFloat);
         }
         ScreenToWorldSelector(id, ref value);
@@ -1401,7 +1402,7 @@ internal static unsafe partial class Utils
         {
             try
             {
-                var addon = (AtkUnitBase*)Svc.GameGui.GetAddonByName("SelectYesno", i);
+                var addon = (AtkUnitBase*)Svc.GameGui.GetAddonByName("SelectYesno", i).Address;
                 if(addon == null) return null;
                 if(IsAddonReady(addon))
                 {
