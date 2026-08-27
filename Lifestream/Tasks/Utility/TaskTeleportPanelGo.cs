@@ -693,9 +693,21 @@ public static unsafe class TaskTeleportPanelGo
         return true;
     }
 
+    /// <summary>從目前所在位置走去落點。</summary>
+    /// <remarks>
+    /// 📌 這裡的診斷刻意寫 <c>Information</c>:「人被丟在奇怪的地方 / 卡住了」這類回報,
+    /// 沒有<b>起點、終點、走不走得成</b>三件事就只能用猜的,而使用者跑 LogLevel 2,
+    /// <c>Debug</c>/<c>Verbose</c> 根本收不到。
+    /// ⚠️ 起點要在**這一刻**取:落地後角色可能還在滑動,事後回推會對不上。
+    /// </remarks>
     private static void EnqueueWalkTo(TeleportPanelEntry entry, Vector3 landing)
     {
-        if(Svc.PluginInterface.InstalledPlugins.Any(x => x.InternalName == "vnavmesh" && x.IsLoaded))
+        var hasVnavmesh = Svc.PluginInterface.InstalledPlugins.Any(x => x.InternalName == "vnavmesh" && x.IsLoaded);
+        var from = Player.Available ? Player.Position : default;
+        var straight = Player.Available ? Vector3.Distance(from, landing) : -1f;
+        PluginLog.Information($"[TeleportPanel] 自訂落點 ⇒ 用走的:\"{entry.Name}\"(乙太之光 {entry.Id}、區域 {entry.Territory}),"
+            + $"起點 {from:F2},落點 {landing:F2},直線 {straight:F1} 碼,vnavmesh={hasVnavmesh}。");
+        if(hasVnavmesh)
         {
             TaskGotoDestination.EnqueueNavTo(landing);
         }

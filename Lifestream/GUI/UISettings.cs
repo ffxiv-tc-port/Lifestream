@@ -356,6 +356,23 @@ internal static unsafe class UISettings
                 ImGui.Unindent();
             }
         })
+        .Widget(() =>
+        {
+            // 卡住偵測。vnavmesh 給的是折線路徑，而 Lifestream 是直線走向下一個航點 ——
+            // 中間擦到欄杆、小石頭這種網格沒模到的小障礙物，角色就會頂著它推到那個航點的
+            // 30 秒逾時為止，然後整趟作廢。這個選項是那個狀態唯一的出路。
+            // 📌 預設開(見 Config.MovementStuckRecovery 的說明)：舊行為不是使用者選的，是失敗狀態。
+            ImGui.Checkbox("Recover when movement gets stuck".Loc(), ref C.MovementStuckRecovery);
+            ImGuiEx.HelpMarker("When auto-moving stops making progress for a few seconds, Lifestream jumps, and if that does not help it recalculates the path from where you are standing. It only ever runs when you are already stuck - without it the character keeps pushing against the obstacle until the 30 second timeout throws the whole trip away.".Loc());
+            if(C.MovementStuckRecovery)
+            {
+                ImGui.Indent();
+                ImGui.SetNextItemWidth(200f.Scale());
+                ImGui.SliderInt("Maximum recovery attempts per path".Loc(), ref C.MovementStuckMaxRecoveries, 1, 20);
+                ImGuiEx.HelpMarker("Jumping and recalculating are used alternately. Once these are used up the previous behaviour takes over, so terrain that genuinely cannot be passed still fails instead of looping forever.".Loc());
+                ImGui.Unindent();
+            }
+        })
 
         .Section("Character Select Menu".Loc())
         .Checkbox("Enable Data center and World visit from Character Select Menu".Loc(), () => ref C.AllowDCTravelFromCharaSelect)
