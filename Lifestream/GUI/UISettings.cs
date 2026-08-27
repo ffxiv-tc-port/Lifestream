@@ -85,6 +85,13 @@ internal static unsafe class UISettings
                 ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "Safe mode: teleport + vnavmesh pathfinding. If vnavmesh is not installed the spot is flagged on your map instead.".Loc());
                 ImGui.Dummy(new(5f));
 
+                // 落點離某座城內乙太之光比離剛落地的主水晶近很多時，先搭一段都市傳送網再走完最後一段。
+                // 0 = 關，等於修改前的行為(從主水晶一路走過去)。
+                ImGui.SetNextItemWidth(200f.Scale());
+                ImGui.SliderFloat("Take the aethernet first when it saves at least, yalms".Loc(), ref C.AetheryteLandingRelayGain, 0f, 200f, "%.0f");
+                ImGuiEx.HelpMarker("When your landing spot is much closer to one of the city's aethernet shards than to the aetheryte you teleported to, Lifestream rides the aethernet there first and only walks the last stretch - that is the difference between crossing Solution Nine on foot and a short walk. 0 turns this off and always walks the whole way. Straight-line distance, not path length. Needs vnavmesh; without it the spot is just flagged on the map as before.".Loc());
+                ImGui.Dummy(new(5f));
+
                 ImGui.Checkbox("Use direct position write instead of walking".Loc(), ref C.AetheryteLandingDirectWrite);
                 ImGui.Indent();
                 ImGuiEx.TextWrapped(EColor.RedBright, LocText.MemoryTeleportWarning.Loc());

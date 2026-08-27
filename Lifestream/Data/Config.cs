@@ -118,6 +118,25 @@ public class Config : IEzConfig
     /// <summary>🔴 改用「直接寫記憶體座標瞬移」抵達落點。預設關，需先開 <see cref="EnableAetheryteLanding"/>。</summary>
     public bool AetheryteLandingDirectWrite = false;
 
+    /// <summary>
+    /// 前往自訂落點時，「先搭都市傳送網到離落點最近的城內乙太之光，再走完最後一段」所需的最小直線距離收益(碼)。
+    ///
+    /// 落點離「傳送過去的那座主水晶」X 碼、離同一個都市傳送網裡最近的城內乙太之光 Y 碼，
+    /// 只有 <c>X - Y &gt;=</c> 這個值時才中繼；否則行為與修改前**完全相同**(從主水晶一路走過去)。
+    ///
+    /// 🔴 <b>0 = 關</b>。預設 40：多繞一次都市傳送網要付一次互動＋選單＋讀取畫面(十幾秒)，
+    /// 省下的路程要明顯多於那個成本才划算；這個數字同時也吸收乙太之光座標本身的誤差
+    /// (它多半是從地圖標記換算來的)。比照 <see cref="Tasks.Utility.TaskGotoDestination"/> 裡
+    /// <c>/li goto</c> 用的 30 碼經驗值，但自訂落點是使用者手動存的、更在意「別亂繞」，所以取得保守一點。
+    ///
+    /// 📌 只比直線距離，不用 vnavmesh 算路徑長度 —— 理由見 <see cref="Tasks.Utility.TaskAethernetRoute"/>：
+    /// navmesh 查詢會排隊、partial path 的長度含穿牆直線，而且「空 List」會被誤讀成「距離 0」。
+    ///
+    /// ⚠️ 這個設定只在 <see cref="EnableAetheryteLanding"/> 開著、該乙太之光**有**自訂落點、
+    /// 而且裝了 vnavmesh 時才有作用；三個前提本來就都是使用者主動做過的選擇。
+    /// </summary>
+    public float AetheryteLandingRelayGain = 40f;
+
     /// <summary>🔴 「允許傳送到目前所在的乙太之光」記憶體修補。預設關。</summary>
     public bool SameAethernetTeleport = false;
 

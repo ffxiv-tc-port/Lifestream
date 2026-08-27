@@ -180,8 +180,10 @@ public static unsafe class TaskGotoDestination
     /// <summary>
     /// 是否已解鎖(含城內以太之光)。這只是讀 UIState 裡的解鎖點陣圖,
     /// 沒有特徵碼、沒有 hook,Questionable 也是用同一個方法判斷城內以太之光。
+    /// 📌 <see cref="TaskTeleportPanelGo"/> 的落點中繼用的是同一份判斷,所以是 internal 不是 private ——
+    /// 「解鎖了沒」各寫一份是最容易走散的那種重複。
     /// </summary>
-    private static bool IsAetheryteUnlocked(uint aetheryteId)
+    internal static bool IsAetheryteUnlocked(uint aetheryteId)
     {
         var uiState = UIState.Instance();
         return uiState != null && uiState->IsAetheryteUnlocked(aetheryteId);

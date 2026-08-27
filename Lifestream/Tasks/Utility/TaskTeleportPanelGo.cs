@@ -5,6 +5,7 @@ using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using Lifestream.Schedulers;
 using Lifestream.Systems;
 using Lifestream.Systems.Custom;
+using Lifestream.Systems.Legacy;
 using Lifestream.Systems.TeleportPanel;
 using Lifestream.Tasks.SameWorld;
 using Lumina.Excel.Sheets;
@@ -24,6 +25,10 @@ namespace Lifestream.Tasks.Utility;
 /// 與 <see cref="Data.Config.AetheryteLandingDirectWrite"/>)：
 ///   第一層(預設關)：走 vnavmesh 走過去 —— 跟 <c>/li goto</c> 同一套機制，沒有任何記憶體寫入。
 ///   第二層(預設關、需先開第一層)：直接寫座標瞬移。這是使用者自行承擔風險的選項。
+///
+/// 第一層底下還有一個純最佳化的旁支(<see cref="TryEnqueueLandingAethernetRelay"/>)：落點離同城某座
+/// 城內乙太之光比離剛傳送到的主水晶近很多時，先搭一段都市傳送網再走完最後一段，
+/// 免得在九號解決方案這種大城裡橫跨整張地圖用走的。判斷不成立就原封不動走上面那條路。
 /// </summary>
 public static unsafe class TaskTeleportPanelGo
 {
@@ -522,9 +527,170 @@ public static unsafe class TaskTeleportPanelGo
                 // 直接寫失敗(例如在戰鬥中/副本裡)就退回安全路徑，不要什麼都不做。
                 ChatPrinter.Red($"[Lifestream] {"Direct position write refused - falling back to walking.".Loc()}");
             }
+            // 落點離某座城內乙太之光比離剛落地的主水晶近很多時，先搭一段都市傳送網再走。
+            // 不成立(或功能關著)就原封不動走既有那條路。
+            if(TryEnqueueLandingAethernetRelay(entry, landing)) return true;
             EnqueueWalkTo(entry, landing);
             return true;
         }, "TeleportPanelLanding");
+    }
+
+    /// <summary>
+    /// 自訂落點的「城內乙太之光中繼」。
+    ///
+    /// 修改前 <see cref="EnqueueLanding"/> 只有兩條路：直寫座標，或從落地點 vnavmesh 一路走過去。
+    /// 傳送到主水晶時那個「一路」可能橫跨整座城(九號解決方案是實測案例)，
+    /// 而該城同一個都市傳送網裡往往就有一座乙太之光近得多 —— 遊戲自己的乙太之光選單本來就到得了它。
+    ///
+    /// 🔑 <b>沒有新機制</b>：搭乘那一段直接沿用 <see cref="TaskAethernetRoute.Enqueue"/>
+    /// (「身邊摸得到同網路節點就走過去用它，否則傳送回主水晶」的那一份，含它全部的逾時退路)，
+    /// 走路那一段仍然是原本的 <see cref="EnqueueWalkTo"/>。這裡新增的只有「要不要中繼」的判斷。
+    ///
+    /// 🔴 判斷刻意保守，每一條不成立就直接回 false ＝ 行為與修改前逐字相同：
+    /// <list type="bullet">
+    /// <item>只處理「傳送到主水晶」(<see cref="TeleportPanelEntry.IsAetheryte"/>)。
+    ///   目的地本身就是城內乙太之光時**本來就已經是對的** —— 那條路走
+    ///   <see cref="TaskAetheryteAethernetTeleport.Enqueue"/> → <see cref="TaskAethernetRoute"/>，
+    ///   人是落在該乙太之光旁邊，走路那段已經從最近處開始，再挑一座別的等於推翻使用者指名的目的地。</item>
+    /// <item>房屋類(<see cref="TeleportPanelEntry.SubIndex"/> &gt; 0)不處理。</item>
+    /// <item>沒裝 vnavmesh 不處理 —— 那條路只是在地圖上插旗，多吃一次讀取畫面沒有意義，
+    ///   而且會改掉「沒有 vnavmesh 時的行為」。</item>
+    /// <item>收益低於 <see cref="Data.Config.AetheryteLandingRelayGain"/> 不處理(0 = 整個功能關掉)。</item>
+    /// </list>
+    /// </summary>
+    private static bool TryEnqueueLandingAethernetRelay(TeleportPanelEntry entry, Vector3 landing)
+    {
+        if(!entry.IsAetheryte) return false;
+        if(entry.SubIndex != 0) return false;
+        var gain = C.AetheryteLandingRelayGain;
+        if(gain <= 0f) return false;
+        // ⚠️ TaskAethernetRoute.Enqueue 開頭就有 `if(!Player.Available) return;` —— 它靜默什麼都不排，
+        // 而我們後面那幾步照樣會排進去，結果是白等 15 秒轉場才走路。這裡先擋掉那條路。
+        if(!Player.Available) return false;
+        if(!Svc.PluginInterface.InstalledPlugins.Any(x => x.InternalName == "vnavmesh" && x.IsLoaded)) return false;
+        if(S.Data.DataStore?.Aetherytes == null) return false;
+
+        // 這一列對應的主水晶。DataStore 的鍵只有「有 AethernetGroup 的主水晶」，
+        // 野外傳送點與房屋傳送點查不到 —— 查不到就代表它根本沒有都市傳送網可搭。
+        TinyAetheryte root = default;
+        var haveRoot = false;
+        foreach(var master in S.Data.DataStore.Aetherytes.Keys)
+        {
+            if(master.ID != entry.Id) continue;
+            root = master;
+            haveRoot = true;
+            break;
+        }
+        if(!haveRoot) return false;
+        // 同一個都市傳送網可以橫跨區域(蒼天街/住宅區)，只在落點所在的那一區裡比。
+        if(root.TerritoryType != entry.Territory) return false;
+        if(!TryGetAetheryteGroundPosition(root, out var rootPos))
+        {
+            PluginLog.Information($"[TeleportPanel] Cannot work out where aetheryte \"{entry.Name}\" ({entry.Id}) actually is, so the custom landing cannot be compared against the aethernet - walking the whole way.");
+            return false;
+        }
+
+        var arrivalDistance = DistanceXZ(rootPos, landing);
+
+        TinyAetheryte best = default;
+        var bestDistance = float.MaxValue;
+        foreach(var child in S.Data.DataStore.Aetherytes[root])
+        {
+            // 選單上不會出現的隱藏節點(飛空艇著陸場之類)不能當中繼點。
+            if(child.Invisible) continue;
+            if(child.TerritoryType != entry.Territory) continue;
+            if(!TaskGotoDestination.IsAetheryteUnlocked(child.ID)) continue;
+            if(!TryGetAetheryteGroundPosition(child, out var childPos)) continue;
+            var d = DistanceXZ(childPos, landing);
+            if(d < bestDistance)
+            {
+                bestDistance = d;
+                best = child;
+            }
+        }
+
+        if(bestDistance == float.MaxValue)
+        {
+            PluginLog.Information($"[TeleportPanel] Custom landing for \"{entry.Name}\": {arrivalDistance:F0}y from the aetheryte, no unlocked aethernet shard with a usable position in territory {entry.Territory} - decision = walk the whole way.");
+            return false;
+        }
+
+        var saved = arrivalDistance - bestDistance;
+        if(saved < gain)
+        {
+            PluginLog.Information($"[TeleportPanel] Custom landing for \"{entry.Name}\": {arrivalDistance:F0}y from the aetheryte, nearest aethernet shard \"{best.Name}\" {bestDistance:F0}y - only {saved:F0}y saved, below the {gain:F0}y threshold, decision = walk the whole way.");
+            return false;
+        }
+
+        PluginLog.Information($"[TeleportPanel] Custom landing for \"{entry.Name}\": {arrivalDistance:F0}y from the aetheryte, nearest aethernet shard \"{best.Name}\" {bestDistance:F0}y - {saved:F0}y saved (threshold {gain:F0}y), decision = take the aethernet there first, then walk.");
+
+        // 🔴 這裡用 Enqueue 不是 InsertMulti，而且那是對的：本方法是從佇列**最後一步**
+        // (TeleportPanelLanding)裡呼叫的，此刻佇列後面什麼都沒有，走路那段也是接在這些之後才排進去。
+        // (TaskAethernetRoute 內部自己會用 InsertMulti 把實際步驟插到這幾步前面，那是它的職責。)
+        TaskAethernetRoute.Enqueue(root, best);
+        // ⚠️ 路線若決定「用走的」(RouteUsesAethernet=false)就根本不會有讀取畫面，直接放行，
+        // 否則這裡會空轉滿 15 秒才往下走。與本檔上面那條城內乙太之光路線同一個判斷。
+        P.TaskManager.Enqueue(
+            () => !TaskAethernetRoute.RouteUsesAethernet || Svc.Condition[ConditionFlag.BetweenAreas] || Svc.Condition[ConditionFlag.BetweenAreas51],
+            "TeleportPanelLandingRelayWaitTransition", new(timeLimitMS: 15000, abortOnTimeout: false));
+        P.TaskManager.Enqueue(Utils.WaitForScreen);
+        // 🔴 這一步刻意 abortOnTimeout:false。中繼是最佳化，不是必要條件：不管乙太之光那一段
+        // 有沒有真的成功(選單沒開、被打斷、逾時)，人都還在同一個區域裡，接下來照樣走得到落點 ——
+        // 逾時即中止會把走路那段一起清掉，那才是比修改前更糟的結果。
+        P.TaskManager.Enqueue(
+            () => P.Territory == entry.Territory && Player.Interactable && !Svc.Condition[ConditionFlag.BetweenAreas],
+            "TeleportPanelLandingRelayWaitArrival", new(timeLimitMS: 120000, abortOnTimeout: false));
+        P.TaskManager.Enqueue(() =>
+        {
+            PluginLog.Information($"[TeleportPanel] Aethernet relay finished at territory {P.Territory}, {(Player.Available ? $"{DistanceXZ(Player.Position, landing):F0}y" : "unknown distance")} from the custom landing - walking the rest.");
+            EnqueueWalkTo(entry, landing);
+            return true;
+        }, "TeleportPanelLandingRelayWalk");
+        return true;
+    }
+
+    /// <summary>
+    /// 一座乙太之光在世界中的水平位置(Y 一律填 0，呼叫端只比 XZ)。
+    ///
+    /// 🔑 <b>優先用 <see cref="TinyAetheryte.Position"/>，不要用
+    /// <see cref="ECommons.GameHelpers.Map.AetherytePosition(uint)"/></b>：後者查不到 <c>Level</c> 資料時
+    /// 退回地圖標記換算，而那個換算**沒有把 <c>Map.OffsetX</c>/<c>Map.OffsetY</c> 減掉**。
+    /// 2026-08-27 對台服 7.20 EXD 逐筆驗過：Lifestream 隨附的 <c>StaticData.json</c> 裡
+    /// <c>CustomPositions</c> 那 20 筆(九號解決方案 217/230~236、圖萊尤拉 216/218~224、多瑪飛地 127/129/130/162)
+    /// 與地圖標記換算值的差，**每一筆都恰好等於該地圖的 (OffsetX, OffsetY)**
+    /// (九號解決方案 = (0, 90)、圖萊尤拉 = (50, -70)、多瑪飛地 = (23, 34))。
+    /// 也就是說 <c>CustomPositions</c> 存在的唯一理由就是補這個缺項，而
+    /// <see cref="Systems.Legacy.DataStore.GetTinyAetheryte"/> 是**先查它**再退回地圖標記的 ——
+    /// 所以 <see cref="TinyAetheryte.Position"/> 才是這幾座城市裡唯一正確的來源。
+    /// 拿差了 90 碼的座標來比「哪一座近」，在九號解決方案會直接選錯乙太之光。
+    ///
+    /// 退路仍留著 <see cref="Systems.TeleportPanel.TeleportPanelIndex.GetPosition"/>(它會先查
+    /// <c>Level</c> 表，那條路徑是準的)，只在 DataStore 兩個來源都空的時候才用得到。
+    ///
+    /// ⚠️ <b>精度只有幾十碼</b>：同一次比對裡，九號解決方案七座乙太之光的 <c>CustomPositions</c>
+    /// 與 <c>Level</c> 表 <c>Type=45</c> 實體物件座標的水平差是 8~108 碼(Y 幾乎完全吻合，差 ≤1.4 碼，
+    /// 所以配對本身是對的，差的是地圖標記畫在圖示中心而不是物件上)。
+    /// ⇒ 這些座標只夠用來回答「哪一座明顯比較近」，**不能**拿來當導航目標或判斷「是不是已經到了」。
+    /// 呼叫端的門檻(<see cref="Data.Config.AetheryteLandingRelayGain"/>)本來就要蓋過這個誤差。
+    /// 📌 順帶一提：<c>Level</c> 表 <c>Type=45</c> 在該區域有 19 列而該城只有 7 座乙太之光，
+    /// 所以**不能**反過來把 Type=45 當乙太之光清單 —— 多出來的 11 列會冒充成更近的候選。
+    /// </summary>
+    private static bool TryGetAetheryteGroundPosition(TinyAetheryte a, out Vector3 position)
+    {
+        // (0,0) 是 DataStore「兩個來源都查不到」的哨兵值，不是真的世界原點。
+        if(a.Position != Vector2.Zero)
+        {
+            position = new Vector3(a.Position.X, 0f, a.Position.Y);
+            return true;
+        }
+        var fallback = TeleportPanelIndex.GetPosition(a.ID);
+        if(fallback == null || fallback.Value.X == 0f && fallback.Value.Z == 0f)
+        {
+            position = default;
+            return false;
+        }
+        position = fallback.Value;
+        return true;
     }
 
     private static void EnqueueWalkTo(TeleportPanelEntry entry, Vector3 landing)
