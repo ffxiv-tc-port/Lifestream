@@ -374,6 +374,17 @@ internal static unsafe class UISettings
             }
         })
 
+        .Section("Arrival Announcement".Loc())
+        .Widget(() =>
+        {
+            // 單向通知，對方沒安裝時整條路徑都是 no-op(見 IPC/TataruPraiseIPC.cs)。
+            // 📌 預設開：TataruPraise 自己的總開關預設是關的，所以這裡預設開不會讓任何人
+            //    突然聽到聲音，只是「裝了就會用上」。
+            ImGui.Checkbox("Ask Tataru to announce arrival".Loc(), ref C.TataruPraiseOnArrival);
+            ImGuiEx.PluginAvailabilityIndicator([new("TataruPraise", "TataruPraise")]);
+            ImGuiEx.HelpMarker("When a /li teleport or navigation chain runs all the way through and you have actually arrived, Lifestream asks TataruPraise to say one short line. It stays quiet when the chain is aborted or times out, and when auto-movement fails to reach the destination. Without TataruPraise installed this does nothing.".Loc());
+        })
+
         .Section("Character Select Menu".Loc())
         .Checkbox("Enable Data center and World visit from Character Select Menu".Loc(), () => ref C.AllowDCTravelFromCharaSelect)
         .Checkbox("Use world visit instead of DC visit to travel to same world on guest DC".Loc(), () => ref C.UseGuestWorldTravel)

@@ -30,7 +30,9 @@ public class IPCProvider
     [EzIPC]
     public void ExecuteCommand(string arguments)
     {
-        P.ProcessCommand("/li", arguments);
+        // 這是別的外掛在驅動 Lifestream，不是使用者主動下的 /li ——
+        // 走內層，不掛「抵達提醒」哨兵。
+        P.ProcessCommandInternal("/li", arguments);
     }
 
     [EzIPC]

@@ -199,6 +199,26 @@ public class Config : IEzConfig
     /// </remarks>
     public int MovementStuckMaxRecoveries = 6;
 
+    // ── 抵達提醒 ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 一整條 <c>/li</c> 傳送／導航鏈真的抵達目的地時，請「塔塔露誇獎」(TataruPraise) 念一句短通知。
+    /// </summary>
+    /// <remarks>
+    /// 📌 <b>預設開</b>：沒安裝 TataruPraise 的人完全不受影響(IPC 呼叫是安靜的 no-op)，
+    /// 而 TataruPraise 自己的總開關預設是關的，所以「預設開」不會讓任何人突然聽到聲音。
+    /// <para>
+    /// ⚠️ 既有使用者的設定檔已經寫過這個鍵時，反序列化會蓋掉這個預設值 ——
+    /// 這是新鍵，既有設定檔沒有它，所以既有使用者也會吃到開(EzConfig 連 false 都會寫進 JSON，
+    /// 但寫的是「當時存在的鍵」)。
+    /// </para>
+    /// <para>
+    /// ⚠️ 關掉時 <see cref="Tasks.Utility.TaskAnnounceArrival"/> 的哨兵任務根本不會排進佇列，
+    /// 行為與加這個功能之前逐位元相同。
+    /// </para>
+    /// </remarks>
+    public bool TataruPraiseOnArrival = true;
+
     /// <summary>
     /// 城內快捷傳送時,若目的地乙太之光**與玩家同區**且直線距離小於這個值,就乾脆走過去、完全不用乙太網
     /// (省下整整一次讀取畫面)。

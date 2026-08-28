@@ -17,6 +17,16 @@ public class FollowPath : IDisposable
     private OverrideMovement _movement = new();
     private long TimeoutAt = 0;
 
+    /// <summary>
+    /// 最後一次自動移動是不是「還沒走到就被收掉」（逾時、或偵測到 vnavmesh 自己在動）。
+    /// </summary>
+    /// <remarks>
+    /// 🔴 那兩條失敗路徑都是把航點<b>清空</b>後就結束，從外面看跟「順利走完」<b>一模一樣</b>。
+    /// 想在抵達時做事的人(<see cref="Tasks.Utility.TaskAnnounceArrival"/>)只看航點數會把失敗當成功。
+    /// <para>每次 <see cref="Move"/> 都會清成 false —— 這個旗標只描述「最後一次」。</para>
+    /// </remarks>
+    public bool LastMovementFailed = false;
+
     // ── 卡住偵測與回復 ───────────────────────────────────────────────────────────
     // 🔴 這裡處理的是一個**只會靜默浪費 30 秒**的故障:vnavmesh 給的是折線路徑,而
     // 本類別是用 OverrideMovement 直線走向 waypointsInternal[0]。兩點之間若擦到欄杆、
@@ -97,12 +107,14 @@ public class FollowPath : IDisposable
             if(S.Ipc.VnavmeshIPC.IsRunning())
             {
                 waypointsInternal.Clear();
+                LastMovementFailed = true;
                 DuoLog.Error($"Detected vnavmesh movement, Lifestream will abort all tasks now.");
                 break;
             }
             if(Environment.TickCount64 > TimeoutAt)
             {
                 waypointsInternal.Clear();
+                LastMovementFailed = true;
                 DuoLog.Error($"Lifestream movement has timed out.");
                 break;
             }
@@ -301,6 +313,7 @@ public class FollowPath : IDisposable
     public void Move(List<Vector3> waypoints, bool ignoreDeltaY)
     {
         TimeoutAt = 0;
+        LastMovementFailed = false;
         waypointsInternal = [.. waypoints];
         IgnoreDeltaY = ignoreDeltaY;
         ResetStuckTracking();

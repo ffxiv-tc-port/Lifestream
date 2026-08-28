@@ -123,7 +123,26 @@ public unsafe class Lifestream : IDalamudPlugin
         }
     }
 
+    /// <summary>
+    /// <c>/li</c> / <c>/lifestream</c> 的指令進入點(使用者主動輸入的那條路)。
+    /// </summary>
+    /// <remarks>
+    /// 這一層只做一件事：這次指令真的排出了任務時，在佇列尾端補上「抵達提醒」哨兵
+    /// (<see cref="TaskAnnounceArrival"/>)。實際的指令處理逐字保留在
+    /// <see cref="ProcessCommandInternal"/>，沒有任何行為改變。
+    /// <para>
+    /// 📌 別的外掛透過 IPC <c>ExecuteCommand</c> 驅動時走的是 <see cref="ProcessCommandInternal"/>，
+    /// 不會出聲 —— 那不是使用者主動下的指令。
+    /// </para>
+    /// </remarks>
     internal void ProcessCommand(string command, string arguments)
+    {
+        var queuedBefore = TaskManager.NumQueuedTasks;
+        ProcessCommandInternal(command, arguments);
+        TaskAnnounceArrival.EnqueueIfChainStarted(queuedBefore);
+    }
+
+    internal void ProcessCommandInternal(string command, string arguments)
     {
         var argsSplit = arguments.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var primary = argsSplit.SafeSelect(0) ?? "";
