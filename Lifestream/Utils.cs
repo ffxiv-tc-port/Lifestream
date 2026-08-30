@@ -944,11 +944,38 @@ internal static unsafe partial class Utils
         return Svc.PluginInterface.InstalledPlugins.Any(x => x.InternalName == "TeleporterPlugin" && x.IsLoaded);
     }
 
+    private static bool ReportedIsHereNullEntry = false;
+    private static bool ReportedIsHereNullPlayer = false;
+
     public static bool IsHere(this AddressBookEntry entry)
     {
+        // 絕不從這裡擲例外：本方法在通訊錄分頁的每幀繪製路徑上。
+        // ECommons 的 ConfigWindow.Draw 用 GenericHelpers.Safe 包住整個主視窗，
+        // 例外會被吞下並每幀寫一行 Error（不會觸發 Dalamud 的視窗錯誤畫面），
+        // 但堆疊會從這裡一路展開到 Safe()，ImGui 的 BeginTabBar / BeginTabItem /
+        // BeginChild 都不會收尾，分頁內容每幀繪製到一半就斷掉。
+        if(entry == null)
+        {
+            if(!ReportedIsHereNullEntry)
+            {
+                ReportedIsHereNullEntry = true;
+                PluginLog.Information("[AddressBook] IsHere 提前結束：通訊錄項目(entry) 為 null，視為「不在此處」。此訊息每次載入外掛只顯示一次。");
+            }
+            return false;
+        }
         var h = HousingManager.Instance();
         if(h == null) return false;
-        if(entry.World != Player.Object.CurrentWorld.RowId) return false;
+        var player = Player.Object;
+        if(player == null)
+        {
+            if(!ReportedIsHereNullPlayer)
+            {
+                ReportedIsHereNullPlayer = true;
+                PluginLog.Information("[AddressBook] IsHere 提前結束：Player.Object(本機角色) 為 null，通常是登入畫面、角色選擇畫面或正在切換區域。視為「不在此處」。此訊息每次載入外掛只顯示一次。");
+            }
+            return false;
+        }
+        if(entry.World != player.CurrentWorld.RowId) return false;
         if(h->GetCurrentWard() != entry.Ward - 1) return false;
         if(Utils.GetResidentialAetheryteByTerritoryType(P.Territory) != entry.City) return false;
         if(entry.PropertyType == PropertyType.House)
