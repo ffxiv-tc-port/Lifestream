@@ -72,6 +72,44 @@ public class IPCProvider
         P.followPath?.Stop();
     }
 
+    /// <summary>
+    /// 前往「地圖上的一個點」:自動判斷跨不跨區、選最近的乙太之光傳送過去,再由 vnavmesh
+    /// 走(或飛)到那個點。編排與 <c>/li &lt;自訂落點&gt;</c> 共用同一條鏈。
+    ///
+    /// 📌 端點名 <c>Lifestream.GoToMapPoint</c>。要中止請用既有的 <c>Lifestream.Abort</c>;
+    ///    要問還在不在跑用 <c>Lifestream.IsBusy</c>。
+    /// 🔴 參數順序與型別是對外契約,已有消費端(Mappy 地圖右鍵的「移動到這裡」)照此接線,不要改。
+    /// </summary>
+    /// <param name="territory">目標區域的 TerritoryType row id。</param>
+    /// <param name="worldX">目標點的世界座標 X。</param>
+    /// <param name="worldZ">目標點的世界座標 Z。**不需要 Y** —— 抵達之後由 Lifestream
+    /// 向 vnavmesh 問這個 XZ 底下的地板高度。</param>
+    /// <param name="fly">允許使用飛行坐騎跑最後一段。區域不可飛、或起飛失敗時會自動退回
+    /// 地面路線,不會因此失敗。</param>
+    /// <returns>
+    /// true = 已經排進佇列(呼叫端可用 <c>IsBusy</c> 追蹤)。
+    /// false = **什麼都沒排**,呼叫端不要等。發生於:區域 id 為 0、Lifestream 正在忙、
+    /// 角色不可互動(讀取中/過場/未登入)、vnavmesh 沒安裝或沒載入,
+    /// 或目標區域沒有任何已解鎖的乙太之光可用(最後這項會另外在聊天欄說明原因)。
+    /// </returns>
+    [EzIPC]
+    public bool GoToMapPoint(uint territory, float worldX, float worldZ, bool fly)
+    {
+        if(territory == 0) return false;
+        if(IsBusy()) return false;
+        if(!Player.Interactable) return false;
+        // 這個功能整段都靠 vnavmesh(解地板高度 + 尋路),沒有它連「插旗請你自己走」都做不好
+        // (我們只有 XZ,多層地圖插的旗會落在錯的樓層)。直接拒絕比排一條走不完的佇列誠實。
+        if(!Tasks.Utility.TaskGotoDestination.IsVnavmeshLoaded()) return false;
+        return Tasks.Utility.TaskGotoDestination.EnqueueToMapPoint(new()
+        {
+            Name = "the point on the map".Loc(),
+            Territory = territory,
+            WorldX = worldX,
+            WorldZ = worldZ,
+        }, fly);
+    }
+
     [EzIPC]
     public bool CanVisitSameDC(string world)
     {

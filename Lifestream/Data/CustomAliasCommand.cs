@@ -74,7 +74,10 @@ public class CustomAliasCommand
         else if(Kind == CustomAliasKind.Move_to_point)
         {
             P.TaskManager.Enqueue(() => IsScreenReady() && Player.Interactable);
-            if(UseFlight) P.TaskManager.Enqueue(FlightTasks.FlyIfCan);
+            // 🔴 不能裸排 FlyIfCan:它在不可飛的區域回 null,而 NeoTaskManager 的 null＝中止整條佇列,
+            //    於是「勾了使用飛行」的別名一到不能飛的地方就整條靜默斷掉(連移動都不會做)。
+            //    包過的版本把「不能飛」降級成「用走的」。
+            if(UseFlight) P.TaskManager.Enqueue(FlightTasks.FlyIfCanOrGiveUp);
             P.TaskManager.Enqueue(() => TaskMoveToHouse.UseSprint(false));
             P.TaskManager.Enqueue(() => P.FollowPath.Move([Point.Scatter(Scatter), .. appendMovement], true));
             P.TaskManager.Enqueue(() => P.FollowPath.Waypoints.Count == 0);
@@ -105,10 +108,17 @@ public class CustomAliasCommand
             }
             else
             {
-                if(UseFlight) P.TaskManager.Enqueue(FlightTasks.FlyIfCan);
+                // 🔴 同上:裸排 FlyIfCan 在不可飛區域會回 null 而把整條佇列中止掉。
+                if(UseFlight) P.TaskManager.Enqueue(FlightTasks.FlyIfCanOrGiveUp);
                 P.TaskManager.Enqueue(() =>
                 {
-                    var task = S.Ipc.VnavmeshIPC.Pathfind(Player.Position, Point, UseFlight);
+                    // 🔴 起飛沒成功就不能再要求飛行路線:vnavmesh 的 FollowPath 對「路徑要求飛行、
+                    //    角色卻沒上坐騎」是 `_movement.Enabled = false; return;` —— 角色**站著不動**
+                    //    而且零訊息。這一格只在「原本就會中止整條佇列」的情況下才會走到,
+                    //    對本來就飛得起來的別名行為完全不變。
+                    var fly = UseFlight && Svc.Condition[ConditionFlag.InFlight];
+                    if(UseFlight && !fly) PluginLog.Information("[CustomAlias] 沒有飛起來,改用地面路線尋路。");
+                    var task = S.Ipc.VnavmeshIPC.Pathfind(Player.Position, Point, fly);
                     P.TaskManager.InsertMulti(
                         new(() => task.IsCompleted),
                         new(() => TaskMoveToHouse.UseSprint(false)),

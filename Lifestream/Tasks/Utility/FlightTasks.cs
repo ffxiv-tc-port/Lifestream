@@ -29,4 +29,27 @@ public static unsafe class FlightTasks
         }
         return false;
     }
+
+    /// <summary>
+    /// <see cref="FlyIfCan"/> 的「放棄飛行也不中止」包裝。
+    ///
+    /// 🔴 <see cref="FlyIfCan"/> 在**不可飛的區域回 null**,而 NeoTaskManager 對 null 的語意是
+    ///    「中止整條佇列」(<c>TaskManager.Tick</c>:<c>result == null</c> ⇒ <c>Abort()</c>)。
+    ///    所以裸排 <c>FlyIfCan</c> 等於「只要人在不能飛的地方,整條任務鏈就靜默斷掉」——
+    ///    使用者看到的是「勾了『使用飛行』的自訂別名一到某些區域就完全沒反應」,而且沒有任何訊息。
+    ///    這裡把那個 null 轉成 true(＝這一步做完了,只是沒飛起來),讓後面的步驟照樣用走的。
+    ///
+    /// ⚠️ 其餘語意逐字不變:已在空中回 true,還在起飛回 false(讓呼叫端的逾時去管)。
+    /// </summary>
+    public static bool FlyIfCanOrGiveUp()
+    {
+        var result = FlyIfCan();
+        if(result == null)
+        {
+            // 使用者跑 LogLevel 2,「為什麼沒飛起來」正是他會來問的事,寫 Debug 收不到。
+            PluginLog.Information("[Flight] 這個區域現在不允許飛行,放棄起飛、改用地面移動。");
+            return true;
+        }
+        return result.Value;
+    }
 }
