@@ -101,13 +101,19 @@ public class IPCProvider
         // 這個功能整段都靠 vnavmesh(解地板高度 + 尋路),沒有它連「插旗請你自己走」都做不好
         // (我們只有 XZ,多層地圖插的旗會落在錯的樓層)。直接拒絕比排一條走不完的佇列誠實。
         if(!Tasks.Utility.TaskGotoDestination.IsVnavmeshLoaded()) return false;
-        return Tasks.Utility.TaskGotoDestination.EnqueueToMapPoint(new()
+        // 抵達提醒哨兵：這條 IPC 的來源是使用者在地圖上右鍵點的一下（Mappy），
+        // 語意上就是使用者主動下的指令，所以跟 /li 一樣要出聲（2026-08-31 使用者回報）。
+        // 哨兵自帶「設定開關/有沒有真的排任務/去重」判斷，失敗路徑（回 false 什麼都沒排）不會響。
+        var queuedBefore = P.TaskManager.NumQueuedTasks;
+        var queued = Tasks.Utility.TaskGotoDestination.EnqueueToMapPoint(new()
         {
             Name = "the point on the map".Loc(),
             Territory = territory,
             WorldX = worldX,
             WorldZ = worldZ,
         }, fly);
+        if(queued) Tasks.Utility.TaskAnnounceArrival.EnqueueIfChainStarted(queuedBefore);
+        return queued;
     }
 
     [EzIPC]

@@ -133,6 +133,8 @@ public unsafe class Lifestream : IDalamudPlugin
     /// <para>
     /// 📌 別的外掛透過 IPC <c>ExecuteCommand</c> 驅動時走的是 <see cref="ProcessCommandInternal"/>，
     /// 不會出聲 —— 那不是使用者主動下的指令。
+    /// ⚠️ 例外：IPC <c>GoToMapPoint</c>（Mappy 地圖右鍵）雖然經 IPC 轉手，但來源是使用者
+    /// 主動點地圖，所以在 <see cref="IPC.IPCProvider.GoToMapPoint"/> 裡自己排哨兵（2026-08-31）。
     /// </para>
     /// </remarks>
     internal void ProcessCommand(string command, string arguments)
