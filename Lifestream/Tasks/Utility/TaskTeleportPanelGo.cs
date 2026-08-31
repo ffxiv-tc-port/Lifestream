@@ -32,7 +32,27 @@ namespace Lifestream.Tasks.Utility;
 /// </summary>
 public static unsafe class TaskTeleportPanelGo
 {
+    /// <summary>
+    /// 入口包裝：真的排了任務就在尾端補「抵達提醒」哨兵（2026-08-31 使用者要求：
+    /// 快捷傳送也要塔塔露通知）。三個入口（最愛視窗/傳送面板/IPC TeleportToFavorite）
+    /// 都收斂到這裡，一處包三處生效。哨兵自帶設定開關、去重與
+    /// 「沒排任務就不響」判斷，早退路徑（忙碌/無玩家）自然靜默。
+    /// 用 try/finally 而不是在每個 return 前呼叫：未來新增早退路徑也自動正確。
+    /// </summary>
     public static void Enqueue(TeleportPanelEntry entry)
+    {
+        var queuedBefore = P.TaskManager.NumQueuedTasks;
+        try
+        {
+            EnqueueCore(entry);
+        }
+        finally
+        {
+            TaskAnnounceArrival.EnqueueIfChainStarted(queuedBefore);
+        }
+    }
+
+    private static void EnqueueCore(TeleportPanelEntry entry)
     {
         if(entry == null) return;
         if(P.TaskManager.IsBusy)
