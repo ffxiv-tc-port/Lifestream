@@ -130,6 +130,10 @@ public unsafe class Memory : IDisposable
             PluginLog.Information($"ConstructEvent: NodeList[{nodeIndex}] 的清單元件取不到(版面未建好或已拆除),這一輪不送事件");
             return;
         }
+        // 對 LobbyDKTWorldList 合成 ListItemClick 是「選了還沒生效就再選一次」的刻意重試迴圈(呼叫端 DCThrottle+500ms):
+        // 粒度含 (which, category, itemToSelect),同位址不同項目照常放行;同位址同項目在 15 幀內不重送(清單選取不關窗,
+        // 走多次互動窗的逃生口),擋的是外部關閉(使用者取消/逾時)落在輪詢期間的那幾幀。被擋就整個不送,呼叫端一律 DCRethrottle+return false。
+        if(!AddonPressGuard.TryPressOnce("LobbyDKTWorldList", addon, nameof(ConstructEvent), paramKey: $"{which}|{category}|{itemToSelect}", escapeIsRoutine: true)) return;
         var Event = stackalloc AtkEvent[1]
         {
             new AtkEvent()

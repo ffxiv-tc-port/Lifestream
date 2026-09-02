@@ -438,7 +438,7 @@ internal static unsafe class UIDebug
                 foreach(var x in m.Entries)
                 {
                     ImGuiEx.Text($"{x.Name} / {x.ReaderEntryName.Level} / {x.ReaderEntry.Callback} / {x.Index}");
-                    if(ImGuiEx.HoveredAndClicked() && x.Status != 2)
+                    if(ImGuiEx.HoveredAndClicked() && x.Status != 2 && AddonPressGuard.TryPressOnce("DawnStory", m.Base, "UIDebug.DawnStory", paramKey: x.Index.ToString(), escapeIsRoutine: true))
                     {
                         x.Select();
                     }
@@ -704,7 +704,12 @@ internal static unsafe class UIDebug
                 {
                     if(TryGetAddonByName<AddonRepair>("Repair", out var addon) && addon->AtkUnitBase.IsVisible)
                     {
-                        var fwdBtn = addon->AtkUnitBase.GetNodeById(14)->GetAsAtkComponentButton();
+                        // 🔴 節點鏈原本未判空(GetNodeById 找不到合法回 null,GetAsAtkComponentButton 對 null this ＝ AVE);
+                        //    換頁不關窗 ⇒ 走多次互動窗的 15 幀逃生口,使用者中途關窗的那幾幀不會再被按到。
+                        var node = addon->AtkUnitBase.GetNodeById(14);
+                        var fwdBtn = node == null ? null : node->GetAsAtkComponentButton();
+                        if(fwdBtn == null) return false;
+                        if(!AddonPressGuard.TryPressOnce("Repair", addon, "UIDebug.RepairSwitch", paramKey: "page", escapeIsRoutine: true)) return false;
                         fwdBtn->ClickAddonButton((AtkComponentBase*)addon, 2, EventType.CHANGE);
 
                         return true;
@@ -814,7 +819,7 @@ internal static unsafe class UIDebug
                 foreach(var entry in new AddonMaster.SelectString(addon).Entries)
                 {
                     ImGuiEx.Text($"{entry.Text}");
-                    if(ImGuiEx.HoveredAndClicked())
+                    if(ImGuiEx.HoveredAndClicked() && AddonPressGuard.TryPressOnce("SelectString", addon, "UIDebug.SelectString", paramKey: entry.Index.ToString()))
                     {
                         entry.Select();
                     }
@@ -933,7 +938,7 @@ internal static unsafe class UIDebug
             ImGui.InputInt("Index".Loc(), ref index);
             if(ImGui.Button("Open context menu".Loc()))
             {
-                if(TryGetAddonByName<AtkUnitBase>("_CharaSelectListMenu", out var addon) && IsAddonReady(addon))
+                if(TryGetAddonByName<AtkUnitBase>("_CharaSelectListMenu", out var addon) && IsAddonReady(addon) && AddonPressGuard.TryPressOnce("_CharaSelectListMenu", addon, "UIDebug.OpenContextMenu", paramKey: $"17|1|{index}", escapeIsRoutine: true))
                 {
                     Callback.Fire(addon, false, (int)17, (int)1, (int)index);
                 }

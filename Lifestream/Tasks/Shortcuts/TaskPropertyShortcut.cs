@@ -282,7 +282,9 @@ public static unsafe class TaskPropertyShortcut
             }, "Interact with Inn NPC");
             P.TaskManager.Enqueue(() =>
             {
-                if(TryGetAddonMaster<AddonMaster.Talk>(out var talk))
+                // Talk 走艦隊 15 幀政策;原本無 IsAddonReady、無節流,每 tick 點一次,且與 Framework_Update 同幀再點一次。
+                if(TryGetAddonMaster<AddonMaster.Talk>(out var talk) && talk.IsAddonReady
+                    && AddonPressGuard.TryPressOnce("Talk", talk.Base, "PropertyShortcut.InnTalk", escapeIsRoutine: true))
                 {
                     talk.Click();
                 }
@@ -290,7 +292,7 @@ public static unsafe class TaskPropertyShortcut
                 if(obj == null) return false;
                 if(obj.IsTarget() && TryGetAddonMaster<AddonMaster.SelectString>(out var m))
                 {
-                    if(m.Entries.Length > 2 && EzThrottler.Throttle("SelectRetireInn", 5000))
+                    if(m.Entries.Length > 2 && EzThrottler.Throttle("SelectRetireInn", 5000) && AddonPressGuard.TryPressOnce("SelectString", m.Base, "SelectRetireInn", paramKey: "0"))
                     {
                         m.Entries[0].Select();
                         return true;
@@ -301,7 +303,8 @@ public static unsafe class TaskPropertyShortcut
             P.TaskManager.Enqueue(() =>
             {
                 if(!IsScreenReady()) return true;
-                if(TryGetAddonMaster<AddonMaster.Talk>(out var talk))
+                if(TryGetAddonMaster<AddonMaster.Talk>(out var talk) && talk.IsAddonReady
+                    && AddonPressGuard.TryPressOnce("Talk", talk.Base, "PropertyShortcut.SkipTalk", escapeIsRoutine: true))
                 {
                     talk.Click();
                 }
@@ -412,7 +415,7 @@ public static unsafe class TaskPropertyShortcut
         var addon = Utils.GetSpecificYesno(Lang.ConfirmHouseEntrance);
         if(addon != null)
         {
-            if(IsAddonReady(addon) && EzThrottler.Throttle("SelectYesno"))
+            if(IsAddonReady(addon) && EzThrottler.Throttle("SelectYesno") && AddonPressGuard.TryPressOnce("SelectYesno", addon, nameof(ConfirmHouseEntrance)))
             {
                 new AddonMaster.SelectYesno((nint)addon).Yes();
                 return true;

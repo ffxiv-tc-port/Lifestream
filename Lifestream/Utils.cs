@@ -1564,6 +1564,8 @@ internal static unsafe partial class Utils
                     // 讀不到就跳過這個 SelectYesno 繼續往下掃(fail-closed):
                     // 不能拿空字串去比對,否則「讀不到」會被誤判成「內容為空的相符」而按下確認。
                     if(!TryGetNodeText(addon, 15, out var rawText)) continue;
+                    // 讀到 U+FFFD ＝ 這扇窗的記憶體正在變動(多半是關閉中),這一幀當作沒比中,不要按它。
+                    if(AddonPressGuard.IsTextUnstable("SelectYesno", rawText)) continue;
                     var text = rawText.Replace(" ", "");
                     if(contains ?
                         text.ContainsAny(s.Select(x => x.Replace(" ", "")))
@@ -1670,11 +1672,16 @@ internal static unsafe partial class Utils
     {
         if(TryGetAddonByName<AddonSelectString>("SelectString", out var addon) && IsAddonReady(&addon->AtkUnitBase))
         {
-            var entry = GetEntries(addon).FirstOrDefault(x => x.EqualsAny(text));
+            var entries = GetEntries(addon);
+            // 讀到 U+FFFD ＝ 選單記憶體正在變動(多半是上一層選單關閉中),這一幀不碰。
+            if(AddonPressGuard.AnyTextUnstable("SelectString", entries)) return false;
+            var entry = entries.FirstOrDefault(x => x.EqualsAny(text));
             if(entry != null)
             {
-                var index = GetEntries(addon).IndexOf(entry);
-                if(index >= 0 && Throttle())
+                var index = entries.IndexOf(entry);
+                // SelectString 全外掛唯一的 choke point(14 個呼叫端)。粒度=(窗,位址,索引):同一扇仍開著的選單
+                // 選不同項目照常放行,只擋「同位址同索引在窗走完前再選」。被擋回 false 與「還沒找到」走同一條路。
+                if(index >= 0 && Throttle() && AddonPressGuard.TryPressOnce("SelectString", addon, "TrySelectSpecificEntry", paramKey: index.ToString()))
                 {
                     new AddonMaster.SelectString(addon).Entries[index].Select();
                     PluginLog.Debug($"TrySelectSpecificEntry: selecting {entry}/{index} as requested by {text.Print()}");
