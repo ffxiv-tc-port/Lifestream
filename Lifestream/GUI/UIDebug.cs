@@ -813,13 +813,16 @@ internal static unsafe class UIDebug
         }
         if(ImGui.CollapsingHeader("Addon test".Loc()))
         {
-            if(TryGetAddonByName<AddonSelectString>("SelectString", out var addon))
+            // 手動除錯按鈕也走同一條路:原本連 IsAddonReady 都沒有,對尚未就緒的 SelectString 讀 PopupMenu、送 Select 一樣是 AVE。
+            if(TryGetAddonByName<AddonSelectString>("SelectString", out var addon) && IsAddonReady(&addon->AtkUnitBase))
             {
                 ImGuiEx.Text($"Entries: {addon->PopupMenu.PopupMenu.EntryCount}");
                 foreach(var entry in new AddonMaster.SelectString(addon).Entries)
                 {
-                    ImGuiEx.Text($"{entry.Text}");
-                    if(ImGuiEx.HoveredAndClicked() && AddonPressGuard.TryPressOnce("SelectString", addon, "UIDebug.SelectString", paramKey: entry.Index.ToString()))
+                    var entryText = entry.Text;
+                    ImGuiEx.Text($"{entryText}");
+                    // 讀到 U+FFFD ＝ 這扇窗記憶體正在變動(多半是關閉中),這一幀不要按它。
+                    if(ImGuiEx.HoveredAndClicked() && !AddonPressGuard.IsTextUnstable("SelectString", entryText) && AddonPressGuard.TryPressOnce("SelectString", addon, "UIDebug.SelectString", paramKey: entry.Index.ToString()))
                     {
                         entry.Select();
                     }

@@ -85,8 +85,11 @@ public static unsafe class TaskChangeCharacter
         }
         if(TryGetAddonMaster<AddonMaster.SelectString>(out var m) && m.IsAddonReady)
         {
+            var text = m.Text;
+            // 讀到 U+FFFD ＝ 窗記憶體正在變動(多半是關閉中),這一幀不碰(對照孿生站 DCChange.SelectServiceAccount)。
+            if(AddonPressGuard.IsTextUnstable("SelectString", text)) return false;
             var compareTo = Svc.Data.GetExcelSheet<Lobby>()?.GetRow(11).Text.GetText();
-            if(m.Text == compareTo && AddonPressGuard.TryPressOnce("SelectString", m.Base, nameof(SelectServiceAccount), paramKey: account.ToString()))
+            if(text == compareTo && AddonPressGuard.TryPressOnce("SelectString", m.Base, nameof(SelectServiceAccount), paramKey: account.ToString()))
             {
                 m.Entries[account].Select();
                 return true;
