@@ -67,6 +67,8 @@ namespace Lifestream.CSExtensions;
 /// 會清掉<b>整條</b>佇列。單答終結窗 <see cref="RePressEscapeFrames"/>(60 幀),多次互動窗
 /// <see cref="RoutineRePressEscapeFrames"/>(15 幀,2026-09-02 艦隊 Talk 政策)。用幀數不用毫秒:
 /// 危險窗口的長度本來就是以幀計的,遊戲卡頓時兩者一起拉長。
+/// 🔴 幀的來源是 <b>framework tick</b> 而不是繪製幀(見 <see cref="frameCount"/>):繪製幀在過場動畫與
+/// 隱藏 UI 期間會整段停止前進,而傳送/資料中心轉移正好大量伴隨過場 —— 用繪製幀的話逃生口永遠不到期。
 /// </para>
 /// <para>
 /// 📌 <b>正常路徑行為零變化</b>:第一次看到某扇窗的某個按法一律當場按下去;被擋回 <see langword="false"/>
@@ -141,7 +143,36 @@ internal static unsafe class AddonPressGuard
     private static readonly List<nint> RemoveBuf = [];
     private static readonly List<string> EmptyKeysBuf = [];
 
-    private static long CurrentFrame => (long)Svc.PluginInterface.UiBuilder.FrameCount;
+    /// <summary>
+    /// 逃生口用的幀計數器,每個 framework tick 加一(由 <see cref="Tick"/> 推進,<see cref="OnFrameworkUpdate"/> 當後援)。
+    /// </summary>
+    /// <remarks>
+    /// 🔴🔴 <b>刻意不用 <c>Svc.PluginInterface.UiBuilder.FrameCount</c></b>:那個計數器是在
+    /// <c>UiBuilder.OnDraw()</c> 的<b>最後面</b>才加的,而 <c>OnDraw()</c> 開頭有三個<b>直接 return</b>
+    /// 的隱藏條件 —— ①使用者按熱鍵隱藏 UI ②<b>過場動畫</b>(<c>ToggleUiHideDuringCutscenes</c>,<b>預設開</b>)
+    /// ③GPose。也就是說<b>過場動畫或隱藏 UI 期間,繪製幀完全停止前進</b>。
+    /// <para>
+    /// 這對本外掛特別致命:傳送與資料中心轉移途中<b>大量伴隨過場與黑畫面</b>,那正好是時鐘凍結的時候,
+    /// 於是所有逃生口(<see cref="RePressEscapeFrames"/> / <see cref="RoutineRePressEscapeFrames"/>)
+    /// <b>永遠不到期</b>。這是 fail-closed(不會崩、不會誤按),但「需要連續按同一扇窗才能推進」的站
+    /// (Talk 翻頁是代表)會就此停擺。
+    /// </para>
+    /// <para>
+    /// 改用 framework tick:它掛在遊戲自己的 <c>Framework::Tick</c> 上,與 ImGui/繪製那條路徑完全無關,
+    /// 隱藏 UI 與過場期間照常前進。
+    /// 🔑 <b>幀數常數不需要跟著調整</b>:正常情況下兩者都是「每個遊戲幀一次」、比例 1:1,
+    /// 差別只在繪製幀會被上述三種情況<b>整段扣掉</b>,framework tick 不會。
+    /// </para>
+    /// </remarks>
+    private static long frameCount;
+
+    /// <summary><see cref="OnFrameworkUpdate"/> 是否已經掛上去(<see cref="EnsureFrameClock"/> 的冪等旗標)。</summary>
+    private static bool frameClockRunning;
+
+    /// <summary>這個 framework tick 是否已經由 <see cref="Tick"/> 推進過計數器(<see cref="OnFrameworkUpdate"/> 的後援判斷用)。</summary>
+    private static bool tickedThisFrame;
+
+    private static long CurrentFrame => frameCount;
 
     /// <summary>
     /// 從窗上讀出來的文字含 U+FFFD(替換字元)＝ 這幾幀窗的記憶體正在變動(多半是關閉中),
@@ -202,6 +233,7 @@ internal static unsafe class AddonPressGuard
         if(addon == 0 || string.IsNullOrEmpty(addonName)) return false;
         ReleaseVanished();
         EnsureWatching(addonName);
+        EnsureFrameClock();
         if(SingleAnswerAddons.Contains(addonName)) paramKey = null;
         var frame = CurrentFrame;
         if(paramKey != null
@@ -244,8 +276,28 @@ internal static unsafe class AddonPressGuard
         return true;
     }
 
-    /// <summary>每幀從 <c>Framework_Update</c> 最前面無條件呼叫:被記下的位址已從清單消失時解除封鎖。沒有紀錄時等於免費。</summary>
-    internal static void Tick() => ReleaseVanished();
+    /// <summary>
+    /// 每幀從 <c>Framework_Update</c> 最前面無條件呼叫:推進逃生口用的幀計數器,並解除
+    /// 「被記下的位址已從清單消失」的封鎖。沒有紀錄時 <see cref="ReleaseVanished"/> 是一個整數比較就回來。
+    /// </summary>
+    /// <remarks>
+    /// 🔴 <b>計數器一定要在 <see cref="ReleaseVanished"/> 之前推進</b>:那支對空集合有「沒有紀錄就直接回來」
+    /// 的快速返回,寫在它後面的話,沒有窗被記著時時鐘就跟著停住,逃生口的幀差會失真。
+    /// <para>
+    /// 🔑 這裡是本外掛整條 <c>Framework.Update</c> 鏈上<b>最早</b>能推進計數器的點(<c>Framework_Update</c> 的第一行)。
+    /// 之所以不只靠 <see cref="OnFrameworkUpdate"/>:本 pin 的 <c>FrameworkPluginScoped</c> 是把整條多播委派
+    /// <b>當成一個</b>丟進 <c>PluginErrorHandler.InvokeAndCatch</c> 的,鏈上任何一支擲例外就<b>跳過排在它後面的全部</b>
+    /// (而 <c>Framework_Update</c> 本身沒有 try/catch)。我們的監聽器是最後才掛上去的,只靠它的話
+    /// 「上游擲例外的那幾幀」時鐘會停,而 TaskManager 驅動的按下點照跑 —— 又變回這次要修的那個形狀。
+    /// </para>
+    /// </remarks>
+    internal static void Tick()
+    {
+        EnsureFrameClock();
+        frameCount++;
+        tickedThisFrame = true;
+        ReleaseVanished();
+    }
 
     /// <summary>外掛卸載時硬拆所有監聽器(不留指向本組件的委派)並清掉全部紀錄。</summary>
     internal static void ForceTeardown()
@@ -257,6 +309,13 @@ internal static unsafe class AddonPressGuard
         }
         Watchers.Clear();
         Slots.Clear();
+        if(frameClockRunning)
+        {
+            Svc.Framework.Update -= OnFrameworkUpdate;
+            frameClockRunning = false;
+        }
+        frameCount = 0;
+        tickedThisFrame = false;
     }
 
     /// <summary>被擋那一幀的診斷。單答終結窗寫 Information(使用者跑 LogLevel 2)、每扇窗 1 秒節流;多次互動窗被擋是常態,不記。</summary>
@@ -318,6 +377,34 @@ internal static unsafe class AddonPressGuard
         {
             if(slot.AddonName == addonName) slot.Pressed.Remove(address);
         }
+    }
+
+    /// <summary>掛上幀計數器用的 <c>Framework.Update</c> 監聽器(重複呼叫是 no-op)。</summary>
+    /// <remarks>
+    /// <see cref="Tick"/>(每個 framework tick 無條件進來)與 <see cref="TryPressOnce(string, nint, string, string, bool)"/>
+    /// 兩邊都會叫:即使哪天 <c>Framework_Update</c> 裡那行 <c>Tick()</c> 被搬走或被條件包起來,時鐘也不會跟著停。
+    /// <para>
+    /// ⚠️ 這支多半是在 <c>Framework.Update</c> 的派送途中把自己加進<b>同一個事件</b>。多播委派是不可變的、
+    /// 派送當下用的是加之前的那份實例,所以新監聽器從<b>下一個 tick</b> 才開始跑 —— 不會漏算也不會重複算。
+    /// </para>
+    /// </remarks>
+    private static void EnsureFrameClock()
+    {
+        if(frameClockRunning) return;
+        frameClockRunning = true;
+        Svc.Framework.Update += OnFrameworkUpdate;
+    }
+
+    /// <summary>幀計數器的<b>後援</b>:只有在這個 tick 沒被 <see cref="Tick"/> 推進過時才補加一。</summary>
+    /// <remarks>
+    /// 涵蓋兩種 <see cref="Tick"/> 沒被叫到的情況:①哪天 <c>Framework_Update</c> 裡那行 <c>Tick()</c> 被搬走或被條件
+    /// 包起來 ②鏈上排在 <c>Framework_Update</c> 前面的監聽器(ECommons 的 TaskManager)擲例外把它整支跳過。
+    /// 本監聽器是最後掛上的,一定跑在 <see cref="Tick"/> 後面,所以旗標讀得到這個 tick 的結果。
+    /// </remarks>
+    private static void OnFrameworkUpdate(IFramework framework)
+    {
+        if(!tickedThisFrame) frameCount++;
+        tickedThisFrame = false;
     }
 
     /// <summary>
