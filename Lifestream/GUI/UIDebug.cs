@@ -1,4 +1,5 @@
 ﻿using Dalamud.Game;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Plugin.Ipc.Exceptions;
 using Dalamud.Utility;
 using ECommons.Automation;
@@ -23,6 +24,7 @@ using Lifestream.Data;
 using Lifestream.Enums;
 using Lifestream.Schedulers;
 using Lifestream.Systems.Legacy;
+using Lifestream.Systems.Residential;
 using Lifestream.Tasks;
 using Lifestream.Tasks.CrossDC;
 using Lifestream.Tasks.Utility;
@@ -249,14 +251,26 @@ internal static unsafe class UIDebug
                             Chat.ExecuteCommand("/clearlog");
                             DuoLog.Information($"{"For plot".Loc()} {index + 1}");
                             plot.Front = Player.Object.Position;
-                            var candidates = Svc.Objects.Where(x => x.BaseId.EqualsAny(Utils.AethernetShards) && Vector3.Distance(plot.Front, x.Position) < 100f && S.Data.ResidentialAethernet.GetFromIGameObject(x) != null);
+                            // 🔴 Svc.Objects 的元素是共用包裝:本 pin 每格 × 每種 kind 只預配一個實例,存取時就地
+                            //    改寫 Address(ObjectTable.cs:198-231)。而 .Where 是延後求值 —— 原本整個列舉是在
+                            //    下面 Task.Run 的執行緒池執行緒上、與 framework 幀完全不同步時才發生,中間還隔著
+                            //    可長達數秒的 path.Wait()。讀到的可能已經是別的物件(靜默拿到錯座標,結果寫回設定檔),
+                            //    也可能已經懸空(AccessViolationException,corrupted-state exception 攔不到)。
+                            //    ⚠️ 本 fork 的 AssertMainThread 只警告不 throw,所以這條路徑不會有任何錯誤訊息。
+                            //    ⇒ 在主執行緒(這裡就是 Draw 回呼)當場把要用的值抄成純資料再交給 Task.Run。
+                            //    🔴 只加 .ToList() 不夠:那固化的是包裝物件的清單,包裝本身照樣會被就地改寫。要抄的是值。
+                            //    ResidentialAetheryte 是 struct 且 Name 在建構時就算好,複製之後完全脫離遊戲記憶體。
+                            var candidates = Svc.Objects
+                                .Where(x => x.BaseId.EqualsAny(Utils.AethernetShards) && Vector3.Distance(plot.Front, x.Position) < 100f && S.Data.ResidentialAethernet.GetFromIGameObject(x) != null)
+                                .Select(SnapshotAethernetCandidate)
+                                .ToArray();
                             Task.Run(() =>
                             {
                                 var currentDistance = float.MaxValue;
                                 var currentAetheryte = -1;
                                 foreach(var x in candidates)
                                 {
-                                    DuoLog.Information($"Candidate: {S.Data.ResidentialAethernet.GetFromIGameObject(x).Value.Name}");
+                                    DuoLog.Information($"Candidate: {x.Aetheryte.Name}");
                                     var path = S.Ipc.VnavmeshIPC.Pathfind(plot.Front, x.Position, false);
                                     path.Wait();
                                     if(path.Result != null)
@@ -266,7 +280,7 @@ internal static unsafe class UIDebug
                                         if(distance < currentDistance)
                                         {
                                             currentDistance = distance;
-                                            currentAetheryte = (int)S.Data.ResidentialAethernet.GetFromIGameObject(x).Value.ID;
+                                            currentAetheryte = (int)x.Aetheryte.ID;
                                         }
                                     }
                                     else
@@ -306,6 +320,15 @@ internal static unsafe class UIDebug
             }
         }
     }
+
+    /// <summary>
+    /// 把一個乙太之光候選在「主執行緒的當下這一幀」抄成純資料 —— 這裡就是離開遊戲記憶體的邊界。
+    /// 回傳的兩個成員都是值:Vector3 是複製,ResidentialAetheryte 是 struct 且 Name 在建構時就算好,
+    /// 之後不管跨執行緒還是跨幀使用,都不會再碰到 ObjectTable 的共用包裝(它會被就地改寫 Address)。
+    /// 🔴 呼叫端必須在列舉 Svc.Objects 的同一幀就 .ToArray():LINQ 是延後求值,不落地等於沒抄。
+    /// </summary>
+    private static (Vector3 Position, ResidentialAetheryte Aetheryte) SnapshotAethernetCandidate(IGameObject obj)
+        => (obj.Position, S.Data.ResidentialAethernet.GetFromIGameObject(obj).Value);
 
     private static void Reader()
     {
