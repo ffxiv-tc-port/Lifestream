@@ -273,6 +273,7 @@ internal static unsafe class AddonPressGuard
             }
         }
         slot.Pressed[addon] = frame;
+        LogPressDiag(addonName, addon, paramKey);
         return true;
     }
 
@@ -316,6 +317,23 @@ internal static unsafe class AddonPressGuard
         }
         frameCount = 0;
         tickedThisFrame = false;
+    }
+
+    /// <summary>
+    /// 跨外掛「按窗診斷」:在<b>真的送出按壓</b>的那一刻寫一行 <c>Information</c>。
+    /// </summary>
+    /// <remarks>
+    /// 全艦隊 15 份各自獨立的 <c>AddonPressGuard</c> 只擋自己按過的位址:外掛 A 按下之後
+    /// 「關閉中」那幾幀,外掛 B 的表是空的 ⇒ 照按 ⇒ 攔不到的存取違規。
+    /// 這一行的用途是用一輪實機 log 回答「跨外掛重按是不是真的在發生」,
+    /// 格式<b>逐字</b>與其他外掛統一,才能按 <c>addr</c> 交叉比對。
+    /// 🔴 刻意<b>不節流</b>(漏掉一次就是漏掉一個對照樣本);
+    /// 🔴 位址只印數值,<b>不解參考</b>。
+    /// </remarks>
+    private static void LogPressDiag(string addonName, nint addon, string paramKey)
+    {
+        var name = string.IsNullOrEmpty(addonName) ? "?" : addonName;
+        PluginLog.Information($"[按窗診斷] plugin=Lifestream addon={name} addr=0x{addon:X} key={paramKey ?? string.Empty}");
     }
 
     /// <summary>被擋那一幀的診斷。單答終結窗寫 Information(使用者跑 LogLevel 2)、每扇窗 1 秒節流;多次互動窗被擋是常態,不記。</summary>
