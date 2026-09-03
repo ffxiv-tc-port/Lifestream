@@ -51,7 +51,7 @@ public static unsafe class TaskChangeCharacter
     public static bool? SelectYesLogout()
     {
         if(!Svc.ClientState.IsLoggedIn) return true;
-        var addon = Utils.GetSpecificYesno(Svc.Data.GetExcelSheet<Addon>()?.GetRow(115).Text.GetText());
+        var addon = Utils.GetLogOutYesno();
         if(addon == null || !IsAddonReady(addon)) return false;
         // 按 Yes 後不終結任務、只靠節流擋重按;關閉中的 SelectYesno 三關 ready 仍全過,再按就是 AVE ⇒ 同位址只按一次。
         if(Utils.GenericThrottle && EzThrottler.Throttle("ConfirmLogout") && AddonPressGuard.TryPressOnce("SelectYesno", addon, nameof(SelectYesLogout)))
@@ -64,7 +64,7 @@ public static unsafe class TaskChangeCharacter
 
     public static bool? Logout()
     {
-        var addon = Utils.GetSpecificYesno(Svc.Data.GetExcelSheet<Addon>()?.GetRow(115).Text.GetText());
+        var addon = Utils.GetLogOutYesno();
         if(addon != null) return true;
         var isLoggedIn = Svc.Condition.Any();
         if(!isLoggedIn) return true;

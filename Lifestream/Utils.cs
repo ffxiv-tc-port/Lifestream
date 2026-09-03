@@ -1586,6 +1586,42 @@ internal static unsafe partial class Utils
         return null;
     }
 
+    // 登出確認視窗有兩種文字:一般情況是 Addon#115,正在排隊等待副本時遊戲會換成 Addon#17531。
+    // 上游 0726a4fc 用 GetRow(17531) 直接取第二組,但台服 7.20 的 Addon 表沒有這一列
+    // (離線實查 exd-tc/7.20/Addon.csv:共 14850 列、最大 row id 102700,17531 前後最近的兩列是 17200 與 101000),
+    // 而 Lumina 的 GetRow(uint) 對不存在的列會擲 ArgumentOutOfRangeException
+    // (Lumina/src/Lumina/Excel/ExcelSheet.cs 的 GetRow:Unsafe.IsNullRef 時 throw)。
+    // 每次輪詢都會走到這裡,原樣合會在每個登出流程持續擲例外,所以一律改用 TryGetRow:
+    // 取不到就只留 115 那一組,判定與合併這顆之前逐字相同(而不是變成靜默不登出)。
+    // 台服拿不到 17531 是常態不是錯誤,因此結果快取起來,診斷只在第一次解析時寫一行 Information。
+    private const uint LogOutYesnoAddonRow = 115;
+    private const uint LogOutYesnoQueuedForDutyAddonRow = 17531;
+    private static string[] LogOutYesnoTextsCache;
+
+    internal static AtkUnitBase* GetLogOutYesno()
+    {
+        var texts = GetLogOutYesnoTexts();
+        // 兩列都取不到才會是空的;此時不要拿空陣列去比對,否則等於「任何視窗都不相符」以外還可能誤按。
+        if(texts.Length == 0) return null;
+        return GetSpecificYesno(texts);
+    }
+
+    private static string[] GetLogOutYesnoTexts()
+    {
+        if(LogOutYesnoTextsCache != null) return LogOutYesnoTextsCache;
+        var sheet = Svc.Data.GetExcelSheet<Addon>();
+        var texts = new List<string>();
+        var hasNormal = sheet.TryGetRow(LogOutYesnoAddonRow, out var normal);
+        if(hasNormal) texts.Add(normal.Text.GetText());
+        var hasQueued = sheet.TryGetRow(LogOutYesnoQueuedForDutyAddonRow, out var queued);
+        if(hasQueued) texts.Add(queued.Text.GetText());
+        LogOutYesnoTextsCache = [.. texts];
+        PluginLog.Information($"[Lifestream] 登出確認視窗文字解析完成:Addon#{LogOutYesnoAddonRow}={(hasNormal ? "有" : "無")}、" +
+            $"Addon#{LogOutYesnoQueuedForDutyAddonRow}={(hasQueued ? "有" : "無(台服常態,排隊等副本時的登出沿用一般判定)")};" +
+            $"共 {LogOutYesnoTextsCache.Length} 組候選文字。");
+        return LogOutYesnoTextsCache;
+    }
+
     internal static string[] GetAvailableWorldDestinations()
     {
         if(TryGetAddonByName<AtkUnitBase>("WorldTravelSelect", out var addon) && IsAddonReady(addon))
