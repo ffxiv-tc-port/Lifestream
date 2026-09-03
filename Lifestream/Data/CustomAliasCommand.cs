@@ -138,7 +138,7 @@ public class CustomAliasCommand
                 // 情況下斷掉；改成查不到就記一行使用者看得見的錯誤並跳過這一步。
                 if(!Svc.Data.GetExcelSheet<Aetheryte>().TryGetRow(Aetheryte, out var aetheryte))
                 {
-                    DuoLog.Error($"此別名的以太之光（ID {Aetheryte}）已不存在，略過這一步。");
+                    DuoLog.Error($"此別名的乙太之光（ID {Aetheryte}）已不存在，略過這一步。");
                     return;
                 }
                 var nearestAetheryte = Svc.Objects.OrderBy(Player.DistanceTo).FirstOrDefault(x => x.IsTargetable && x.IsAetheryte() && Utils.IsAetheryteEligibleForCustomAlias(x));
