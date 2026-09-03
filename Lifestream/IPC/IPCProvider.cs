@@ -588,7 +588,7 @@ public class IPCProvider
     ];
 
     /// <summary>
-    /// 統一的拒絕點：寫一行 Information（使用者跑 LogLevel 2，Debug/Verbose 收不到），
+    /// 統一的拒絕點：寫一行 Information（使用者跑 LogLevel 1，盲區只有 Verbose,Debug 收得到但單檔數十萬行會淹沒），
     /// 並盡力指出是哪個外掛呼叫的。節流只擋 log，不擋拒絕本身。
     /// </summary>
     private static void RejectEmptyIpcCommand(string endpoint, string received)

@@ -85,7 +85,7 @@ internal static unsafe class AddonPressGuard
     /// <remarks>
     /// 🔑 這不是節流 —— 真正的防護是「同一扇窗的同一個按法只按一次」,這個值只是防死鎖的逃生口。
     /// 60 幀(60fps 下約 1 秒)遠遠大於「關閉中的那幾幀」,補按永遠不會落在危險窗口內。
-    /// 走到這個逃生口代表「按了卻沒關掉」,寫 <c>Information</c>(使用者跑 LogLevel 2,Debug 收不到)。
+    /// 走到這個逃生口代表「按了卻沒關掉」,寫 <c>Information</c>(使用者跑 LogLevel 1,Debug 收得到但單檔數十萬行會淹沒)。
     /// </remarks>
     internal const int RePressEscapeFrames = 60;
 
@@ -336,7 +336,7 @@ internal static unsafe class AddonPressGuard
         PluginLog.Information($"[按窗診斷] plugin=Lifestream addon={name} addr=0x{addon:X} key={paramKey ?? string.Empty}");
     }
 
-    /// <summary>被擋那一幀的診斷。單答終結窗寫 Information(使用者跑 LogLevel 2)、每扇窗 1 秒節流;多次互動窗被擋是常態,不記。</summary>
+    /// <summary>被擋那一幀的診斷。單答終結窗寫 Information(使用者跑 LogLevel 1)、每扇窗 1 秒節流;多次互動窗被擋是常態,不記。</summary>
     private static void LogHold(string addonName, nint addon, string label, bool escapeIsRoutine)
     {
         if(escapeIsRoutine) return;

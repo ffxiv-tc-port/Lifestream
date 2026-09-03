@@ -82,7 +82,7 @@ internal static unsafe class WorldChange
     ///   (特例區域會直接把目的地列在 SelectString 裡,見 <see cref="TeleportToAethernetDestination(string)"/>)。</item>
     /// <item>兩個都還沒開 → 回 false 繼續等(互動到開窗有幾百毫秒延遲),並定期印出「在等什麼」。</item>
     /// </list>
-    /// 每一種狀態都會定期寫 Information 等級的診斷(使用者的記錄等級會濾掉 Debug),所以就算真的卡住,
+    /// 每一種狀態都會定期寫 Information 等級的診斷(使用者的記錄等級只會濾掉 Verbose、Debug 收得到但單檔數十萬行會淹沒),所以就算真的卡住,
     /// log 也看得出來是卡在哪一步、當下的選單長什麼樣,不會像修正前那樣靜默逾時。
     /// </summary>
     internal static bool? SelectAethernetIfNeeded()

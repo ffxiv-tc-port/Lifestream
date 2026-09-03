@@ -49,7 +49,7 @@ public unsafe class Memory : IDisposable
     {
         ++_detourErrors;
         // 節流:這些 detour 可能連續觸發,不節流會把 log 灌爆反而讓使用者回報不出東西。
-        // Information 而不是 Debug —— 回報問題的使用者跑 LogLevel 2。
+        // Information 而不是 Debug —— 回報問題的使用者跑 LogLevel 1。
         var now = DateTime.UtcNow;
         if(now - _lastDetourErrorLog < TimeSpan.FromSeconds(30))
             return;
