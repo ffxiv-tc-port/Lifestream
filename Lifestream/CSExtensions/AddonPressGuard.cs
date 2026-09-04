@@ -104,6 +104,38 @@ internal static unsafe class AddonPressGuard
     private const int MaxAddonIndex = 99;
 
     /// <summary>
+    /// <see cref="PersistentAddons"/> 裡的窗被按下之後,最少要<b>連續</b>觀察到它「還在清單裡、
+    /// 但已經被隱藏」這麼多幀,才把按下記號解除。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 🔴 <b>為什麼需要這條路徑</b>:既有的兩條解除點(輪詢「位址從清單消失」、生命週期 PreFinalize/PostSetup)
+    /// 對常駐窗<b>都是死路</b> —— 它從頭到尾都在清單裡、位址不變,兩個事件也不會再發生 ⇒ 記號一旦記下就
+    /// <b>永不解除</b>,整扇窗退化成「每 <see cref="RePressEscapeFrames"/> 幀才准動作一次」。
+    /// AutoRetainer 2026-09-04 的實機記錄:<c>ContextMenu</c> 送出 295 次,其中 290 次是走逃生口走出來的
+    /// (＝記號從沒被解除過),另有 144 次使用者的右鍵被整個吞掉。
+    /// </para>
+    /// <para>
+    /// 🔴 <b>為什麼是「連續 N 幀」而不是「這一幀不可見就解除」</b>:窗在拆除途中會有幾幀「已經被設成不可見、
+    /// 但還沒拆完」,那正是這個守衛在防的危險窗口(實測 &lt;10 幀)。要求連續觀察到隱藏才解除,等於「等到穩定
+    /// 隱藏＝拆除已經結束」才放行;看到可見<b>或這一幀查不到</b>就歸零重數。
+    /// </para>
+    /// <para>
+    /// 📌 <b>20 幀換算成多久</b>:使用者實測的幀率是 <b>10.07 ms/幀</b>(僱員鈴前,n=290)⇒ 20 幀 ≈ <b>201 毫秒</b>。
+    /// (不要用 60fps 去換算成 333 毫秒 —— 那個幀率在這台機器上不成立。)
+    /// </para>
+    /// <para>
+    /// 🔴 <b>這個數字不承重。</b>真正把崩潰面拆掉的是 <see cref="TryPressOnce(string, nint, string, string, bool)"/>
+    /// 對常駐窗多要求的那道「送出前必須可見」:它的放行條件(可見)與這裡的解除條件(連續不可見)
+    /// <b>互為邏輯反面</b> ⇒ 記號被解除之後還要能送出,中間<b>必須</b>有一次遊戲自己把窗重新 Show 起來,
+    /// 而正在拆除的窗不會被重新 Show。所以<b>就算這個幀數設得太短</b>,最壞也只是「那一發沒送出」,
+    /// 不會變成對正在拆除的窗再送一次(＝攔不到的 AccessViolation)。N 只決定使用者要等多久。
+    /// </para>
+    /// <para>🔴 這個值只在 <see cref="PersistentAddons"/> 裡的窗名上生效;其餘窗名的解除條件<b>一個字都沒有改</b>。</para>
+    /// </remarks>
+    internal const int HiddenReleaseFrames = 20;
+
+    /// <summary>
     /// 「一扇窗一生只回答一次」的視窗:這些名字底下的按法一律併成同一個 key(呼叫端傳的 <c>paramKey</c> 會被忽略)。
     /// </summary>
     /// <remarks>
@@ -127,11 +159,65 @@ internal static unsafe class AddonPressGuard
         "Trade",
     };
 
+    /// <summary>
+    /// 已經<b>實機證實</b>是「常駐」的窗名:關閉只是被設成不可見,實例與位址永遠留在 <c>AllLoadedUnitsList</c> 裡,
+    /// 既不會從輪詢掃的清單消失,<see cref="AddonEvent.PreFinalize"/> 與 <see cref="AddonEvent.PostSetup"/> 也不會再發生。
+    /// 只有這些窗名才套用「連續隱藏 <see cref="HiddenReleaseFrames"/> 幀就解除」這條新規則。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 🔑 <b>加名字進來的門檻＝實機 log 裡「真的送出的次數」≈「走逃生口的次數」</b>
+    /// (兩者幾乎相等＝記號從來沒有被那兩條既有路徑解除過)。<c>ContextMenu</c> 在 AutoRetainer 的同一場
+    /// 實機記錄裡是 295 次送出 : 290 次逃生口 : 144 次被吞掉,因此收錄。
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>沒有這種證據的名字一律不要加。</b>猜錯的方向是危險的:把一扇「會被銷毀」的窗誤標成常駐,
+    /// 等於在它拆除途中提早 <see cref="HiddenReleaseFrames"/> 幀解除封鎖。已知的候選但<b>證據不足、刻意沒收</b>
+    /// 的是 <c>ContextIconMenu</c>(與 <c>ContextMenu</c> 同一個 <c>AgentContext</c> 家族,直覺上同樣常駐,
+    /// 但實機 log 裡沒有它的逃生口紀錄,無從證實)。
+    /// </para>
+    /// <para>
+    /// 🔴 <b>加名字進來的代價:這份名單同時是「送出前必須可見」的名單。</b>
+    /// <see cref="TryPressOnce(string, nint, string, string, bool)"/> 對名單內的窗多要求一道就地可見性檢查,
+    /// 那是 <see cref="ReleaseHiddenPersistent"/> 解除條件的邏輯反面。名單外的窗一個字都沒有改。
+    /// </para>
+    /// <para>
+    /// 📌 本外掛目前對 <c>ContextMenu</c> 只有兩個按下點(<c>DCChange.SelectVisitAnotherDC</c> 與
+    /// <c>DCChange.SelectReturnToHomeWorld</c>),兩個都已經在同一個條件鏈裡先問過 <c>m.IsAddonReady</c>
+    /// (＝含 <c>IsVisible</c>),所以這條新規則的反面關係在呼叫端也成立。
+    /// </para>
+    /// </remarks>
+    private static readonly HashSet<string> PersistentAddons = new(StringComparer.Ordinal)
+    {
+        "ContextMenu",
+    };
+
+    /// <summary>一個位址的按下紀錄。</summary>
+    /// <remarks>
+    /// 🔴 <b>刻意是 class 不是 struct。</b>寫成 struct(或原本那樣直接存 <c>long</c>)時,取出來的是複本,
+    /// 「改完要寫回字典」就成了承重的一行 —— 而漏掉寫回<b>不會編譯失敗</b>,只會讓 <see cref="HiddenFrames"/>
+    /// 永遠停在 0,常駐窗的記號就再也解除不掉(＝這次要修的那個形狀)。
+    /// 改成 class 之後取出的是參考、就地改就生效,這個地雷從根本上不存在。
+    /// ⚠️ 同時存在的紀錄實務上只有 0~3 個,多出來的配置可以忽略。
+    /// </remarks>
+    private sealed class PressRecord
+    {
+        /// <summary>最近一次按下的幀。所有逃生口判斷都拿它跟現在的幀比。</summary>
+        public long Frame;
+
+        /// <summary>
+        /// 連續觀察到「位址還在清單裡、但那扇窗已經被隱藏」的幀數。只有 <see cref="PersistentAddons"/> 裡的
+        /// 窗名會累加;看到可見(或這一幀查不到)就歸零,重新按下也歸零。
+        /// 累到 <see cref="HiddenReleaseFrames"/> 就解除記號。
+        /// </summary>
+        public int HiddenFrames;
+    }
+
     /// <summary>一把 key(窗名＋參數組)底下「已經按過的位址 → 按下當時的幀」。同名窗可能同時開好幾扇(SelectYesno 就會),所以是集合。</summary>
     private sealed class Slot
     {
         public string AddonName;
-        public readonly Dictionary<nint, long> Pressed = [];
+        public readonly Dictionary<nint, PressRecord> Pressed = [];
     }
 
     private static readonly Dictionary<string, Slot> Slots = new(StringComparer.Ordinal);
@@ -142,6 +228,10 @@ internal static unsafe class AddonPressGuard
     private static readonly HashSet<nint> PresentBuf = [];
     private static readonly List<nint> RemoveBuf = [];
     private static readonly List<string> EmptyKeysBuf = [];
+    // 隱藏解除專用的移除緩衝(與 RemoveBuf 分開:那支在 ReleaseVanished 裡用,兩者不巢狀但分開比較不容易寫錯)。
+    private static readonly List<nint> HiddenRemoveBuf = [];
+    // 「這個窗名第一次走隱藏解除」只寫一行 Information,之後不再寫(每場遊戲每個窗名最多一行,不會洗版)。
+    private static readonly HashSet<string> HiddenReleaseReported = new(StringComparer.Ordinal);
 
     /// <summary>
     /// 逃生口用的幀計數器,每個 framework tick 加一(由 <see cref="Tick"/> 推進,<see cref="OnFrameworkUpdate"/> 當後援)。
@@ -235,11 +325,29 @@ internal static unsafe class AddonPressGuard
         EnsureWatching(addonName);
         EnsureFrameClock();
         if(SingleAnswerAddons.Contains(addonName)) paramKey = null;
+        // 🔴🔴 常駐窗專用的「送出前必須可見」閘門。
+        //    ⚠️ 這一道**不是**「擋得住正在關閉中的窗」的檢查 —— IsAddonReady 的三關(非 null / IsVisible /
+        //    LoadedState == Loaded)在拆除途中是**全過**的(本檔開頭那段講的就是這件事),單獨看它一個東西都擋不到。
+        //    **這個結論不可以當成通用結論搬去別的地方用。**
+        //
+        //    它在這裡有效的唯一理由是:**與 ReleaseHiddenPersistent 的解除條件互為邏輯反面**。
+        //    那支的解除條件是「連續 HiddenReleaseFrames 幀**不可見**」,這裡的放行條件是「**可見**」
+        //    ⇒ 記號被解除之後還要能再送出一發,中間**必須**有一次遊戲自己把這扇窗重新 Show 起來,
+        //    而正在拆除的窗不會被重新 Show。兩者一組才是防護;只做其中一半的話,記號可以在拆除中途被解除,
+        //    下一發直接打在正在拆的窗上 ＝ 攔不到的存取違規。
+        // 🔴 只對 PersistentAddons 生效,名單外的窗完全不走這一行,行為與改動前逐字相同。
+        // 🔴 查不到也回「不可見」(fail-closed):放行端的任何不確定都必須表現成「這一輪不送」。
+        if(PersistentAddons.Contains(addonName) && LookUpVisibility(addonName, addon) != AddonVisibility.Visible)
+        {
+            if(EzThrottler.Throttle($"AddonPressGuard-PersistentHidden-{addonName}", 1000))
+                PluginLog.Information($"[AddonPressGuard] {label}: 「{addonName}」是常駐窗,0x{addon:X} 這一幀不可見(或不在同名清單裡),不送 —— 它與「連續隱藏才解除」互為反面,兩者一組才是防護");
+            return false;
+        }
         var frame = CurrentFrame;
         if(paramKey != null
             && Slots.TryGetValue(addonName, out var answered)
-            && answered.Pressed.TryGetValue(addon, out var answeredAt)
-            && frame - answeredAt < RePressEscapeFrames)
+            && answered.Pressed.TryGetValue(addon, out var answeredRec)
+            && frame - answeredRec.Frame < RePressEscapeFrames)
         {
             // 這扇窗已經被「回答」過(我們自己按了關閉/取消/確認)。窗還在 ＝ 正在關閉中,任何參數組都不准再送。
             LogHold(addonName, addon, label, escapeIsRoutine);
@@ -251,11 +359,11 @@ internal static unsafe class AddonPressGuard
             slot = new() { AddonName = addonName };
             Slots[key] = slot;
         }
-        if(slot.Pressed.TryGetValue(addon, out var pressedAt))
+        if(slot.Pressed.TryGetValue(addon, out var rec))
         {
             // 這一扇的這一個按法已經送過。窗還在 ＝ 可能正在關閉中,此時再送就是上面說的 AVE。
             var escapeFrames = escapeIsRoutine ? RoutineRePressEscapeFrames : RePressEscapeFrames;
-            var waited = frame - pressedAt;
+            var waited = frame - rec.Frame;
             if(waited < escapeFrames)
             {
                 LogHold(addonName, addon, label, escapeIsRoutine);
@@ -272,7 +380,13 @@ internal static unsafe class AddonPressGuard
                 PluginLog.Information($"[AddonPressGuard] {label}: 「{addonName}」(0x{addon:X}) 按下後 {waited} 幀既沒消失也沒重建,判定為「上一次沒生效」而不是「正在關閉」,放行補按一次");
             }
         }
-        slot.Pressed[addon] = frame;
+        // PressRecord 是 class:已經有紀錄就就地更新,沒有才配一個新的。
+        // 🔴 下面那行 HiddenFrames = 0 是承重的:隱藏解除是「從最後一次按下起算」連續隱藏幾幀。漏掉的話,
+        //    「窗已經隱藏了 15 幀 → 逃生口在第 60 幀補按一次」之後只要再 5 幀就會解除記號,
+        //    等於把補按之後的保護期縮到 5 幀。
+        if(rec == null) slot.Pressed[addon] = rec = new PressRecord();
+        rec.Frame = frame;
+        rec.HiddenFrames = 0;
         LogPressDiag(addonName, addon, paramKey);
         return true;
     }
@@ -298,6 +412,9 @@ internal static unsafe class AddonPressGuard
         frameCount++;
         tickedThisFrame = true;
         ReleaseVanished();
+        // 🔑 只在這裡呼叫,不放進 ReleaseVanished —— 那支在 TryPressOnce 裡也會被呼叫,
+        //    放進去的話同一幀可能被數兩次,隱藏幀數就會提早到期(那是把保護期對半砍)。
+        ReleaseHiddenPersistent();
     }
 
     /// <summary>外掛卸載時硬拆所有監聽器(不留指向本組件的委派)並清掉全部紀錄。</summary>
@@ -385,6 +502,88 @@ internal static unsafe class AddonPressGuard
         }
         // 空掉的 key 順手收掉,帶動態參數組的 key(TelepotTown 的 callback、清單索引)才不會無限累積。
         foreach(var key in EmptyKeysBuf) Slots.Remove(key);
+    }
+
+    /// <summary>這一幀對某個位址觀察到的可見狀態。</summary>
+    /// <remarks>
+    /// 🔴 <b>零值必須是一個「不解除、也不放行」的答案。</b>任何忘了指派／查詢失敗的路徑落在零值上時,
+    /// 結果都必須是「維持封鎖」而不是「放行」—— 後者是崩潰,前者只是多等一下。
+    /// </remarks>
+    private enum AddonVisibility
+    {
+        /// <summary>這一幀在同名清單裡找不到這個位址。<b>這是零值</b>,語意是「不知道」。</summary>
+        Unknown = 0,
+
+        /// <summary>找到了,而且看得見。</summary>
+        Visible = 1,
+
+        /// <summary>找到了,但已經被設成不可見。</summary>
+        Hidden = 2,
+    }
+
+    /// <summary>
+    /// 在 <paramref name="addonName"/> 的<b>所有</b>同名實例裡找出 <paramref name="address"/>,
+    /// 回報它這一幀看不看得見;找不到就回 <see cref="AddonVisibility.Unknown"/>。
+    /// </summary>
+    /// <remarks>
+    /// 🔴 存下來的位址只做等值比較;解參考的是 <c>GetAddonByName</c> <b>這一幀剛交回來</b>的指標,
+    /// 讀的是 <c>AtkUnitBase</c> 固定位移的 <c>IsVisible</c>(自帶判空,不再往下追任何二級指標)。
+    /// 掃到第一個空的就停,上限 <see cref="MaxAddonIndex"/>。
+    /// </remarks>
+    private static AddonVisibility LookUpVisibility(string addonName, nint address)
+    {
+        if(address == 0 || string.IsNullOrEmpty(addonName)) return AddonVisibility.Unknown;
+        for(var i = 1; i <= MaxAddonIndex; i++)
+        {
+            var unit = Svc.GameGui.GetAddonByName(addonName, i);
+            if(unit.Address == 0) break;
+            if(unit.Address != address) continue;
+            return unit.IsVisible ? AddonVisibility.Visible : AddonVisibility.Hidden;
+        }
+        return AddonVisibility.Unknown;
+    }
+
+    /// <summary>
+    /// <see cref="PersistentAddons"/> 專用的第三條解除路徑:連續觀察到「位址還在清單裡、但那扇窗已經隱藏」
+    /// <see cref="HiddenReleaseFrames"/> 幀就解除按下記號。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 🔴 <b>兩條安全不變量原封不動</b>:①存下來的位址只做等值比較,<b>永不解參</b>(解的是本幀剛拿回來的指標);
+    /// ②解除<b>按位址</b>一筆一筆移除,不是按名稱整批清。
+    /// </para>
+    /// <para>
+    /// 🔑 <b>這裡的查詢即使查歪了也只會更保守</b>:<b>只有「找到了、而且不可見」才累加</b>,
+    /// 「查不到」與「找到但看得見」<b>一律歸零</b>。⇒ 同名實例超過掃描上限、窗已從清單移除、查詢本身出錯……
+    /// 每一種都表現成「繼續封鎖」。
+    /// </para>
+    /// <para>
+    /// 📌 成本:只在「表裡有常駐窗名的紀錄」時才掃,而那種紀錄正常情況下最多活
+    /// <see cref="HiddenReleaseFrames"/> 幀(窗一收起來就被解除)。
+    /// </para>
+    /// </remarks>
+    private static void ReleaseHiddenPersistent()
+    {
+        if(Slots.Count == 0) return;
+        foreach(var slot in Slots.Values)
+        {
+            if(slot.Pressed.Count == 0 || !PersistentAddons.Contains(slot.AddonName)) continue;
+            HiddenRemoveBuf.Clear();
+            foreach(var (addr, rec) in slot.Pressed)
+            {
+                if(LookUpVisibility(slot.AddonName, addr) != AddonVisibility.Hidden)
+                {
+                    // 看得見(還開著,或落在關閉中的危險窗口內)／這一幀查不到 ⇒ 歸零重數。
+                    rec.HiddenFrames = 0;
+                    continue;
+                }
+                if(++rec.HiddenFrames < HiddenReleaseFrames) continue;
+                HiddenRemoveBuf.Add(addr);
+                if(HiddenReleaseReported.Add(slot.AddonName))
+                    PluginLog.Information($"[AddonPressGuard] 「{slot.AddonName}」:偵測到這是常駐窗(隱藏而不銷毀),按下記號改由「連續隱藏 {HiddenReleaseFrames} 幀」解除。這一行每個窗名每次遊戲只寫一次。");
+            }
+            foreach(var addr in HiddenRemoveBuf) slot.Pressed.Remove(addr);
+        }
     }
 
     /// <summary>同名窗的某個位址被銷毀(PreFinalize)或在該位址重新建立(PostSetup)時,只清那個位址的紀錄。</summary>
