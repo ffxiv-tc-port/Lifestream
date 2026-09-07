@@ -197,10 +197,31 @@ public class IPCProvider
         P.TPAndChangeWorld(w, isDcTransfer, secondaryTeleport, noSecondaryTeleport, (WorldChangeAetheryte?)gateway, doNotify, returnToGateway);
     }
 
+    /// <summary>
+    /// 取得指定區域對應的「改世界用乙太之光」編號。
+    /// </summary>
+    /// <returns>
+    /// 查得到就回該乙太之光的編號；<b>該區域沒有改世界用的乙太之光時回 <c>null</c></b>。
+    /// </returns>
+    /// <remarks>
+    /// 🔴 舊實作寫的是 <c>(int)Utils.GetWorldChangeAetheryteByTerritoryType(...)</c> ——
+    /// 那個 <c>(int)</c> 是「先解開可空值再轉型」，編出來的是
+    /// <c>Nullable&lt;WorldChangeAetheryte&gt;::get_Value</c>，所以查不到時不是回 <c>null</c>，
+    /// 而是向呼叫端擲 <see cref="InvalidOperationException"/> —— 跟它自己宣告的
+    /// <c>int?</c> 完全矛盾。兩個消費端的 <c>EzIPC.Init</c> 都沒帶 SafeWrapper，
+    /// 那個例外會一路傳到對方的呼叫碼。
+    /// <br/><br/>
+    /// 📌 改回 <c>null</c> 是安全的：2026-09-07 逐 repo 盤點過全艦隊，只有兩個消費端
+    /// （<c>BOCCHI/Ocelot/Ocelot/IPC/Lifestream.cs</c> 的 <c>Func&lt;uint, int?&gt;</c>、
+    /// <c>SomethingNeedDoing/SomethingNeedDoing/External/Lifestream.cs</c> 的 <c>Func&lt;int?&gt;</c>），
+    /// <b>兩個都把回傳宣告成可空</b>，收得到 <c>null</c>。
+    /// </remarks>
     [EzIPC]
     public int? GetWorldChangeAetheryteByTerritoryType(uint territoryType)
     {
-        return (int)Utils.GetWorldChangeAetheryteByTerritoryType(territoryType);
+        var aetheryte = Utils.GetWorldChangeAetheryteByTerritoryType(territoryType);
+        if(aetheryte == null) return null;
+        return (int)aetheryte.Value;
     }
 
     [EzIPC]
