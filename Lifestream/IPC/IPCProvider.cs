@@ -535,12 +535,16 @@ public class IPCProvider
     /// <summary>Teleport panel entries the user has starred, in the panel's own order.</summary>
     /// <returns>(Id, SubIndex, DisplayName, Territory) for each favourite. DisplayName already honours the
     /// user's rename. Id+SubIndex together identify an entry - the same aetheryte id can appear more than
-    /// once (housing sub-indices), so callers must keep both. Empty when nothing is starred.</returns>
+    /// once (housing sub-indices), so callers must keep both. Empty when nothing is starred.
+    /// Also empty while the teleport panel index has not been built yet (not logged in, or the very
+    /// first frame after login) - an empty list here is never an error, just try again shortly.</returns>
     [EzIPC]
     public List<(uint Id, byte SubIndex, string Name, uint Territory)> GetTeleportFavorites()
     {
         var result = new List<(uint, byte, string, uint)>();
-        foreach(var x in Systems.TeleportPanel.TeleportPanelIndex.Get())
+        // 🔴 GetSnapshot 不是 Get:這支跑在**呼叫端的執行緒**上,而 Get 冷的時候會去 Build(),
+        //    那會在非 framework 執行緒讀 Svc.AetheryteList 與 UIState 的原生記憶體。
+        foreach(var x in Systems.TeleportPanel.TeleportPanelIndex.GetSnapshot())
         {
             if(!C.Favorites.Contains(x.Id)) continue;
             result.Add((x.Id, x.SubIndex, x.DisplayName, x.Territory));
@@ -551,7 +555,9 @@ public class IPCProvider
     /// <summary>Travels to a starred teleport panel entry, exactly as clicking it in the favourites window does.</summary>
     /// <returns>False when the entry is not a current favourite, or travelling cannot start right now
     /// (Lifestream busy, no interactable player) - in that case nothing was queued, so the caller should
-    /// stop rather than wait for a completion that will never come.</returns>
+    /// stop rather than wait for a completion that will never come.
+    /// Also false while the teleport panel index has not been built yet (not logged in, or the very
+    /// first frame after login).</returns>
     [EzIPC]
     public bool TeleportToFavorite(uint id, byte subIndex)
     {
@@ -559,7 +565,8 @@ public class IPCProvider
         if(P.TaskManager.IsBusy) return false;
         if(!Player.Interactable) return false;
 
-        foreach(var x in Systems.TeleportPanel.TeleportPanelIndex.Get())
+        // 同上:呼叫端的執行緒不可以觸發索引重建。索引還沒建好就回 false(什麼都沒排)。
+        foreach(var x in Systems.TeleportPanel.TeleportPanelIndex.GetSnapshot())
         {
             if(x.Id != id || x.SubIndex != subIndex) continue;
             Tasks.Utility.TaskTeleportPanelGo.Enqueue(x);

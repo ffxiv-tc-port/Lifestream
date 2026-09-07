@@ -630,6 +630,9 @@ public unsafe class Lifestream : IDalamudPlugin
         }
         S.Data.ResidentialAethernet.Tick();
         S.Data.CustomAethernet.Tick();
+        // 傳送面板索引的**唯一**預熱點。放在這裡是因為它會讀原生記憶體,
+        // 而 IPC 端點跑在呼叫端的執行緒上、不可以自己去建索引。
+        Systems.TeleportPanel.TeleportPanelIndex.Tick();
         MonitorChatInput();
         if(!Svc.ClientState.IsLoggedIn)
         {
