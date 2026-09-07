@@ -40,6 +40,19 @@ public class IPCProvider
     [EzIPC]
     public void ExecuteCommand(string arguments)
     {
+        // 🔴 空參數守衛必須留在**呼叫端的執行緒**上：RejectEmptyIpcCommand 是靠走受管堆疊
+        //    認出呼叫者的，一旦搬到遊戲主執行緒，呼叫端的組件就已經不在堆疊上，
+        //    診斷會整批退化成「不明」。Core 裡那份守衛保留當第二道，語意相同。
+        if(string.IsNullOrWhiteSpace(arguments))
+        {
+            RejectEmptyIpcCommand(nameof(ExecuteCommand), arguments);
+            return;
+        }
+        IpcFrameworkGate.Run(nameof(ExecuteCommand), () => ExecuteCommandCore(arguments));
+    }
+
+    private void ExecuteCommandCore(string arguments)
+    {
         if(string.IsNullOrWhiteSpace(arguments))
         {
             // 🔴🔴 空參數＝裸 /li＝（預設設定下）把角色傳送回本世界。
@@ -60,18 +73,27 @@ public class IPCProvider
 
     [EzIPC]
     public bool IsHere(AddressBookEntryTuple addressBookEntryTuple)
+        => IpcFrameworkGate.Get(nameof(IsHere), () => IsHereCore(addressBookEntryTuple), false);
+
+    private bool IsHereCore(AddressBookEntryTuple addressBookEntryTuple)
     {
         return Utils.IsHere(AddressBookEntry.FromTuple(addressBookEntryTuple));
     }
 
     [EzIPC]
     public bool IsQuickTravelAvailable(AddressBookEntryTuple addressBookEntryTuple)
+        => IpcFrameworkGate.Get(nameof(IsQuickTravelAvailable), () => IsQuickTravelAvailableCore(addressBookEntryTuple), false);
+
+    private bool IsQuickTravelAvailableCore(AddressBookEntryTuple addressBookEntryTuple)
     {
         return Utils.IsQuickTravelAvailable(AddressBookEntry.FromTuple(addressBookEntryTuple));
     }
 
     [EzIPC]
     public void GoToHousingAddress(AddressBookEntryTuple addressBookEntryTuple)
+        => IpcFrameworkGate.Run(nameof(GoToHousingAddress), () => GoToHousingAddressCore(addressBookEntryTuple));
+
+    private void GoToHousingAddressCore(AddressBookEntryTuple addressBookEntryTuple)
     {
         AddressBookEntry.FromTuple(addressBookEntryTuple).GoTo();
     }
@@ -84,6 +106,9 @@ public class IPCProvider
 
     [EzIPC]
     public void Abort()
+        => IpcFrameworkGate.Run(nameof(Abort), () => AbortCore());
+
+    private void AbortCore()
     {
         P.TaskManager.Abort();
         P.followPath?.Stop();
@@ -111,6 +136,9 @@ public class IPCProvider
     /// </returns>
     [EzIPC]
     public bool GoToMapPoint(uint territory, float worldX, float worldZ, bool fly)
+        => IpcFrameworkGate.Get(nameof(GoToMapPoint), () => GoToMapPointCore(territory, worldX, worldZ, fly), false);
+
+    private bool GoToMapPointCore(uint territory, float worldX, float worldZ, bool fly)
     {
         if(territory == 0) return false;
         if(IsBusy()) return false;
@@ -148,6 +176,17 @@ public class IPCProvider
     [EzIPC]
     public void TPAndChangeWorld(string w, bool isDcTransfer, string secondaryTeleport, bool noSecondaryTeleport, int? gateway, bool? doNotify, bool? returnToGateway)
     {
+        // 空參數守衛留在呼叫端的執行緒上（理由同 ExecuteCommand）。
+        if(string.IsNullOrWhiteSpace(w))
+        {
+            RejectEmptyIpcCommand(nameof(TPAndChangeWorld), w);
+            return;
+        }
+        IpcFrameworkGate.Run(nameof(TPAndChangeWorld), () => TPAndChangeWorldCore(w, isDcTransfer, secondaryTeleport, noSecondaryTeleport, gateway, doNotify, returnToGateway));
+    }
+
+    private void TPAndChangeWorldCore(string w, bool isDcTransfer, string secondaryTeleport, bool noSecondaryTeleport, int? gateway, bool? doNotify, bool? returnToGateway)
+    {
         // 空字串會在 ExcelWorldHelper.Get("") 命中 World 表裡「名稱為空」的佔位列，
         // 接著整條世界轉移鏈會拿那個垃圾世界跑下去。
         if(string.IsNullOrWhiteSpace(w))
@@ -166,6 +205,9 @@ public class IPCProvider
 
     [EzIPC]
     public bool ChangeWorld(string world)
+        => IpcFrameworkGate.Get(nameof(ChangeWorld), () => ChangeWorldCore(world), false);
+
+    private bool ChangeWorldCore(string world)
     {
         if(IsBusy()) return false;
         if(CanVisitCrossDC(world))
@@ -203,6 +245,17 @@ public class IPCProvider
     /// <returns></returns>
     [EzIPC]
     public bool AethernetTeleport(string destination)
+    {
+        // 空參數守衛留在呼叫端的執行緒上（理由同 ExecuteCommand）。
+        if(string.IsNullOrWhiteSpace(destination))
+        {
+            RejectEmptyIpcCommand(nameof(AethernetTeleport), destination);
+            return false;
+        }
+        return IpcFrameworkGate.Get(nameof(AethernetTeleport), () => AethernetTeleportCore(destination), false);
+    }
+
+    private bool AethernetTeleportCore(string destination)
     {
         // 空字串在 Utils.TryFindEqualsOrContains 的第二輪比對會以 StartsWith("") 命中
         // **第一筆** 乙太網點，等於「隨便傳一個地方」。拒絕比亂傳誠實。
@@ -274,6 +327,9 @@ public class IPCProvider
     /// <returns></returns>
     [EzIPC]
     public uint GetActiveAetheryte()
+        => IpcFrameworkGate.Get(nameof(GetActiveAetheryte), () => GetActiveAetheryteCore(), 0u);
+
+    private uint GetActiveAetheryteCore()
     {
         if(P.ActiveAetheryte != null)
         {
@@ -288,6 +344,9 @@ public class IPCProvider
     /// <returns></returns>
     [EzIPC]
     public uint GetActiveCustomAetheryte()
+        => IpcFrameworkGate.Get(nameof(GetActiveCustomAetheryte), () => GetActiveCustomAetheryteCore(), 0u);
+
+    private uint GetActiveCustomAetheryteCore()
     {
         if(S.Data.CustomAethernet.ActiveAetheryte != null)
         {
@@ -302,6 +361,9 @@ public class IPCProvider
     /// <returns></returns>
     [EzIPC]
     public uint GetActiveResidentialAetheryte()
+        => IpcFrameworkGate.Get(nameof(GetActiveResidentialAetheryte), () => GetActiveResidentialAetheryteCore(), 0u);
+
+    private uint GetActiveResidentialAetheryteCore()
     {
         if(S.Data.ResidentialAethernet.ActiveAetheryte != null)
         {
@@ -312,12 +374,18 @@ public class IPCProvider
 
     [EzIPC]
     public bool Teleport(uint destination, byte subIndex)
+        => IpcFrameworkGate.Get(nameof(Teleport), () => TeleportCore(destination, subIndex), false);
+
+    private bool TeleportCore(uint destination, byte subIndex)
     {
         return S.TeleportService.TeleportToAetheryte(destination, subIndex);
     }
 
     [EzIPC]
     public bool TeleportToFC()
+        => IpcFrameworkGate.Get(nameof(TeleportToFC), () => TeleportToFCCore(), false);
+
+    private bool TeleportToFCCore()
     {
         if(!P.TaskManager.IsBusy)
         {
@@ -329,6 +397,9 @@ public class IPCProvider
 
     [EzIPC]
     public bool TeleportToHome()
+        => IpcFrameworkGate.Get(nameof(TeleportToHome), () => TeleportToHomeCore(), false);
+
+    private bool TeleportToHomeCore()
     {
         if(!P.TaskManager.IsBusy)
         {
@@ -340,6 +411,9 @@ public class IPCProvider
 
     [EzIPC]
     public bool TeleportToApartment()
+        => IpcFrameworkGate.Get(nameof(TeleportToApartment), () => TeleportToApartmentCore(), false);
+
+    private bool TeleportToApartmentCore()
     {
         if(!P.TaskManager.IsBusy)
         {
@@ -369,30 +443,45 @@ public class IPCProvider
 
     [EzIPC]
     public void EnqueuePropertyShortcut(TaskPropertyShortcut.PropertyType type, HouseEnterMode? mode)
+        => IpcFrameworkGate.Run(nameof(EnqueuePropertyShortcut), () => EnqueuePropertyShortcutCore(type, mode));
+
+    private void EnqueuePropertyShortcutCore(TaskPropertyShortcut.PropertyType type, HouseEnterMode? mode)
     {
         TaskPropertyShortcut.Enqueue(type, mode);
     }
 
     [EzIPC]
     public void EnterApartment(bool enter)
+        => IpcFrameworkGate.Run(nameof(EnterApartment), () => EnterApartmentCore(enter));
+
+    private void EnterApartmentCore(bool enter)
     {
         TaskPropertyShortcut.Enqueue(TaskPropertyShortcut.PropertyType.Apartment, null, null, enter);
     }
 
     [EzIPC]
     public void EnqueueInnShortcut(int? innIndex)
+        => IpcFrameworkGate.Run(nameof(EnqueueInnShortcut), () => EnqueueInnShortcutCore(innIndex));
+
+    private void EnqueueInnShortcutCore(int? innIndex)
     {
         TaskPropertyShortcut.Enqueue(TaskPropertyShortcut.PropertyType.Inn, default, innIndex);
     }
 
     [EzIPC]
     public void EnqueueLocalInnShortcut(int? innIndex)
+        => IpcFrameworkGate.Run(nameof(EnqueueLocalInnShortcut), () => EnqueueLocalInnShortcutCore(innIndex));
+
+    private void EnqueueLocalInnShortcutCore(int? innIndex)
     {
         TaskPropertyShortcut.Enqueue(TaskPropertyShortcut.PropertyType.Inn, default, innIndex, useSameWorld: true);
     }
 
     [EzIPC]
     public (ResidentialAetheryteKind Kind, int Ward, int Plot)? GetCurrentPlotInfo()
+        => IpcFrameworkGate.Get<(ResidentialAetheryteKind Kind, int Ward, int Plot)?>(nameof(GetCurrentPlotInfo), () => GetCurrentPlotInfoCore(), null);
+
+    private (ResidentialAetheryteKind Kind, int Ward, int Plot)? GetCurrentPlotInfoCore()
     {
         if(UIHouseReg.TryGetCurrentPlotInfo(out var kind, out var ward, out var plot))
         {
@@ -403,18 +492,27 @@ public class IPCProvider
 
     [EzIPC]
     public bool CanChangeInstance()
+        => IpcFrameworkGate.Get(nameof(CanChangeInstance), () => CanChangeInstanceCore(), false);
+
+    private bool CanChangeInstanceCore()
     {
         return S.InstanceHandler.CanChangeInstance();
     }
 
     [EzIPC]
     public int GetNumberOfInstances()
+        => IpcFrameworkGate.Get(nameof(GetNumberOfInstances), () => GetNumberOfInstancesCore(), 0);
+
+    private int GetNumberOfInstancesCore()
     {
         return S.InstanceHandler.InstancesInitizliaed(out var ret) ? ret : 0;
     }
 
     [EzIPC]
     public void ChangeInstance(int number)
+        => IpcFrameworkGate.Run(nameof(ChangeInstance), () => ChangeInstanceCore(number));
+
+    private void ChangeInstanceCore(int number)
     {
         TaskRemoveAfkStatus.Enqueue();
         TaskChangeInstance.Enqueue(number);
@@ -422,12 +520,18 @@ public class IPCProvider
 
     [EzIPC]
     public int GetCurrentInstance()
+        => IpcFrameworkGate.Get(nameof(GetCurrentInstance), () => GetCurrentInstanceCore(), 0);
+
+    private int GetCurrentInstanceCore()
     {
         return S.InstanceHandler.GetInstance();
     }
 
     [EzIPC]
     public bool? HasApartment()
+        => IpcFrameworkGate.Get<bool?>(nameof(HasApartment), () => HasApartmentCore(), null);
+
+    private bool? HasApartmentCore()
     {
         if(Player.Object.HomeWorld.RowId != Player.Object.CurrentWorld.RowId) return null;
         return TaskPropertyShortcut.GetApartmentAetheryteID().ID != 0;
@@ -435,6 +539,9 @@ public class IPCProvider
 
     [EzIPC]
     public bool? HasPrivateHouse()
+        => IpcFrameworkGate.Get<bool?>(nameof(HasPrivateHouse), () => HasPrivateHouseCore(), null);
+
+    private bool? HasPrivateHouseCore()
     {
         if(Player.Object.HomeWorld.RowId != Player.Object.CurrentWorld.RowId) return null;
         return TaskPropertyShortcut.GetPrivateHouseAetheryteID() != 0;
@@ -442,6 +549,9 @@ public class IPCProvider
 
     [EzIPC]
     public bool? HasFreeCompanyHouse()
+        => IpcFrameworkGate.Get<bool?>(nameof(HasFreeCompanyHouse), () => HasFreeCompanyHouseCore(), null);
+
+    private bool? HasFreeCompanyHouseCore()
     {
         if(Player.Object.HomeWorld.RowId != Player.Object.CurrentWorld.RowId) return null;
         return TaskPropertyShortcut.GetFreeCompanyAetheryteID() != 0;
@@ -449,12 +559,18 @@ public class IPCProvider
 
     [EzIPC]
     public void Move(List<Vector3> path)
+        => IpcFrameworkGate.Run(nameof(Move), () => MoveCore(path));
+
+    private void MoveCore(List<Vector3> path)
     {
         P.FollowPath.Move(path, true);
     }
 
     [EzIPC]
     public bool CanMoveToWorkshop()
+        => IpcFrameworkGate.Get(nameof(CanMoveToWorkshop), () => CanMoveToWorkshopCore(), false);
+
+    private bool CanMoveToWorkshopCore()
     {
         var data = Utils.GetFCPathData();
         if(data == null) return false;
@@ -468,6 +584,9 @@ public class IPCProvider
 
     [EzIPC]
     public void MoveToWorkshop()
+        => IpcFrameworkGate.Run(nameof(MoveToWorkshop), () => MoveToWorkshopCore());
+
+    private void MoveToWorkshopCore()
     {
         if(IsBusy()) return;
         var data = Utils.GetFCPathData();
@@ -486,10 +605,13 @@ public class IPCProvider
     }
 
     [EzIPC]
-    public bool CanAutoLogin() => Utils.CanAutoLogin();
+    public bool CanAutoLogin() => IpcFrameworkGate.Get(nameof(CanAutoLogin), () => Utils.CanAutoLogin(), false);
 
     [EzIPC]
     public bool ConnectAndOpenCharaSelect(string charaName, string charaHomeWorld)
+        => IpcFrameworkGate.Get(nameof(ConnectAndOpenCharaSelect), () => ConnectAndOpenCharaSelectCore(charaName, charaHomeWorld), false);
+
+    private bool ConnectAndOpenCharaSelectCore(string charaName, string charaHomeWorld)
     {
         if(IsBusy())
         {
@@ -500,6 +622,9 @@ public class IPCProvider
 
     [EzIPC]
     public bool InitiateTravelFromCharaSelectScreen(string charaName, string charaHomeWorld, string destination, bool noLogin)
+        => IpcFrameworkGate.Get(nameof(InitiateTravelFromCharaSelectScreen), () => InitiateTravelFromCharaSelectScreenCore(charaName, charaHomeWorld, destination, noLogin), false);
+
+    private bool InitiateTravelFromCharaSelectScreenCore(string charaName, string charaHomeWorld, string destination, bool noLogin)
     {
         if(IsBusy())
         {
@@ -510,12 +635,18 @@ public class IPCProvider
 
     [EzIPC]
     public bool CanInitiateTravelFromCharaSelectList()
+        => IpcFrameworkGate.Get(nameof(CanInitiateTravelFromCharaSelectList), () => CanInitiateTravelFromCharaSelectListCore(), false);
+
+    private bool CanInitiateTravelFromCharaSelectListCore()
     {
         return CharaSelectOverlay.TryGetValidCharaSelectListMenu(out var m);
     }
 
     [EzIPC]
     public bool ConnectAndTravel(string charaName, string charaHomeWorld, string destination, bool noLogin)
+        => IpcFrameworkGate.Get(nameof(ConnectAndTravel), () => ConnectAndTravelCore(charaName, charaHomeWorld, destination, noLogin), false);
+
+    private bool ConnectAndTravelCore(string charaName, string charaHomeWorld, string destination, bool noLogin)
     {
         if(IsBusy() || !CanAutoLogin())
         {
@@ -540,6 +671,9 @@ public class IPCProvider
     /// first frame after login) - an empty list here is never an error, just try again shortly.</returns>
     [EzIPC]
     public List<(uint Id, byte SubIndex, string Name, uint Territory)> GetTeleportFavorites()
+        => IpcFrameworkGate.Get(nameof(GetTeleportFavorites), () => GetTeleportFavoritesCore(), new List<(uint Id, byte SubIndex, string Name, uint Territory)>());
+
+    private List<(uint Id, byte SubIndex, string Name, uint Territory)> GetTeleportFavoritesCore()
     {
         var result = new List<(uint, byte, string, uint)>();
         // 🔴 GetSnapshot 不是 Get:這支跑在**呼叫端的執行緒**上,而 Get 冷的時候會去 Build(),
@@ -560,6 +694,9 @@ public class IPCProvider
     /// first frame after login).</returns>
     [EzIPC]
     public bool TeleportToFavorite(uint id, byte subIndex)
+        => IpcFrameworkGate.Get(nameof(TeleportToFavorite), () => TeleportToFavoriteCore(id, subIndex), false);
+
+    private bool TeleportToFavoriteCore(uint id, byte subIndex)
     {
         if(!C.Favorites.Contains(id)) return false;
         if(P.TaskManager.IsBusy) return false;
