@@ -1,7 +1,6 @@
 ﻿using ECommons;
 using ECommons.EzIpcManager;
 using ECommons.GameHelpers;
-using ECommons.Throttlers;
 using Lifestream.Data;
 using Lifestream.Enums;
 using Lifestream.GUI;
@@ -594,11 +593,37 @@ public class IPCProvider
     private static void RejectEmptyIpcCommand(string endpoint, string received)
     {
         var caller = TryIdentifyIpcCaller();
-        // EzThrottler 首次必放行，key 帶呼叫端：不同外掛各自看得到第一次，
-        // 循環重呼的呼叫端也不會洗版。
-        if(!EzThrottler.Throttle($"Lifestream.IPC.EmptyArgumentReject.{endpoint}.{caller}", 10000)) return;
+        // 🔴 這裡刻意**不用** EzThrottler：它是整個外掛共用的靜態 Dictionary 且零同步，
+        //    而這支從 IPC 端點進來，跑在**呼叫端的執行緒**上。並行插入弄壞的不只是這一個 key，
+        //    是整張表 —— 連帶弄壞外掛裡所有模組的節流。所以自帶字典＋自己的鎖。
+        //    語意維持不變：首次必放行、key 帶呼叫端，不同外掛各自看得到第一次。
+        if(!ShouldLogReject($"{endpoint}.{caller}")) return;
         var shown = received == null ? "null" : $"「{received}」";
         PluginLog.Information($"[Lifestream IPC 守衛] 拒絕執行 {endpoint}({shown})：空參數等同裸 /li，預設設定下會把角色傳送回本世界，所以一律不執行。疑似呼叫端＝{caller}。請呼叫端改成傳明確的目的地，或在呼叫前自行判斷空值。");
+    }
+
+    /// <summary>同一個（端點＋呼叫端）組合的拒絕訊息重印間隔。</summary>
+    private const long RejectLogIntervalMs = 10000;
+
+    /// <summary>節流表上限，避免呼叫端身分意外發散時無限成長。</summary>
+    private const int MaxTrackedRejectKeys = 128;
+
+    private static readonly Dictionary<string, long> RejectLogTimes = [];
+
+    /// <summary>
+    /// 自帶的節流：首次必放行，之後每 <see cref="RejectLogIntervalMs"/> 毫秒放行一次。
+    /// 🔴 鎖內只碰字典 —— 不寫 log、不呼叫任何別的外掛、不做 I/O。
+    /// </summary>
+    private static bool ShouldLogReject(string key)
+    {
+        var now = Environment.TickCount64;
+        lock(RejectLogTimes)
+        {
+            if(RejectLogTimes.TryGetValue(key, out var last) && now - last < RejectLogIntervalMs) return false;
+            if(RejectLogTimes.Count >= MaxTrackedRejectKeys && !RejectLogTimes.ContainsKey(key)) RejectLogTimes.Clear();
+            RejectLogTimes[key] = now;
+            return true;
+        }
     }
 
     /// <summary>
