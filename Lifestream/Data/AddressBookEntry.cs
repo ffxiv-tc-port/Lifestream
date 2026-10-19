@@ -73,7 +73,7 @@ public class AddressBookEntry
             error = "Name is not a valid string";
             return false;
         }
-        if(!ExcelWorldHelper.GetPublicWorlds().Any(x => x.RowId == World))
+        if(!PublicWorlds.Get().Any(x => x.RowId == World))
         {
             error = "World identifier is not valid";
             return false;

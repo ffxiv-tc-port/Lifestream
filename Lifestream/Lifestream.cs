@@ -2,6 +2,7 @@
 using Dalamud.Game.Gui.Dtr;
 using ECommons.Automation;
 using ECommons.Automation.NeoTaskManager;
+using Callback = ECommons.Automation.Callback;
 using ECommons.ChatMethods;
 using ECommons.Configuration;
 using ECommons.Events;
@@ -33,6 +34,7 @@ using Lifestream.Tasks.CrossDC;
 using Lifestream.Tasks.CrossWorld;
 using Lifestream.Tasks.SameWorld;
 using Lifestream.Tasks.Shortcuts;
+using Lifestream.Tasks.Utility;
 using Lumina.Excel.Sheets;
 using NotificationMasterAPI;
 using GrandCompany = ECommons.ExcelServices.GrandCompany;
@@ -71,6 +73,11 @@ public unsafe class Lifestream : IDalamudPlugin
     {
         P = this;
         ECommonsMain.Init(pluginInterface, this, Module.SplatoonAPI);
+        // 讓「呼叫了對方沒有的 IPC 方法」不再完全靜默。
+        // 訂閱越早越好：事件只在 IPC **呼叫**當下才被查閱，在這裡訂閱就涵蓋往後所有呼叫。
+        EzIpcFailureLog.Enable();
+        ChatQueue.Enable();
+        ECommons.LanguageHelpers.Localization.Init("ChineseTraditional");
 #if CUSTOMCS
         PluginLog.Warning($"Using custom FFXIVClientStructs");
         var gameVersion = DalamudReflector.TryGetDalamudStartInfo(out var ver) ? ver.GameVersion.ToString() : "unknown";
@@ -80,11 +87,23 @@ public unsafe class Lifestream : IDalamudPlugin
 #endif
         new TickScheduler(delegate
         {
+            // 按窗守衛的幀時鐘排在本外掛所有 Framework.Update 處理常式(含 TaskManager)前面。
+            AddonPressGuard.EnsureWatching();
             TerritoryWatcher.Initialize();
             Config = EzConfig.Init<Config>();
             Utils.CheckConfigMigration();
+            // 「允許傳送到目前所在的乙太之光」記憶體修補。預設關；開著才會去解析特徵碼。
+            // 解析失敗(命中數不是 1)時只會寫一行 log 並維持未修補狀態，不影響其餘功能。
+            if(Config.SameAethernetTeleport) GenericHelpers.Safe(() => SameAethernetTeleportPatch.Enable());
+            ImGuiStackWatch.AttachBefore();
             EzConfigGui.Init(MainGui.Draw);
-            TaskManager = new(new(showDebug: true));
+            ImGuiStackWatch.AttachAfter();
+            // TaskTimeoutLog.Attach()：逾時時多印一行「是哪一步逾時」的 Warning，
+            // 並蓋掉 ECommons 那行完全匿名的（它擲的 TaskTimeoutException 連 Message 都沒有）。
+            // showDebug: true 照舊：帶名字的那一行是 Debug 級，會被噪音淹沒，
+            // 這裡補的是 Warning 級。理由與限制寫在 TaskTimeoutLog 的註解裡。
+            TaskManager = TaskTimeoutLog.Attach(new(new(showDebug: true)), "Lifestream");
+            TravelDiag.Enable(TaskManager);
             CharaSelectOverlay = new();
             EzConfigGui.WindowSystem.AddWindow(CharaSelectOverlay);
             EzCmd.Add("/lifestream", ProcessCommand, null);
@@ -114,7 +133,29 @@ public unsafe class Lifestream : IDalamudPlugin
         }
     }
 
+    /// <summary>
+    /// <c>/li</c> / <c>/lifestream</c> 的指令進入點(使用者主動輸入的那條路)。
+    /// </summary>
+    /// <remarks>
+    /// 這一層只做一件事：這次指令真的排出了任務時，在佇列尾端補上「抵達提醒」哨兵
+    /// (<see cref="TaskAnnounceArrival"/>)。實際的指令處理在
+    /// <see cref="ProcessCommandInternal"/>。
+    /// <para>
+    /// 📌 別的外掛透過 IPC <c>ExecuteCommand</c> 驅動時走的是 <see cref="ProcessCommandInternal"/>，
+    /// 不會出聲 —— 那不是使用者主動下的指令。
+    /// ⚠️ 例外：IPC <c>GoToMapPoint</c>（Mappy 地圖右鍵）雖然經 IPC 轉手，但來源是使用者
+    /// 主動點地圖，所以在 <see cref="IPC.IPCProvider.GoToMapPoint"/> 裡自己排哨兵。
+    /// </para>
+    /// </remarks>
     internal void ProcessCommand(string command, string arguments)
+    {
+        var queuedBefore = TaskManager.NumQueuedTasks;
+        ProcessCommandInternal(command, arguments);
+        TaskAnnounceArrival.EnqueueIfChainStarted(queuedBefore);
+    }
+
+    // abortSource：「stop」中止任務鏈時寫進診斷的來源；null＝使用者自己下的指令。
+    internal void ProcessCommandInternal(string command, string arguments, string abortSource = null)
     {
         var argsSplit = arguments.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var primary = argsSplit.SafeSelect(0) ?? "";
@@ -153,7 +194,10 @@ public unsafe class Lifestream : IDalamudPlugin
         }
         else if(arguments == "stop")
         {
+            TravelDiag.LogAbort(abortSource ?? $"{command} stop 指令");
             Notify.Info($"Discarding {TaskManager.NumQueuedTasks + (TaskManager.IsBusy ? 1 : 0)} tasks");
+            VnavMoveOwner.StopIfOurs("stop 指令");
+            AutomoveOwner.StopIfOurs("stop 指令");
             TaskManager.Abort();
             followPath?.Stop();
             TabUtility.TargetWorldID = 0;
@@ -283,7 +327,9 @@ public unsafe class Lifestream : IDalamudPlugin
                     P.TPAndChangeWorld(Player.HomeWorld, !Player.IsInHomeDC, null, true, null, false, false);
                 }
                 P.TaskManager.Enqueue(() => Player.Interactable && Player.IsInHomeWorld && IsScreenReady());
-                StaticAlias.CosmicExploration.Enqueue(true);
+                // 走乙太之光 175 的「前往渴望灣」選單項;
+                // 失敗時 TaskCosmicShortcut 會自己退回舊的 StaticAlias.CosmicExploration 流程。
+                TaskCosmicShortcut.Enqueue();
             }
             else
             {
@@ -300,6 +346,17 @@ public unsafe class Lifestream : IDalamudPlugin
             {
                 Notify.Error("Lifestream is busy");
             }
+        }
+        else if(arguments.EqualsIgnoreCase("panel"))
+        {
+            // 傳送面板(搜尋/我的最愛/備註/地圖預覽)。用 Toggle：再下一次指令會關掉，
+            // 跟其他外掛主視窗指令的慣例一致。
+            S.Gui.TeleportPanelWindow.IsOpen = !S.Gui.TeleportPanelWindow.IsOpen;
+        }
+        else if(arguments.EqualsIgnoreCase("fav") || arguments.EqualsIgnoreCase("favorites") || arguments.EqualsIgnoreCase("favourites"))
+        {
+            // 我的最愛視窗(自訂排序/分類)。跟傳送面板一樣用 Toggle。
+            S.Gui.TeleportFavoritesWindow.IsOpen = !S.Gui.TeleportFavoritesWindow.IsOpen;
         }
         else if(arguments.StartsWithAny(StringComparison.OrdinalIgnoreCase, "tp"))
         {
@@ -319,16 +376,51 @@ public unsafe class Lifestream : IDalamudPlugin
                 }
             }
         }
+        else if(arguments.EqualsIgnoreCase("goto") || arguments.StartsWith("goto ", StringComparison.OrdinalIgnoreCase))
+        {
+            // 自訂座標地點:傳送至該區最近以太之光 + vnavmesh 走路(安全版,非瞬移)
+            var destName = arguments.Length > 5 ? arguments[5..].Trim() : "";
+            if(destName == "")
+            {
+                if(C.CustomDestinations.Count == 0)
+                {
+                    DuoLog.Warning("No custom destinations saved. Add them on the Destinations tab.".Loc());
+                }
+                else
+                {
+                    ChatQueue.Green($"[Lifestream] {"Saved destinations:".Loc()} {C.CustomDestinations.Select(d => d.Name).Print(", ")}");
+                }
+            }
+            else if(!P.TaskManager.IsBusy && Player.Interactable)
+            {
+                var dest = C.CustomDestinations.FirstOrDefault(d => d.Name.EqualsIgnoreCase(destName))
+                    ?? C.CustomDestinations.FirstOrDefault(d => d.Name.Contains(destName, StringComparison.OrdinalIgnoreCase));
+                if(dest == null)
+                {
+                    DuoLog.Error($"Destination not found: {destName}");
+                }
+                else
+                {
+                    TaskGotoDestination.Enqueue(dest);
+                }
+            }
+            else
+            {
+                DuoLog.Error("Lifestream is busy");
+            }
+        }
         else if(Utils.TryParseAddressBookEntry(arguments, out var entry))
         {
-            ChatPrinter.Green($"[Lifestream] Address parsed: {entry.GetAddressString()}");
+            ChatQueue.Green($"[Lifestream] Address parsed: {entry.GetAddressString()}");
             entry.GoTo();
         }
         else
         {
             if(command.EqualsIgnoreCase("/lifestream") && arguments == "")
             {
-                EzConfigGui.Open();
+                // 用 Toggle 不用 Open：再下一次指令會關閉視窗，跟大多數外掛主指令的慣例一致。
+                // vnavmesh 的 DTR 右鍵就是呼叫這個指令，用 Open 的話「右鍵關閉」不會有反應。
+                EzConfigGui.Toggle();
             }
             else
             {
@@ -371,12 +463,14 @@ public unsafe class Lifestream : IDalamudPlugin
                     gateway = WorldChangeAetheryte.Uldah;
                 }
 
-                if(S.Data.DataStore.Worlds.TryGetFirst(x => x.StartsWith(primary == "" ? Player.HomeWorld : primary, StringComparison.OrdinalIgnoreCase), out var w))
+                // 台服別名(火神/風神/巴哈…)先正規化成 World 表的正式名稱再比對
+                var requestedWorld = PublicWorlds.NormalizeTaiwanWorldName(primary == "" ? Player.HomeWorld : primary);
+                if(S.Data.DataStore.Worlds.TryGetFirst(x => x.StartsWith(requestedWorld, StringComparison.OrdinalIgnoreCase), out var w))
                 {
                     PluginLog.Information($"Same dc/{primary}/{w}");
                     TPAndChangeWorld(w, false, gateway: gateway);
                 }
-                else if(S.Data.DataStore.DCWorlds.TryGetFirst(x => x.StartsWith(primary == "" ? Player.HomeWorld : primary, StringComparison.OrdinalIgnoreCase), out var dcw))
+                else if(S.Data.DataStore.DCWorlds.TryGetFirst(x => x.StartsWith(requestedWorld, StringComparison.OrdinalIgnoreCase), out var dcw))
                 {
                     PluginLog.Information($"Cross dc/{primary}/{w}");
                     TPAndChangeWorld(dcw, true, gateway: gateway);
@@ -468,10 +562,23 @@ public unsafe class Lifestream : IDalamudPlugin
                 TaskRemoveAfkStatus.Enqueue();
                 if(type != DCVType.Unknown)
                 {
-                    if(Config.TeleportToGatewayBeforeLogout && !(TerritoryInfo.Instance()->InSanctuary || ExcelTerritoryHelper.IsSanctuary(P.Territory)) && !(currentDC == homeDC && Player.HomeWorld != Player.CurrentWorld))
+                    if(Config.TeleportToGatewayBeforeLogout && !(currentDC == homeDC && Player.HomeWorld != Player.CurrentWorld))
                     {
-                        TaskTpToAethernetDestination.Enqueue(gateway.Value.AdjustGateway());
+                        // wait to be able to teleport to know whether the teleport to the gateway is actually necessary
+                        TaskManager.Enqueue(() => TeleportService.CanTeleport(out _));
+
+                        var finalGateway = gateway.Value.AdjustGateway();
+                        TaskManager.Enqueue(() =>
+                        {
+                            if (TerritoryInfo.Instance()->InSanctuary || Utils.IsLoggingOutInstant(P.Territory))
+                            {
+                                return;
+                            }
+
+                            TaskTpToAethernetDestination.Insert(finalGateway);
+                        });
                     }
+
                     if(Config.LeavePartyBeforeLogout)
                     {
                         if(Svc.Party.Length > 1 || Svc.Condition[ConditionFlag.ParticipatingInCrossWorldPartyOrAlliance])
@@ -524,8 +631,17 @@ public unsafe class Lifestream : IDalamudPlugin
     private void Framework_Update(object framework)
     {
         YesAlreadyManager.Tick();
+        TextAdvanceManager.Tick();
         followPath?.Update();
-        if(Svc.ClientState.LocalPlayer != null && S.Data.DataStore.Territories.Contains(P.Territory))
+        VnavMoveOwner.Tick();
+        AutomoveOwner.Tick();
+        Tasks.Shortcuts.TaskOccultDirectEnter.Tick();
+        S.TeleportService?.Tick();
+        // IPC 端點 Lifestream.IsBusy 讀的每幀快照。必須排在 followPath?.Update() 之後（理由見 UpdateBusySnapshot 的註解）。
+        // 這支只讀兩個計數、不碰原生記憶體，所以不另外包 try —— 它擲例外的唯一可能是
+        // 上面兩行已經先擲了，那時 Tick 本來就進行不下去。
+        IPC.IPCProvider.UpdateBusySnapshot();
+        if(Svc.Objects.LocalPlayer != null && S.Data.DataStore.Territories.Contains(P.Territory))
         {
             UpdateActiveAetheryte();
         }
@@ -535,10 +651,14 @@ public unsafe class Lifestream : IDalamudPlugin
         }
         S.Data.ResidentialAethernet.Tick();
         S.Data.CustomAethernet.Tick();
+        // 傳送面板索引的每幀預熱點:建索引會讀原生記憶體,只在 framework 執行緒做;
+        // IPC 端點只讀既有快照、不自己去建索引。
+        Systems.TeleportPanel.TeleportPanelIndex.Tick();
         MonitorChatInput();
         if(!Svc.ClientState.IsLoggedIn)
         {
-            if(TryGetAddonMaster<AddonMaster._CharaSelectListMenu>(out var m) && m.IsAddonReady)
+            // 明給窗名：不帶名字的多載每次呼叫都用 Split 從型別名切出窗名（登出時每幀 32 B）。
+            if(TryGetAddonMaster<AddonMaster._CharaSelectListMenu>("_CharaSelectListMenu", out var m) && m.IsAddonReady)
             {
                 foreach(var chara in m.Characters)
                 {
@@ -549,11 +669,19 @@ public unsafe class Lifestream : IDalamudPlugin
         if(P.TaskManager.IsBusy)
         {
             if(EzThrottler.Throttle("EnsureEnhancedLoginIsOff")) Utils.EnsureEnhancedLoginIsOff();
-            if(TryGetAddonByName<AtkUnitBase>("Trade", out var trade))
+            // 🔴 「Trade 存在就每幀送 -1」會從 addon 剛配置到按下取消後正在關閉的每一幀都再送;
+            //    對關閉中的窗再送 callback 是攔不到的 AccessViolation。
+            //    所以先過 IsAddonReady,再經 AddonPressGuard:同一扇窗只送一次,窗消失後才會對下一扇再送。
+            if(TryGetAddonByName<AtkUnitBase>("Trade", out var trade) && IsAddonReady(trade)
+                && AddonPressGuard.TryPressOnce("Trade", trade, "Framework_Update.CancelTrade"))
             {
                 Callback.Fire(trade, true, -1);
             }
-            if(TryGetAddonMaster<AddonMaster.Talk>("Talk", out var m) && m.IsAddonReady)
+            // Talk 是「按一次翻一頁、窗不消失」的多次互動窗:同一扇窗 15 幀內只點一次(艦隊 Talk 政策),
+            // 同時也擋掉了任務(TaskISShortcut / TaskPropertyShortcut)與這裡在同一幀對同一扇 Talk 各點一次的重疊。
+            // TextAdvance 那邊靠 StopRequests 鎖讓位(MayClickTalk)。
+            if(TextAdvanceManager.MayClickTalk && TryGetAddonMaster<AddonMaster.Talk>("Talk", out var m) && m.IsAddonReady
+                && AddonPressGuard.TryPressOnce("Talk", m.Base, "Framework_Update.Talk", escapeIsRoutine: true))
             {
                 m.Click();
             }
@@ -583,9 +711,22 @@ public unsafe class Lifestream : IDalamudPlugin
 
     public void Dispose()
     {
+        // 建構子訂了 9 個 AutoRetainer IPC 事件；不退訂的話 CallGate 握著委派，整個舊版本卸不掉。
+        // 放最前面：後面沒包 Safe 的步驟擲例外時也不會被跳過。
+        GenericHelpers.Safe(() => AutoRetainerApi?.Dispose());
+        GenericHelpers.Safe(ImGuiStackWatch.Detach);
+        GenericHelpers.Safe(TravelDiag.Disable);
         Svc.Framework.Update -= Framework_Update;
         Svc.Toasts.ErrorToast -= Toasts_ErrorToast;
+        GenericHelpers.Safe(AddonPressGuard.ForceTeardown);
+        // 忙碌中卸載時兩把鎖都要還；放在 ECommonsMain.Dispose 之前(它會釋放共享資料)。
+        GenericHelpers.Safe(TextAdvanceManager.Release);
+        GenericHelpers.Safe(YesAlreadyManager.EnableIfNeeded);
         followPath?.Dispose();
+        GenericHelpers.Safe(EzIpcFailureLog.Disable);
+        GenericHelpers.Safe(ChatQueue.Disable);
+        // 🔴 一定要還原記憶體修補 —— 外掛卸載後遊戲還帶著被改過的碼是最糟的殘留。
+        GenericHelpers.Safe(SameAethernetTeleportPatch.Disable);
         ECommonsMain.Dispose();
         P = null;
     }
@@ -709,9 +850,8 @@ public unsafe class Lifestream : IDalamudPlugin
 
             // Memory signature from Dalamud's Completion.cs (line 102)
             // Used to identify the correct text input component vtable
-            var wantedVtblPtr = Svc.SigScanner.GetStaticAddressFromSig(
-                "48 89 01 48 8D 05 ?? ?? ?? ?? 48 89 81 ?? ?? ?? ?? 48 8D 05 ?? ?? ?? ?? 48 89 81 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 8B 48 68",
-                4);
+            // 每幀都會走到這裡：位址只掃一次（對不上也只掃一次），不可在這裡直接掃特徵碼。
+            if(!SearchHelperOverlay.TryGetWantedVtblPtr(out var wantedVtblPtr)) return null;
 
             var vtblPtr = *(nint*)basePtr;
             if(vtblPtr != wantedVtblPtr) return null;

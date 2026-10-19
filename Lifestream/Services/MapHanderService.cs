@@ -2,6 +2,7 @@
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Memory;
 using ECommons.MathHelpers;
+using ECommons.Throttlers;
 using ECommons.UIHelpers;
 using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -10,13 +11,13 @@ using Lifestream.Enums;
 using Lifestream.Systems.Residential;
 using Lifestream.Tasks.SameWorld;
 using Lumina.Excel.Sheets;
-using PInvoke;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using FXWindows = TerraFX.Interop.Windows.Windows;
 
 namespace Lifestream.Services;
 public unsafe class MapHanderService : IDisposable
@@ -51,12 +52,34 @@ public unsafe class MapHanderService : IDisposable
             {
                 if(isLeftClicked)
                 {
-                    if(!Bitmask.IsBitSet(User32.GetKeyState((int)Keys.ControlKey), 15) && !Bitmask.IsBitSet(User32.GetKeyState((int)Keys.LControlKey), 15) && !Bitmask.IsBitSet(User32.GetKeyState((int)Keys.RControlKey), 15))
+                    if(!Bitmask.IsBitSet(FXWindows.GetKeyState((int)Keys.ControlKey), 15) && !Bitmask.IsBitSet(FXWindows.GetKeyState((int)Keys.LControlKey), 15) && !Bitmask.IsBitSet(FXWindows.GetKeyState((int)Keys.RControlKey), 15))
                     {
                         if(TryGetAddonByName<AtkUnitBase>("Tooltip", out var addonTooltip) && IsAddonReady(addonTooltip) && addonTooltip->IsVisible)
                         {
-                            var node = addonTooltip->UldManager.NodeList[2]->GetAsAtkTextNode();
-                            var text = GenericHelpers.ReadSeString(&node->NodeText).GetText();
+                            // 🔴 NodeList[2] 的上界與元素都要驗;&node->NodeText 對 null 節點不會當場崩,毒指標要到真的去讀才炸。
+                            // 🔴🔴 **絕對不能**用「取不到就當空字串」帶過:下面自訂乙太網那段是 x.Name.StartsWith(text),
+                            // 空字串會對**每一個**地點成立 —— 讀取失敗會變成隨便挑一個地點傳送過去。讀不到就什麼都不做。
+                            if(!TryGetNodeText(addonTooltip, 2, out var text))
+                            {
+                                if(EzThrottler.Throttle("MapTooltipUnreadableLog", 5000))
+                                {
+                                    PluginLog.Information("[Map] Tooltip text node is unavailable; ignoring this map click.");
+                                }
+                                return;
+                            }
+
+                            // 🔴 總開關「點擊地圖上的乙太之光標記以快速傳送」在這裡生效(DisableMapClickOtherTerritory 是它底下的細部篩選,見下面)。
+                            // ⚠️ 關著時寫一行 Information(要使用者回報的診斷),讓 log 直接回答「為什麼沒反應」;
+                            // 判斷點放在這裡而不是事件入口,是為了只在「真的點到了某個標記」時才記錄。
+                            if(!C.UseMapTeleport)
+                            {
+                                if(EzThrottler.Throttle("MapTeleportDisabledLog", 5000))
+                                {
+                                    PluginLog.Information($"[Map] Ignoring click on \"{text}\": \"Click Aethernet Shard on map for quick teleport\" is turned off in Lifestream settings (Map Integration).");
+                                }
+                                return;
+                            }
+
                             if(P.ActiveAetheryte != null)
                             {
                                 var master = Utils.GetMaster();

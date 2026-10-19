@@ -21,18 +21,18 @@ public unsafe class OverrideMovement : IDisposable
 {
     public bool Enabled
     {
-        get => _rmiWalkHook.IsEnabled;
+        get => _rmiWalkHook?.IsEnabled ?? false;
         set
         {
             if(value)
             {
-                _rmiWalkHook.Enable();
-                _rmiFlyHook.Enable();
+                _rmiWalkHook?.Enable();
+                _rmiFlyHook?.Enable();
             }
             else
             {
-                _rmiWalkHook.Disable();
-                _rmiFlyHook.Disable();
+                _rmiWalkHook?.Disable();
+                _rmiFlyHook?.Disable();
             }
         }
     }
@@ -43,19 +43,28 @@ public unsafe class OverrideMovement : IDisposable
 
     private bool _legacyMode;
 
+    // Fallible on purpose: a signature that stops matching after a game patch has to degrade to
+    // "movement assist is off", not throw out of the ctor. These objects are field initializers on
+    // FollowPath (`new()`), so an exception here propagates all the way out of plugin construction.
     private delegate void RMIWalkDelegate(void* self, float* sumLeft, float* sumForward, float* sumTurnLeft, byte* haveBackwardOrStrafe, byte* a6, byte bAdditiveUnk);
-    [Signature("E8 ?? ?? ?? ?? 80 7B 3E 00 48 8D 3D")]
-    private Hook<RMIWalkDelegate> _rmiWalkHook = null!;
+    [Signature("E8 ?? ?? ?? ?? 80 7B 3E 00 48 8D 3D", Fallibility = Fallibility.Fallible)]
+    private Hook<RMIWalkDelegate>? _rmiWalkHook;
 
     private delegate void RMIFlyDelegate(void* self, PlayerMoveControllerFlyInput* result);
-    [Signature("E8 ?? ?? ?? ?? 0F B6 0D ?? ?? ?? ?? B8")]
-    private Hook<RMIFlyDelegate> _rmiFlyHook = null!;
+    [Signature("E8 ?? ?? ?? ?? 0F B6 0D ?? ?? ?? ?? B8", Fallibility = Fallibility.Fallible)]
+    private Hook<RMIFlyDelegate>? _rmiFlyHook;
 
     public OverrideMovement()
     {
         Svc.Hook.InitializeFromAttributes(this);
-        PluginLog.Information($"RMIWalk address: 0x{_rmiWalkHook.Address:X}");
-        PluginLog.Information($"RMIFly address: 0x{_rmiFlyHook.Address:X}");
+        if(_rmiWalkHook != null)
+            PluginLog.Information($"RMIWalk address: 0x{_rmiWalkHook.Address:X}");
+        else
+            PluginLog.Error("RMIWalk signature not found - walk movement override disabled");
+        if(_rmiFlyHook != null)
+            PluginLog.Information($"RMIFly address: 0x{_rmiFlyHook.Address:X}");
+        else
+            PluginLog.Error("RMIFly signature not found - fly movement override disabled");
         Svc.GameConfig.UiControlChanged += OnConfigChanged;
         UpdateLegacyMode();
     }
@@ -63,39 +72,72 @@ public unsafe class OverrideMovement : IDisposable
     public void Dispose()
     {
         Svc.GameConfig.UiControlChanged -= OnConfigChanged;
-        _rmiWalkHook.Dispose();
-        _rmiFlyHook.Dispose();
+        _rmiWalkHook?.Dispose();
+        _rmiFlyHook?.Dispose();
+    }
+
+    // fail-closed: a detour is a managed function the *native* code calls directly, so a managed exception
+    // escaping it unwinds through native frames with no handler. Everything added on top of Original() runs
+    // inside a try; the degraded behaviour is "don't override" (Original has already run).
+    // NOTE: this does NOT catch AccessViolationException. What it catches is e.g. the InvalidOperationException
+    // ClientStructs' [StaticAddress]/[MemberFunction] members throw when their signature stops resolving.
+    private long _detourErrors;
+    private DateTime _lastDetourErrorLog = DateTime.MinValue;
+
+    private void OnDetourError(Exception ex)
+    {
+        ++_detourErrors;
+        // this runs per frame - never log unthrottled. Information because users are asked to report it.
+        var now = DateTime.UtcNow;
+        if(now - _lastDetourErrorLog < TimeSpan.FromSeconds(30))
+            return;
+        _lastDetourErrorLog = now;
+        PluginLog.Information($"OverrideMovement: movement override threw, leaving the game's own movement input alone (total {_detourErrors}): {ex}");
     }
 
     private void RMIWalkDetour(void* self, float* sumLeft, float* sumForward, float* sumTurnLeft, byte* haveBackwardOrStrafe, byte* a6, byte bAdditiveUnk)
     {
-        _rmiWalkHook.Original(self, sumLeft, sumForward, sumTurnLeft, haveBackwardOrStrafe, a6, bAdditiveUnk);
-        // TODO: we really need to introduce some extra checks that PlayerMoveController::readInput does - sometimes it skips reading input, and returning something non-zero breaks stuff...
-        var movementAllowed = bAdditiveUnk == 0 && !Svc.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.BeingMoved];
-        if(movementAllowed && (IgnoreUserInput || *sumLeft == 0 && *sumForward == 0) && DirectionToDestination(false) is var relDir && relDir != null)
+        _rmiWalkHook!.OriginalDisposeSafe(self, sumLeft, sumForward, sumTurnLeft, haveBackwardOrStrafe, a6, bAdditiveUnk);
+        try
         {
-            var dir = relDir.Value.h.ToDirection();
-            *sumLeft = dir.X;
-            *sumForward = dir.Y;
+            // TODO: we really need to introduce some extra checks that PlayerMoveController::readInput does - sometimes it skips reading input, and returning something non-zero breaks stuff...
+            var movementAllowed = bAdditiveUnk == 0 && !Svc.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.BeingMoved];
+            if(movementAllowed && (IgnoreUserInput || *sumLeft == 0 && *sumForward == 0) && DirectionToDestination(false) is var relDir && relDir != null)
+            {
+                var dir = relDir.Value.h.ToDirection();
+                *sumLeft = dir.X;
+                *sumForward = dir.Y;
+            }
+        }
+        catch(Exception ex)
+        {
+            OnDetourError(ex);
         }
     }
 
     private void RMIFlyDetour(void* self, PlayerMoveControllerFlyInput* result)
     {
-        _rmiFlyHook.Original(self, result);
-        // TODO: we really need to introduce some extra checks that PlayerMoveController::readInput does - sometimes it skips reading input, and returning something non-zero breaks stuff...
-        if((IgnoreUserInput || result->Forward == 0 && result->Left == 0 && result->Up == 0) && DirectionToDestination(true) is var relDir && relDir != null)
+        _rmiFlyHook!.OriginalDisposeSafe(self, result);
+        try
         {
-            var dir = relDir.Value.h.ToDirection();
-            result->Forward = dir.Y;
-            result->Left = dir.X;
-            result->Up = relDir.Value.v.Rad;
+            // TODO: we really need to introduce some extra checks that PlayerMoveController::readInput does - sometimes it skips reading input, and returning something non-zero breaks stuff...
+            if((IgnoreUserInput || result->Forward == 0 && result->Left == 0 && result->Up == 0) && DirectionToDestination(true) is var relDir && relDir != null)
+            {
+                var dir = relDir.Value.h.ToDirection();
+                result->Forward = dir.Y;
+                result->Left = dir.X;
+                result->Up = relDir.Value.v.Rad;
+            }
+        }
+        catch(Exception ex)
+        {
+            OnDetourError(ex);
         }
     }
 
     private (Angle h, Angle v)? DirectionToDestination(bool allowVertical)
     {
-        var player = Svc.ClientState.LocalPlayer;
+        var player = Svc.Objects.LocalPlayer;
         if(player == null)
             return null;
 
@@ -106,16 +148,46 @@ public unsafe class OverrideMovement : IDisposable
         var dirH = Angle.FromDirectionXZ(dist);
         var dirV = allowVertical ? Angle.FromDirection(new(dist.Y, new Vector2(dist.X, dist.Z).Length())) : default;
 
-        var refDir = _legacyMode
-            ? ((CameraEx*)CameraManager.Instance()->GetActiveCamera())->DirH.Radians() + 180.Degrees()
+        var activeCamera = _legacyMode ? TryGetActiveCamera() : null;
+        var refDir = activeCamera != null
+            ? activeCamera->DirH.Radians() + 180.Degrees()
             : player.Rotation.Radians();
         return (dirH - refDir, dirV);
     }
 
+    // CameraManager.GetActiveCamera() is a ClientStructs [MemberFunction] and CameraManager.Instance() forwards
+    // to Control.Instance(), a [StaticAddress]: when either signature stops resolving they *throw*
+    // InvalidOperationException instead of returning null, and this path runs inside the RMIWalk/RMIFly detours
+    // every frame. So check the resolved addresses up front and skip the camera-reference path; legacy mode
+    // then falls back to the character's own facing (steering is wrong-ish rather than fatal).
+    private static bool CameraApiResolved
+        => FFXIVClientStructs.FFXIV.Client.Game.Control.Control.Addresses.Instance.Value != 0
+        && CameraManager.Addresses.GetActiveCamera.Value != 0;
+
+    private static FFXIVClientStructs.FFXIV.Client.Game.Camera* TryGetActiveCamera()
+    {
+        if(!CameraApiResolved)
+            return null;
+        var mgr = CameraManager.Instance();
+        return mgr != null ? mgr->GetActiveCamera() : null;
+    }
+
+    // 上一次寫進 log 的 legacy mode 值；null ＝ 還沒印過任何一行。
+    private bool? _loggedLegacyMode;
+
     private void OnConfigChanged(object? sender, ConfigChangeEvent evt) => UpdateLegacyMode();
     private void UpdateLegacyMode()
     {
+        // UiControlChanged 會對「任何」UI 設定變更觸發，所以這個方法被呼叫得非常頻繁。
+        // _legacyMode 必須每次重讀（那是行為），但 log 只在值真的變了時才印：
+        // 無條件重印會讓每一次 UI 設定變更都多一行（同一毫秒可以印好幾行）。
         _legacyMode = Svc.GameConfig.UiControl.TryGetUInt("MoveMode", out var mode) && mode == 1;
-        PluginLog.Information($"Legacy mode is now {(_legacyMode ? "enabled" : "disabled")}");
+        if (_loggedLegacyMode == _legacyMode)
+            return;
+        var firstLegacyModeLog = _loggedLegacyMode is null;
+        _loggedLegacyMode = _legacyMode;
+        PluginLog.Debug(firstLegacyModeLog
+            ? $"Legacy mode is initially {(_legacyMode ? "enabled" : "disabled")}"
+            : $"Legacy mode is now {(_legacyMode ? "enabled" : "disabled")}");
     }
 }

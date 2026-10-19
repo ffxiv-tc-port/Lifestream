@@ -100,7 +100,7 @@ public sealed class CustomAethernet
 
     public void Tick()
     {
-        if(Svc.ClientState.LocalPlayer != null && ZoneInfo.ContainsKey(P.Territory))
+        if(Svc.Objects.LocalPlayer != null && ZoneInfo.ContainsKey(P.Territory))
         {
             UpdateActiveAetheryte();
         }

@@ -73,7 +73,7 @@ public static unsafe class TaskISShortcut
             }
         });
 
-        IGameObject baldin() => Svc.Objects.FirstOrDefault(x => x.DataId == (uint)IslandNPC.Baldin);
+        IGameObject baldin() => Svc.Objects.FirstOrDefault(x => x.BaseId == (uint)IslandNPC.Baldin);
 
         void TravelToIsland()
         {
@@ -88,17 +88,20 @@ public static unsafe class TaskISShortcut
 
         bool TalkWithBaldin()
         {
-            if(TryGetAddonMaster<AddonMaster.Talk>(out var talk))
+            // Talk 走艦隊 15 幀政策(AddonPressGuard 與 Framework_Update 那一站共用同一把 key,同幀不會點兩次);
+            // 對未就緒/關閉中的 Talk 送 ReceiveEvent 是攔不到的 AccessViolation,所以要先過 IsAddonReady。
+            if(IPC.TextAdvanceManager.MayClickTalk && TryGetAddonMaster<AddonMaster.Talk>(out var talk) && talk.IsAddonReady
+                && AddonPressGuard.TryPressOnce("Talk", talk.Base, nameof(TalkWithBaldin), escapeIsRoutine: true))
                 talk.Click();
             return Utils.TrySelectSpecificEntry(Lang.TravelToMyIsland, () => EzThrottler.Throttle(nameof(TalkWithBaldin)));
         }
 
         bool ConfirmIslandTravel()
         {
-            var addon = (AddonSelectYesno*)Utils.GetSpecificYesno(true, Lang.TravelToYourIsland);
-            if(addon != null && addon->YesButton->IsEnabled)
+            var addon = (AddonSelectYesno*)Utils.GetSpecificYesno(Lang.TravelToYourIsland, LegacyMatch.SpacelessContainsAny);
+            if(addon != null && IsButtonEnabled(addon->YesButton))
             {
-                if(EzThrottler.Throttle(nameof(ConfirmIslandTravel), 5000))
+                if(EzThrottler.Throttle(nameof(ConfirmIslandTravel), 5000) && AddonPressGuard.TryPressOnce("SelectYesno", addon, nameof(ConfirmIslandTravel)))
                 {
                     new AddonMaster.SelectYesno(addon).Yes();
                     return true;

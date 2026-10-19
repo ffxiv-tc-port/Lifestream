@@ -2,7 +2,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <Authors>NightmareXIV</Authors>
-        <Version>2.5.1.13</Version>
+        <RepoUrl>https://github.com/ffxiv-tc-port/Lifestream</RepoUrl>
+        <IconUrl>https://raw.githubusercontent.com/ffxiv-tc-port/DalamudPluginsTC/main/icons/Lifestream.png</IconUrl>
+        <BuildNumberFile>$(MSBuildProjectDirectory)\BuildNumber.txt</BuildNumberFile>
+        <_PreviousBuildNumber Condition="Exists('$(BuildNumberFile)')">$([System.IO.File]::ReadAllText('$(BuildNumberFile)').Trim())</_PreviousBuildNumber>
+        <_PreviousBuildNumber Condition="'$(_PreviousBuildNumber)' == ''">0</_PreviousBuildNumber>
+        <BuildNumber>$([MSBuild]::Add($(_PreviousBuildNumber), 1))</BuildNumber>
+        <VersionPrefix>7.15.0</VersionPrefix>
+        <Version>$(VersionPrefix).$(BuildNumber)</Version>
+        <AssemblyVersion>$(Version)</AssemblyVersion>
+        <FileVersion>$(Version)</FileVersion>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -13,6 +22,7 @@
         <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
         <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
         <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <AppendPlatformToOutputPath>false</AppendPlatformToOutputPath>
         <OutputPath>bin\$(Configuration)\</OutputPath>
         <NoWarn>CS1591;IDE0052</NoWarn>
         <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
@@ -23,6 +33,8 @@
     <PropertyGroup Label="Documentation">
         <DocumentationFile></DocumentationFile>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <!-- 文件註解照常由編譯器產生（留在 obj，文件註解語法檢查照舊），只是不複製進輸出目錄：執行期用不到，出貨包也就不帶它。 -->
+        <CopyDocumentationFileToOutputDirectory>false</CopyDocumentationFileToOutputDirectory>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -30,7 +42,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="DalamudPackager" Version="2.1.13" />
+        <PackageReference Include="DalamudPackager" Version="13.0.0" />
         <PackageReference Include="NotificationMasterAPI" Version="1.0.0.1" />
     </ItemGroup>
 
@@ -73,8 +85,20 @@
             <HintPath>$(DalamudLibPath)Dalamud.dll</HintPath>
             <Private>False</Private>
         </Reference>
-        <Reference Include="ImGui.NET">
-            <HintPath>$(DalamudLibPath)ImGui.NET.dll</HintPath>
+        <Reference Include="Dalamud.Bindings.ImGui">
+            <HintPath>$(DalamudLibPath)Dalamud.Bindings.ImGui.dll</HintPath>
+            <Private>False</Private>
+        </Reference>
+        <Reference Include="Dalamud.Bindings.ImPlot">
+            <HintPath>$(DalamudLibPath)Dalamud.Bindings.ImPlot.dll</HintPath>
+            <Private>False</Private>
+        </Reference>
+        <Reference Include="Dalamud.Bindings.ImGuizmo">
+            <HintPath>$(DalamudLibPath)Dalamud.Bindings.ImGuizmo.dll</HintPath>
+            <Private>False</Private>
+        </Reference>
+        <Reference Include="TerraFX.Interop.Windows">
+            <HintPath>$(DalamudLibPath)TerraFX.Interop.Windows.dll</HintPath>
             <Private>False</Private>
         </Reference>
         <Reference Include="Lumina">
@@ -97,14 +121,6 @@
             <HintPath>$(DalamudLibPath)SharpDX.dll</HintPath>
             <Private>False</Private>
         </Reference>
-        <Reference Include="PInvoke.User32">
-            <HintPath>$(DalamudLibPath)PInvoke.User32.dll</HintPath>
-            <Private>False</Private>
-        </Reference>
-        <Reference Include="PInvoke.Windows.Core.dll">
-            <HintPath>$(DalamudLibPath)PInvoke.Windows.Core.dll</HintPath>
-            <Private>False</Private>
-        </Reference>
     </ItemGroup>
 
     <ItemGroup>
@@ -120,5 +136,16 @@
         <None Update="StaticData.json">
           <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </None>
+        <None Update="LanguageChineseTraditional.ini">
+          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
     </ItemGroup>
+
+    <!-- ECommons 的文件註解檔 ECommons.xml 執行期用不到：不複製進輸出目錄，出貨包也就不帶它（ECommons.pdb 照留，崩潰堆疊行號要用）。 -->
+    <Target Name="ExcludeECommonsXmlDoc" AfterTargets="ResolveAssemblyReferences">
+        <ItemGroup>
+            <_ECommonsXmlDoc Include="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)%(Extension)' == 'ECommons.xml'" />
+            <ReferenceCopyLocalPaths Remove="@(_ECommonsXmlDoc)" />
+        </ItemGroup>
+    </Target>
 </Project>

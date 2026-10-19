@@ -22,8 +22,11 @@ public static class Service
     public static class Gui
     {
         public static SelectWorldWindow SelectWorldWindow;
+        public static InstanceSwitcherWindow InstanceSwitcherWindow;
         public static Overlay Overlay;
         public static ProgressOverlay ProgressOverlay;
+        public static TeleportPanelWindow TeleportPanelWindow;
+        public static TeleportFavoritesWindow TeleportFavoritesWindow;
     }
 
     public static class Ipc

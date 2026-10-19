@@ -1,41 +1,40 @@
 ﻿# Lifestream
-Lifestream is a plugin that helps with navigation between data centers, worlds, instances, residential areas. Visit another world, data center or house with just a single command.
-## Become a Supporter!
-If you like Lifestream, please consider becoming a supporter on Patreon or via other means! This will help me to continue updating Lifestream and work on new plugins and features and you will receive benefits such as early progress updates, priority support, prioritized feature requests, early testing builds and private tools. 
-- [Subscribe on Patreon (Starts from $1)](https://subscribe.nightmarexiv.com/) - eligible for Discord role
-- [Donate Litecoin, Bitcoin, Tether or other crypto](https://crypto.nightmarexiv.com/) - eligible for Discord role
-- [One-time donation on Ko-Fi](https://ko-fi.com/nightmarexiv)
 
-### Also:
-- [Explore other plugins I maintain or contributed to](https://explore.nightmarexiv.com/)
-- [Join NightmareXIV Discord server to receive fast support and pings about plugin updates](https://discord.gg/m8NRt4X8Gf)
-## Key features
-- Visit another world with one command, even if on another data center
-- One-click to travel between aetherytes
-- Quickly switch between area instances
-- Use shortcuts to go to your home, fc house, apartment, grand company, market board
-- Create address books where you can store residential addresses of your friends or venues and go there at any time with one click
+[Lifestream](https://github.com/NightmareXIV/Lifestream) 的台服移植版，一個指令跨資料中心/世界/分線/住宅傳送。
 
-## Optional dependencies
-- [vnavmesh](https://github.com/awgil/ffxiv_navmesh) from `https://puni.sh/api/repository/veyn` for pathing to your grand company automatically
-## This plugin is in development
-This means that there are still features that I would like to implement in future or features that I would like to enhance, as well as that I'm accepting suggestions and feature requests.
-## Installation
-1. Install [FFXIVQuickLauncher](https://github.com/goatcorp/FFXIVQuickLauncher?tab=readme-ov-file#xivlauncher-----) and enable Dalamud in it's settings. You have to run the game through FFXIVQuickLauncher in order for any of these plugins to work.
-2. Open Dalamud settings by typing `/xlsettings` in game chat.
-3. Go to "Experimental" tab.
-4. Find "Custom Plugin Repositories" section, agree with listed terms if needed and paste the following link into text input field: `https://github.com/NightmareXIV/MyDalamudPlugins/raw/main/pluginmaster.json`
-5. Click "Save" button.
+## 功能
 
-You should now have NightmareXIV plugins available in your plugin installer. <br>
-Open plugin installer by typing `/xlplugins` in game chat, go to "Available plugins" section and search for a plugin you would like to install.
+- **世界與資料中心旅行**：`/li <世界>`、`/li <資料中心>`（隨機挑該資料中心一個世界），支援跨資料中心；`/li` 不帶參數＝回到原始伺服器
+- **一鍵乙太之光/都市傳送網傳送**：`/li <目的地>`、`/li <世界>, tp <目的地>` 指定其他世界的傳送點
+- **地圖整合**：在區域地圖上點擊城內乙太之晶標記即可快速傳送（設定可關）
+- **分線切換**：即時切換所在區域的分線
+- **快捷目的地**：`/li mb`（市場佈告板）、`/li home`（個人房屋）、`/li fc`（公會房屋）、`/li apt`（公寓）、`/li shared`（共用房屋）、`/li auto`（依設定的偏好挑一處住宅）、`/li ws`（公會工坊）、`/li inn`（旅店）、`/li gc`（大國防聯軍）、`/li gcc`（大國防聯軍所在城市的公會儲物櫃）、`/li cosmic`（渴望灣）、`/li island`（無人島）、`/li occult`（新月島）；`hc`／`hcc` 會先回原始伺服器
+- **住宅門牌傳送**：`/li <轄區> <小隊> <地號>` 直接前往指定住宅地
+- **地址簿**：儲存好友或店家的住宅地址，一鍵前往
+- **自訂指令別名**：可為常用目的地建立自己的 `/li` 子指令
+- **多段路徑**：串接多個目的地，依序自動傳送
+- **傳送面板/收藏視窗**：`/li panel`（搜尋、收藏、備註、地圖預覽）、`/li fav`（收藏分類管理）、`/li w`（世界旅行視窗）
+- **自訂目的地**：`/li goto <名稱>` 傳送到該區最近的乙太之光後走（或飛）到存好的座標
+- **旅行封鎖清單**：可封鎖特定方向的傳送，作為避免誤觸的最後防線
+- **排程**：可設定關閉遊戲前記住目標世界，下次啟動遊戲後自動前往（換資料中心等需要重啟的情境）
+- `/li stop`：中止目前所有傳送與移動（也可右鍵進度條）
 
-![image](https://github.com/NightmareXIV/MyDalamudPlugins/blob/main/meta/install/installer.png?raw=true)
+## 台服版的修改
 
-## Support
-Join NightmareXIV Discord server to receive support for this plugin: https://discord.gg/m8NRt4X8Gf
-[![](https://dcbadge.vercel.app/api/server/m8NRt4X8Gf)](https://discord.gg/m8NRt4X8Gf)
+- **傳送面板、收藏視窗、自訂落點與 `/li goto`**：我方新增。乙太之光可設定自訂落點，抵達後自動走到存好的位置；城內會先經都市傳送網中繼。
+- **野外自動飛行**：自訂落點與 `/li goto` 在可飛行（風脈泉已全部共鳴）的野外區域會自動上坐騎飛過去（設定「野外導航在可飛行的區域改用飛行」，預設開，20 米以下照舊用走的）；飛行中被手動操作會讓位，停手後從當下位置接著飛，抵達後降落（不下坐騎）。
+- **直接進島**：傳送面板「珠串萬貨街」那一列的按鈕（或 `/li occult`），一路傳送、搭船、找傑弗瑞進入新月島。
+- **自訂別名加強**：每一步可單獨執行或從這一步跑到最後、移動可加隨機座標與限定移動區域、新增「等待區域轉換」步驟；做不到的步驟會在編輯器標出並在執行時提醒。
+- **自動移動卡住偵測**：推不動就跳一下或重算路徑，不再頂著障礙物空等。
+- **世界清單**：台服已停止營運的「拉姆」出廠就排除，清單可自己增減。
+- **在目前的城內乙太之晶上重新傳送**（記憶體修補，預設關，使用者自行承擔風險）：方便搭配自訂落點回到存好的位置。
+- **跨插件整合**：抵達目的地時請 TataruPraise 念一句（可關）；付費傳送先通知 GilDelta 記成「傳送」；提供 `Lifestream.GoToMapPoint` 等 IPC 給其他插件（例：從 Mappy 地圖右鍵導航）。
+- **台服相容性修正**：選單與確認框改讀遊戲資料表比對、乙太之光名稱、多段路徑的疾跑等；遊戲改版後有特徵碼對不上時只停掉對應的功能。
+- 多處防閃退修正（視窗連按、跨插件 IPC 改在主執行緒執行）與多處降低記憶體用量。
+- 介面繁體中文化。
 
-The server operates on a ticket-based system. Please create a ticket and describe your issue.
-Additionally, you may create an issue in the repository. Reply time for tickets may be significantly longer than on Discord, however, the issue does not have any risks to be lost.
-(Basically, if you want to report a critical bug or receive help, prefer Discord, if you want to suggest feature or report non-critical bug, prefer Github)
+## 選用依賴
+
+- [vnavmesh](https://github.com/awgil/ffxiv_navmesh)：自動尋路走到大國防聯軍等場景內目的地，`/li goto`、自訂落點與野外飛行也需要它
+- Splatoon：畫出自動移動的路線
+- TataruPraise、GilDelta：見上方跨插件整合

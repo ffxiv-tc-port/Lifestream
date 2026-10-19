@@ -35,13 +35,13 @@ public unsafe class CharaSelectOverlay : EzOverlayWindow
         var homeWorldData = ExcelWorldHelper.Get(CharaWorld);
         if(homeWorldData == null)
         {
-            ImGuiEx.Text($"Error: for world {homeWorldData} no data found");
+            ImGuiEx.Text("Error: for world ?? no data found".Loc(CharaWorld));
             return;
         }
         var worlds = Utils.GetVisitableWorldsFrom(homeWorldData.Value).OrderBy(x => x.Name.ToString()).ToArray();
         if(worlds.Length == 0)
         {
-            ImGuiEx.Text($"No available destinations");
+            ImGuiEx.Text("No available destinations".Loc());
             return;
         }
         if(TryGetValidCharaSelectListMenu(out var m))
@@ -49,12 +49,12 @@ public unsafe class CharaSelectOverlay : EzOverlayWindow
             var chara = m.Characters.FirstOrDefault(x => x.Name == CharaName && x.HomeWorld == CharaWorld);
             if(chara == null)
             {
-                ImGuiEx.Text($"Character not found: {CharaName}@{ExcelWorldHelper.GetName(CharaWorld)}");
+                ImGuiEx.Text("Character not found: ??".Loc($"{CharaName}@{ExcelWorldHelper.GetName(CharaWorld)}"));
                 return;
             }
             ImGuiEx.LineCentered(() =>
             {
-                ImGui.Checkbox("Do not log in after transfer", ref NoLogin);
+                ImGui.Checkbox("Do not log in after transfer".Loc(), ref NoLogin);
             });
             var datacenters = worlds.Select(x => x.DataCenter).DistinctBy(x => x.RowId).OrderBy(x => x.Value.Region).ToArray();
             if(ImGui.BeginTable("LifestreamSelectWorld", datacenters.Length, ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.BordersV | ImGuiTableFlags.BordersOuter | ImGuiTableFlags.NoSavedSettings))
@@ -105,13 +105,13 @@ public unsafe class CharaSelectOverlay : EzOverlayWindow
         }
         else
         {
-            ImGuiEx.Text("Unable to display world selection.");
+            ImGuiEx.Text("Unable to display world selection.".Loc());
         }
     }
 
     public static bool TryGetValidCharaSelectListMenu(out AddonMaster._CharaSelectListMenu m)
     {
-        return TryGetAddonMaster<AddonMaster._CharaSelectListMenu>(out m)
+        return TryGetAddonMaster<AddonMaster._CharaSelectListMenu>("_CharaSelectListMenu", out m)
             && !Utils.IsAddonVisible("SelectYesno")
             && !Utils.IsAddonVisible("SelectOk")
             && !Utils.IsAddonVisible("ContextMenu")
@@ -209,6 +209,8 @@ public unsafe class CharaSelectOverlay : EzOverlayWindow
 
         public override void PreDraw()
         {
+            // base.PreDraw() 承載每視窗不透明度的 PushStyleVar(Alpha);自家的 style push 排在它之後。
+            base.PreDraw();
             ImGuiHelpers.SetNextWindowPosRelativeMainViewport(Vector2.Zero);
             ImGui.SetNextWindowSize(ImGuiHelpers.MainViewport.Size);
             ImGui.PushStyleColor(ImGuiCol.WindowBg, ImGuiEx.Vector4FromRGBA(0x000000AA));
@@ -223,6 +225,8 @@ public unsafe class CharaSelectOverlay : EzOverlayWindow
         public override void PostDraw()
         {
             ImGui.PopStyleColor();
+            // 自家的 pop 做完才輪到 base.PostDraw() 收掉不透明度的 PushStyleVar。
+            base.PostDraw();
         }
     }
 }

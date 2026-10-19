@@ -1,6 +1,7 @@
 ﻿using Dalamud.Game.ClientState.Objects.Types;
 using ECommons.Automation;
 using ECommons.GameFunctions;
+using Callback = ECommons.Automation.Callback;
 using ECommons.GameHelpers;
 using ECommons.Throttlers;
 using ECommons.UIHelpers.AddonMasterImplementations;
@@ -9,6 +10,7 @@ using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lifestream.AtkReaders;
+using Lifestream.Systems.Legacy;
 
 namespace Lifestream.Schedulers;
 
@@ -61,6 +63,63 @@ internal static unsafe class WorldChange
         return Utils.TrySelectSpecificEntry(Lang.Aethernet, () => EzThrottler.Throttle("SelectString"));
     }
 
+    /// <summary>
+    /// 「需要的話才選以太之光網路」。
+    /// </summary>
+    /// <remarks>
+    /// 主水晶互動後會先跳一層 SelectString(以太之光網路／跨界傳送／切換副本區…),城內以太之光則直接開 TelepotTown 目的地清單、
+    /// 沒有這一層選單:對後者排 <see cref="SelectAethernet"/> 會永遠找不到那一項而空轉到逾時,而且過程中一行訊息都沒有。
+    /// 節點種類在排入佇列的當下還判不出來(要先走過去 ActiveAetheryte 才有值),所以看**實際開出來的是哪個視窗**:
+    /// <para>
+    /// <list type="bullet">
+    /// <item>TelepotTown(目的地清單)已開 → 這一層選單不存在,直接放行。</item>
+    /// <item>SelectString 開著且有「以太之光網路」那一項 → 照舊選它(行為與 <see cref="SelectAethernet"/> 相同)。</item>
+    /// <item>SelectString 開著但沒有那一項 → 把看到的選項全部印進 log 後放行(特例區域會直接把目的地列在 SelectString 裡,見 <see cref="TeleportToAethernetDestination(string)"/>)。</item>
+    /// <item>兩個都還沒開 → 回 false 繼續等(互動到開窗有幾百毫秒延遲),並定期印出「在等什麼」。</item>
+    /// </list>
+    /// </para>
+    /// <para>每一種狀態都會定期寫 Information 診斷,log 看得出卡在哪一步、當下的選單長什麼樣。</para>
+    /// </remarks>
+    internal static bool? SelectAethernetIfNeeded()
+    {
+        if(!Player.Available) return false;
+
+        if(TryGetAddonByName<AtkUnitBase>("TelepotTown", out var telep) && IsAddonReady(telep))
+        {
+            if(EzThrottler.Throttle("AethernetMenuSkipLog", 5000))
+            {
+                PluginLog.Information($"[Aethernet] Destination list is already open - the node we interacted with has no aethernet submenu, skipping menu selection. ({DescribeActiveAetheryte()})");
+            }
+            return true;
+        }
+
+        if(TryGetAddonByName<AddonSelectString>("SelectString", out var addon) && IsAddonReady(&addon->AtkUnitBase))
+        {
+            var entries = Utils.GetEntries(addon);
+            if(entries.Any(x => Lang.Aethernet.Matches(x, LegacyMatch.EqualsAny))) return SelectAethernet();
+            // 選單已開但選項還沒填進去(開窗的那一兩幀)——當作還沒開,繼續等,不要誤判成「沒有這一項」。
+            if(entries.Count == 0) return false;
+            if(EzThrottler.Throttle("AethernetMenuMismatchLog", 5000))
+            {
+                PluginLog.Information($"[Aethernet] SelectString is open but none of its entries is the aethernet option. Looked for [{Lang.Aethernet.Describe()}], menu shows [{entries.Print(" | ")}]. Passing through to destination selection. ({DescribeActiveAetheryte()})");
+            }
+            return true;
+        }
+
+        if(EzThrottler.Throttle("AethernetMenuWaitLog", 5000))
+        {
+            PluginLog.Information($"[Aethernet] Waiting for the aetheryte window: neither SelectString nor TelepotTown is open yet. ({DescribeActiveAetheryte()})");
+        }
+        return false;
+    }
+
+    private static string DescribeActiveAetheryte()
+    {
+        var a = P.ActiveAetheryte;
+        if(a == null) return "ActiveAetheryte=null";
+        return $"ActiveAetheryte={a.Value.Name}({a.Value.ID}), isMasterAetheryte={a.Value.IsAetheryte}";
+    }
+
     internal static bool? SelectVisitAnotherWorld()
     {
         if(!Player.Available) return false;
@@ -70,10 +129,10 @@ internal static unsafe class WorldChange
     internal static bool? ConfirmWorldVisit(string s)
     {
         if(!Player.Available) return false;
-        var x = (AddonSelectYesno*)Utils.GetSpecificYesno(true, Lang.ConfirmWorldVisit);
+        var x = (AddonSelectYesno*)Utils.GetSpecificYesno(Lang.ConfirmWorldVisit, LegacyMatch.SpacelessContainsAny);
         if(x != null)
         {
-            if(x->YesButton->IsEnabled && EzThrottler.Throttle("ConfirmWorldVisit"))
+            if(IsButtonEnabled(x->YesButton) && EzThrottler.Throttle("ConfirmWorldVisit") && AddonPressGuard.TryPressOnce("SelectYesno", x, nameof(ConfirmWorldVisit)))
             {
                 new AddonMaster.SelectYesno(x).Yes();
                 return true;
@@ -86,12 +145,14 @@ internal static unsafe class WorldChange
     {
         if(!Player.Available) return false;
         var worlds = Utils.GetAvailableWorldDestinations();
+        // 讀到 U+FFFD ＝ 窗記憶體變動中,這一幀不碰。
+        if(AddonPressGuard.AnyTextUnstable("WorldTravelSelect", worlds)) return false;
         var index = Array.IndexOf(worlds, world);
         if(index != -1)
         {
             if(TryGetAddonByName<AtkUnitBase>("WorldTravelSelect", out var addon) && IsAddonReady(addon))
             {
-                if(EzThrottler.Throttle("SelectWorldToVisit", 1000))
+                if(EzThrottler.Throttle("SelectWorldToVisit", 1000) && AddonPressGuard.TryPressOnce("WorldTravelSelect", addon, nameof(SelectWorldToVisit)))
                 {
                     Callback.Fire(addon, true, index + 2);
                     return true;
@@ -164,7 +225,10 @@ internal static unsafe class WorldChange
             var reader = new ReaderTelepotTown(telep);
             for(var i = 0; i < reader.DestinationName.Count; i++)
             {
-                if(reader.DestinationName[i].Name == name)
+                var destName = reader.DestinationName[i].Name;
+                // 讀到 U+FFFD ＝ 窗記憶體變動中,這一幀不碰。
+                if(AddonPressGuard.IsTextUnstable("TelepotTown", destName)) return false;
+                if(destName == name)
                 {
                     var data = reader.DestinationData.SafeSelect(i);
                     if(data != null)
@@ -172,9 +236,14 @@ internal static unsafe class WorldChange
                         if(EzThrottler.Throttle("TeleportToAethernetDestination", 2000))
                         {
                             var callback = data.CallbackData;
+                            // 上游刻意對 TelepotTown 連送兩次同參數的 Fire(11, callback)(各隔一個 tick),沒有說明第一次是「選取」還是「直接啟動傳送」;
+                            // 兩種語意對「第二次該不該送」的答案相反,所以不猜,兩種都安全:
+                            //  ・每次都重新從 addon 清單取 TelepotTown,位址不同或已不在(＝第一次已啟動傳送、窗走完了)就回 true 不送;
+                            //  ・窗還在就經 AddonPressGuard(粒度含參數組、多次互動窗的 15 幀逃生口):第二次要等同位址同參數過了 15 幀才送。
+                            var telepAddress = (nint)telep;
                             P.TaskManager.InsertMulti(
-                                new(() => Callback.Fire(telep, true, 11, callback)),
-                                new(() => Callback.Fire(telep, true, 11, callback))
+                                new(() => FireTelepotTownOnce(telepAddress, callback), "TelepotTownFire#1"),
+                                new(() => FireTelepotTownOnce(telepAddress, callback), "TelepotTownFire#2")
                                 );
                             return true;
                         }
@@ -184,9 +253,10 @@ internal static unsafe class WorldChange
         }
         else if(S.Data.CustomAethernet.QuasiAethernetZones.Contains(P.Territory) && TryGetAddonMaster<AddonMaster.SelectString>(out var m) && m.IsAddonReady)
         {
+            if(AddonPressGuard.AnyTextUnstable("SelectString", m.Entries.Select(e => e.Text))) return false;
             if(Utils.TryFindEqualsOrContains(m.Entries, e => e.Text, name, out var entry))
             {
-                if(EzThrottler.Throttle("TeleportToAethernetDestination", 2000))
+                if(EzThrottler.Throttle("TeleportToAethernetDestination", 2000) && AddonPressGuard.TryPressOnce("SelectString", m.Base, "TeleportToAethernetDestination.Quasi", paramKey: entry.Index.ToString()))
                 {
                     entry.Select();
                     return true;
@@ -196,10 +266,31 @@ internal static unsafe class WorldChange
         return false;
     }
 
+    /// <summary>
+    /// <see cref="TeleportToAethernetDestination(string)"/> 排入的兩個 Fire 任務共用的本體:每 tick 重新取窗、經守衛、送一次。
+    /// 回 <see langword="true"/> ＝ 這一步結束(送出了,或那扇窗已經不在/不再就緒、沒東西可送);
+    /// 回 <see langword="false"/> ＝ 這一幀被守衛擋下,下一 tick 再來。
+    /// 🔴 <paramref name="expected"/> 只做位址等值比較,永遠不解參。
+    /// </summary>
+    private static bool FireTelepotTownOnce(nint expected, uint callback)
+    {
+        if(!TryGetAddonByName<AtkUnitBase>("TelepotTown", out var telep) || (nint)telep != expected || !IsAddonReady(telep))
+        {
+            PluginLog.Debug($"[Aethernet] TelepotTown 0x{expected:X} 已不在 addon 清單或不再就緒(傳送多半已啟動),略過這一發 Fire(11, {callback})");
+            return true;
+        }
+        if(!AddonPressGuard.TryPressOnce("TelepotTown", telep, nameof(TeleportToAethernetDestination), paramKey: $"11|{callback}", escapeIsRoutine: true)) return false;
+        Callback.Fire(telep, true, 11, callback);
+        return true;
+    }
+
     internal static bool? ExecuteTPToAethernetDestination(uint destination, uint subIndex = 0)
     {
         if(!Player.Available) return false;
-        if(AgentMap.Instance()->IsPlayerMoving == false && !IsOccupied() && !Player.Object.IsCasting && EzThrottler.Throttle("ExecTP", 1000))
+        // AgentMap 取得器合法回 null。拿不到就回 false 讓工作重試,不要對 null 讀 IsPlayerMoving。
+        var map = AgentMap.Instance();
+        if(map == null) return false;
+        if(map->IsPlayerMoving == false && !IsOccupied() && !Player.Object.IsCasting && EzThrottler.Throttle("ExecTP", 1000))
         {
             return S.TeleportService.TeleportToAetheryte(destination, subIndex);
             //return Svc.PluginInterface.GetIpcSubscriber<uint, byte, bool>("Teleport").InvokeFunc(destination, (byte)subIndex);
@@ -222,6 +313,15 @@ internal static unsafe class WorldChange
     internal static bool? TargetReachableMasterAetheryte()
     {
         return TargetReachableAetheryte(Utils.GetReachableMasterAetheryte);
+    }
+
+    /// <summary>
+    /// 跟 <see cref="TargetReachableMasterAetheryte"/> 同一套鎖定機制,但目標放寬成「同一個以太之光
+    /// 網路裡摸得到的任一節點」(主水晶或城內以太之光都算),對應 <see cref="Utils.GetReachableAethernetNetworkNode"/>。
+    /// </summary>
+    internal static bool? TargetReachableAethernetNetworkNode(TinyAetheryte root, uint? excludeId = null)
+    {
+        return TargetReachableAetheryte(_ => Utils.GetReachableAethernetNetworkNode(root, excludeId));
     }
 
     internal static bool? TargetReachableAetheryte(Func<bool, IGameObject> aetheryteFunc)
@@ -256,7 +356,7 @@ internal static unsafe class WorldChange
         if(!Player.Available) return false;
         if(EzThrottler.Throttle("EnableAutomove", 200))
         {
-            Chat.SendMessage("/automove on");
+            Movement.AutomoveOwner.On();
             return true;
         }
         return false;
@@ -273,7 +373,7 @@ internal static unsafe class WorldChange
         if(!Player.Available) return false;
         if(EzThrottler.Throttle("DisableAutomove", 200))
         {
-            Chat.SendMessage("/automove off");
+            Movement.AutomoveOwner.Off();
             return true;
         }
         return false;
@@ -295,7 +395,8 @@ internal static unsafe class WorldChange
     {
         if(TryGetAddonMaster<AddonMaster.LookingForGroupDetail>(out var m))
         {
-            if(m.IsAddonReady && Utils.GenericThrottle) Callback.Fire(m.Base, true, -1);
+            // 「送 -1 直到窗消失」的重試迴圈:第一次 -1 後窗關閉中仍過 IsAddonReady,第 11 幀再送就落在危險窗口 ⇒ 同位址只送一次。
+            if(m.IsAddonReady && Utils.GenericThrottle && AddonPressGuard.TryPressOnce("LookingForGroupDetail", m.Base, nameof(ClosePF))) Callback.Fire(m.Base, true, -1);
         }
         else
         {
@@ -304,13 +405,26 @@ internal static unsafe class WorldChange
         return false;
     }
 
-    internal static bool OpenSelfPF()
+    /// <summary>回 null＝中止整趟：打不開自己的隊員招募時，後面的 EndPF／WaitUntilNotRecruiting 只會等到逾時。</summary>
+    internal static bool? OpenSelfPF()
     {
+        if(!S.Memory.CanOpenPartyFinderInfo)
+        {
+            PluginLog.Warning("[Lifestream] 打不開自己的隊員招募（特徵碼對不上），這趟切換世界中止；請先手動結束招募再試。");
+            ChatQueue.Red($"[Lifestream] {"Could not end your Party Finder recruitment automatically - please end it manually and try again.".Loc()}");
+            return null;
+        }
         if(Player.Available)
         {
             if(Utils.GenericThrottle)
             {
-                S.Memory.OpenPartyFinderInfoDetour(AgentLookingForGroup.Instance(), Player.CID);
+                // 🔴 這個指標會被原封不動交給原生的 OpenPartyFinderInfo(hook 的 Original),
+                //    傳 null 進去是崩在遊戲程式碼裡、try/catch 攔不到。
+                //    AgentLookingForGroup 取得器合法回 null,所以先判空;拿不到就這次不呼叫、
+                //    回 false 讓工作下一幀重試。
+                var lfg = AgentLookingForGroup.Instance();
+                if(lfg == null) return false;
+                S.Memory.OpenPartyFinderInfoDetour(lfg, Player.CID);
                 return true;
             }
         }
@@ -321,7 +435,7 @@ internal static unsafe class WorldChange
     {
         if(TryGetAddonMaster<AddonMaster.LookingForGroupDetail>(out var m) && m.IsAddonReady)
         {
-            if(Utils.GenericThrottle)
+            if(Utils.GenericThrottle && AddonPressGuard.TryPressOnce("LookingForGroupDetail", m.Base, nameof(EndPF)))
             {
                 m.TellEnd();
                 return true;
@@ -354,7 +468,7 @@ internal static unsafe class WorldChange
         var x = (AddonSelectYesno*)Utils.GetSpecificYesno();
         if(x != null)
         {
-            if(x->YesButton->IsEnabled && EzThrottler.Throttle("ConfirmLeaveParty"))
+            if(IsButtonEnabled(x->YesButton) && EzThrottler.Throttle("ConfirmLeaveParty") && AddonPressGuard.TryPressOnce("SelectYesno", x, nameof(ConfirmLeaveParty)))
             {
                 new SelectYesnoMaster(x).Yes();
                 return true;

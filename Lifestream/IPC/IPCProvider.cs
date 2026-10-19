@@ -1,4 +1,5 @@
-﻿using ECommons.EzIpcManager;
+﻿using ECommons;
+using ECommons.EzIpcManager;
 using ECommons.GameHelpers;
 using Lifestream.Data;
 using Lifestream.Enums;
@@ -15,7 +16,9 @@ public class IPCProvider
 {
     private IPCProvider()
     {
-        EzIPC.Init(this, reducedLogging: true);
+        ECommonsMain.ReducedLogging = true;
+        EzIPC.Init(this);
+        ECommonsMain.ReducedLogging = false;
     }
 
     [EzIPC]
@@ -24,10 +27,44 @@ public class IPCProvider
         return P;
     }
 
+    /// <summary>
+    /// 讓別的外掛用 <c>/li &lt;參數&gt;</c> 的語法驅動 Lifestream。
+    /// </summary>
+    /// <param name="arguments">/li 後面的參數。<b>不可以是空的</b> —— null、空字串或只有
+    /// 空白一律被拒絕（見本檔尾端「空參數守衛」區塊），什麼都不會排。</param>
+    /// <remarks>
+    /// 📌 回傳型別維持 <c>void</c>：現有消費端（AutoRetainer / GatherBuddyReborn /
+    /// ICE / Saucy / ChilledLeves）全都以 <c>Action&lt;string&gt;</c> 訂閱，改成回傳 bool 會讓
+    /// Dalamud CallGate 型別不合、整條 IPC 靜默斷掉。所以「拒絕了」只能靠 Information log 回報。
+    /// </remarks>
     [EzIPC]
     public void ExecuteCommand(string arguments)
     {
-        P.ProcessCommand("/li", arguments);
+        // 🔴 空參數守衛必須留在**呼叫端的執行緒**上：RejectEmptyIpcCommand 是靠走受管堆疊
+        //    認出呼叫者的，一旦搬到遊戲主執行緒，呼叫端的組件就已經不在堆疊上，
+        //    診斷會整批退化成「不明」。Core 裡那份守衛保留當第二道，語意相同。
+        if(string.IsNullOrWhiteSpace(arguments))
+        {
+            RejectEmptyIpcCommand(nameof(ExecuteCommand), arguments);
+            return;
+        }
+        // 「stop」會中止任務鏈；呼叫端只認得出在它自己的執行緒上，所以在進閘門之前先認。
+        var abortSource = arguments == "stop" ? $"IPC ExecuteCommand(「stop」)（呼叫端＝{TryIdentifyIpcCaller()}）" : null;
+        IpcFrameworkGate.Run(nameof(ExecuteCommand), () => ExecuteCommandCore(arguments, abortSource));
+    }
+
+    private void ExecuteCommandCore(string arguments, string abortSource = null)
+    {
+        if(string.IsNullOrWhiteSpace(arguments))
+        {
+            // 🔴🔴 空參數＝裸 /li＝（預設設定下）把角色傳送回本世界。
+            //      詳見本檔尾端「空參數守衛」區塊。
+            RejectEmptyIpcCommand(nameof(ExecuteCommand), arguments);
+            return;
+        }
+        // 這是別的外掛在驅動 Lifestream，不是使用者主動下的 /li ——
+        // 走內層，不掛「抵達提醒」哨兵。
+        P.ProcessCommandInternal("/li", arguments, abortSource);
     }
 
     [EzIPC]
@@ -38,33 +75,153 @@ public class IPCProvider
 
     [EzIPC]
     public bool IsHere(AddressBookEntryTuple addressBookEntryTuple)
+        => IpcFrameworkGate.Get(nameof(IsHere), () => IsHereCore(addressBookEntryTuple), false);
+
+    private bool IsHereCore(AddressBookEntryTuple addressBookEntryTuple)
     {
         return Utils.IsHere(AddressBookEntry.FromTuple(addressBookEntryTuple));
     }
 
     [EzIPC]
     public bool IsQuickTravelAvailable(AddressBookEntryTuple addressBookEntryTuple)
+        => IpcFrameworkGate.Get(nameof(IsQuickTravelAvailable), () => IsQuickTravelAvailableCore(addressBookEntryTuple), false);
+
+    private bool IsQuickTravelAvailableCore(AddressBookEntryTuple addressBookEntryTuple)
     {
         return Utils.IsQuickTravelAvailable(AddressBookEntry.FromTuple(addressBookEntryTuple));
     }
 
     [EzIPC]
     public void GoToHousingAddress(AddressBookEntryTuple addressBookEntryTuple)
+        => IpcFrameworkGate.Run(nameof(GoToHousingAddress), () => GoToHousingAddressCore(addressBookEntryTuple));
+
+    private void GoToHousingAddressCore(AddressBookEntryTuple addressBookEntryTuple)
     {
         AddressBookEntry.FromTuple(addressBookEntryTuple).GoTo();
     }
 
+    /// <summary>
+    /// 「Lifestream 現在正在忙」的唯讀狀態。TCToolbox／ICE／Saucy 這類消費端會**高頻輪詢**它。
+    /// </summary>
+    /// <remarks>
+    /// 🔴 這支跑在<b>呼叫端的執行緒</b>上，而 <c>P.TaskManager</c>（NeoTaskManager，內部是裸 <c>List&lt;T&gt;</c>）與
+    /// <c>P.followPath.Waypoints</c>（底下是裸 <c>List&lt;Vector3&gt;</c>，<c>followPath.Update()</c> 每幀在 <c>RemoveAt</c> 它）
+    /// 都只有在 framework 執行緒上才讀得安全：並行改動時看到的可能是集合內部不變式被打破的中間態。
+    /// <para>
+    /// 🔑 這裡刻意<b>不</b>走 <see cref="IpcFrameworkGate"/>：那條路最多會等主執行緒
+    /// <see cref="IpcFrameworkGate.TimeoutMs"/> 毫秒，而這是被高頻輪詢的布林端點 ——
+    /// 把呼叫端的執行緒卡住比讓它讀到差一幀的值糟得多。改成讀 framework 執行緒每幀寫入的
+    /// 快照（<see cref="UpdateBusySnapshot"/>），最舊差一幀。
+    /// </para>
+    /// <para>📌 已經在 framework 執行緒上時（含本檔其他 <c>*Core</c> 的內部呼叫）就地算；卸載期也不受影響：
+    /// 這條路徑一次都沒有呼叫 <c>RunOnFrameworkThread</c>，沒有「<c>IsFrameworkUnloading</c> 為真時就地在呼叫端執行緒執行」那個旁路可踩。</para>
+    /// </remarks>
     [EzIPC]
     public bool IsBusy()
+        => Svc.Framework.IsInFrameworkUpdateThread ? IsBusyCore() : IsBusySnapshot;
+
+    /// <summary>
+    /// <see cref="IsBusy"/> 的實際判斷。
+    /// <b>只能在 framework 執行緒上呼叫。</b>
+    /// </summary>
+    private static bool IsBusyCore()
     {
-        return P.TaskManager.IsBusy || (P.followPath != null && P.followPath.Waypoints.Count > 0);
+        // 先抄進區域變數再用：「判 null」與「讀 Count」各自讀 P.followPath 的話，中間被設成 null 就是 NullReferenceException。
+        var followPath = P.followPath;
+        return P.TaskManager.IsBusy || (followPath != null && followPath.Waypoints.Count > 0);
     }
+
+    /// <summary>
+    /// <see cref="IsBusy"/> 給別的執行緒讀的每幀快照。
+    /// <c>volatile</c> 保證讀到的是最近一次寫入的值（<c>bool</c> 的讀寫本身就是原子的），不需要鎖。
+    /// </summary>
+    private static volatile bool IsBusySnapshot;
+
+    /// <summary>
+    /// 由 <c>Lifestream.Framework_Update</c>（framework 執行緒）每幀呼叫一次。
+    /// 🔴 必須排在 <c>followPath?.Update()</c> <b>之後</b>：那一支每幀會把已經走過的航點移掉，
+    /// 排在它前面時「最後一個航點剛走完」的那一幀，快照會比實際狀態多忙一幀。
+    /// </summary>
+    internal static void UpdateBusySnapshot() => IsBusySnapshot = IsBusyCore();
 
     [EzIPC]
     public void Abort()
     {
+        // 真的有東西可中止時才回推呼叫端：回推要走一次受管堆疊，而且只能在呼叫端的執行緒上做。
+        var busy = Svc.Framework.IsInFrameworkUpdateThread ? IsBusyCore() : IsBusySnapshot;
+        var caller = busy ? TryIdentifyIpcCaller() : null;
+        IpcFrameworkGate.Run(nameof(Abort), () => AbortCore(caller));
+    }
+
+    private void AbortCore(string caller)
+    {
+        Systems.TravelDiag.LogAbort($"IPC Lifestream.Abort（呼叫端＝{caller ?? "不明"}）");
+        Movement.VnavMoveOwner.StopIfOurs("IPC Lifestream.Abort");
+        Movement.AutomoveOwner.StopIfOurs("IPC Lifestream.Abort");
         P.TaskManager.Abort();
         P.followPath?.Stop();
+    }
+
+    /// <summary>
+    /// 前往「地圖上的一個點」:自動判斷跨不跨區、選最近的乙太之光傳送過去,再由 vnavmesh
+    /// 走(或飛)到那個點。編排與 <c>/li &lt;自訂落點&gt;</c> 共用同一條鏈。
+    /// 📌 端點名 <c>Lifestream.GoToMapPoint</c>。要中止請用既有的 <c>Lifestream.Abort</c>;
+    ///    要問還在不在跑用 <c>Lifestream.IsBusy</c>。
+    /// 🔴 參數順序與型別是對外契約,已有消費端(Mappy 地圖右鍵的「移動到這裡」)照此接線,不要改。
+    /// </summary>
+    /// <param name="territory">目標區域的 TerritoryType row id。</param>
+    /// <param name="worldX">目標點的世界座標 X。</param>
+    /// <param name="worldZ">目標點的世界座標 Z。**不需要 Y** —— 抵達之後由 Lifestream
+    /// 向 vnavmesh 問這個 XZ 底下的地板高度。</param>
+    /// <param name="fly">允許使用飛行坐騎跑最後一段。區域不可飛、或起飛失敗時會自動退回
+    /// 地面路線,不會因此失敗。</param>
+    /// <returns>
+    /// true = 已經排進佇列(呼叫端可用 <c>IsBusy</c> 追蹤)。
+    /// false = **什麼都沒排**,呼叫端不要等。發生於:區域 id 為 0、Lifestream 正在忙、
+    /// 角色不可互動(讀取中/過場/未登入)、vnavmesh 沒安裝或沒載入,
+    /// 或目標區域沒有任何已解鎖的乙太之光可用(最後這項會另外在聊天欄說明原因)。
+    /// </returns>
+    [EzIPC]
+    public bool GoToMapPoint(uint territory, float worldX, float worldZ, bool fly)
+    {
+        // 呼叫端只認得出在它自己的執行緒上；這個端點由使用者點擊觸發，走一次受管堆疊的成本可以接受。
+        var caller = TryIdentifyIpcCaller();
+        return IpcFrameworkGate.Get(nameof(GoToMapPoint), () => GoToMapPointCore(territory, worldX, worldZ, fly, caller), false);
+    }
+
+    private bool GoToMapPointCore(uint territory, float worldX, float worldZ, bool fly, string caller)
+    {
+        var request = $"區域 {territory} XZ({worldX:F1}, {worldZ:F1})、要求飛行={fly}、呼叫端＝{caller}";
+        if(territory == 0) return RejectGoToMapPoint("zero", "區域 id 為 0", request, caller);
+        if(IsBusy()) return RejectGoToMapPoint("busy", $"Lifestream 正在忙（目前任務 {P.TaskManager.CurrentTask?.Name ?? "無"}、排隊 {P.TaskManager.Tasks.Count} 項、自動移動剩 {P.followPath?.Waypoints.Count ?? 0} 個航點）", request, caller);
+        if(!Player.Interactable) return RejectGoToMapPoint("noplayer", "角色目前不可互動（讀取畫面、過場或未登入）", request, caller);
+        // 這個功能整段都靠 vnavmesh(解地板高度 + 尋路),沒有它連「插旗請你自己走」都做不好
+        // (我們只有 XZ,多層地圖插的旗會落在錯的樓層)。直接拒絕比排一條走不完的佇列誠實。
+        if(!Tasks.Utility.TaskGotoDestination.IsVnavmeshLoaded()) return RejectGoToMapPoint("nonav", "vnavmesh 沒有安裝或沒有載入", request, caller);
+        Systems.TravelDiag.Record($"接受 GoToMapPoint：{request}");
+        // 抵達提醒哨兵：這條 IPC 的來源是使用者在地圖上右鍵點的一下（Mappy），
+        // 語意上就是使用者主動下的指令，所以跟 /li 一樣要出聲。
+        // 哨兵自帶「設定開關/有沒有真的排任務/去重」判斷，失敗路徑（回 false 什麼都沒排）不會響。
+        var queuedBefore = P.TaskManager.NumQueuedTasks;
+        var queued = Tasks.Utility.TaskGotoDestination.EnqueueToMapPoint(new()
+        {
+            Name = "the point on the map".Loc(),
+            Territory = territory,
+            WorldX = worldX,
+            WorldZ = worldZ,
+        }, fly);
+        if(queued) Tasks.Utility.TaskAnnounceArrival.EnqueueIfChainStarted(queuedBefore);
+        PluginLog.Information($"[Goto] GoToMapPoint {(queued ? "已排入" : "沒有排入任何任務（原因見前一行）")}：{request}。");
+        return queued;
+    }
+
+    private static bool RejectGoToMapPoint(string key, string reason, string request, string caller)
+    {
+        if(Systems.TravelDiag.ShouldLog($"GoToMapPoint.{key}.{caller}"))
+        {
+            PluginLog.Information($"[Goto] 拒絕 GoToMapPoint（什麼都沒排）：{reason}。要求＝{request}。");
+        }
+        return false;
     }
 
     [EzIPC]
@@ -82,17 +239,52 @@ public class IPCProvider
     [EzIPC]
     public void TPAndChangeWorld(string w, bool isDcTransfer, string secondaryTeleport, bool noSecondaryTeleport, int? gateway, bool? doNotify, bool? returnToGateway)
     {
+        // 空參數守衛留在呼叫端的執行緒上（理由同 ExecuteCommand）。
+        if(string.IsNullOrWhiteSpace(w))
+        {
+            RejectEmptyIpcCommand(nameof(TPAndChangeWorld), w);
+            return;
+        }
+        IpcFrameworkGate.Run(nameof(TPAndChangeWorld), () => TPAndChangeWorldCore(w, isDcTransfer, secondaryTeleport, noSecondaryTeleport, gateway, doNotify, returnToGateway));
+    }
+
+    private void TPAndChangeWorldCore(string w, bool isDcTransfer, string secondaryTeleport, bool noSecondaryTeleport, int? gateway, bool? doNotify, bool? returnToGateway)
+    {
+        // 空字串會在 ExcelWorldHelper.Get("") 命中 World 表裡「名稱為空」的佔位列，
+        // 接著整條世界轉移鏈會拿那個垃圾世界跑下去。
+        if(string.IsNullOrWhiteSpace(w))
+        {
+            RejectEmptyIpcCommand(nameof(TPAndChangeWorld), w);
+            return;
+        }
         P.TPAndChangeWorld(w, isDcTransfer, secondaryTeleport, noSecondaryTeleport, (WorldChangeAetheryte?)gateway, doNotify, returnToGateway);
     }
 
+    /// <summary>
+    /// 取得指定區域對應的「改世界用乙太之光」編號。
+    /// </summary>
+    /// <returns>
+    /// 查得到就回該乙太之光的編號；<b>該區域沒有改世界用的乙太之光時回 <c>null</c></b>。
+    /// </returns>
+    /// <remarks>
+    /// 🔴 查不到時必須回 <c>null</c>，不可以寫成 <c>(int)</c> 強制轉型：那會編成
+    /// <c>Nullable&lt;WorldChangeAetheryte&gt;::get_Value</c>，查不到時向呼叫端擲 <see cref="InvalidOperationException"/>，
+    /// 而消費端的 <c>EzIPC.Init</c> 沒帶 SafeWrapper，例外會一路傳到對方的呼叫碼。
+    /// 📌 兩個消費端（BOCCHI 的 Ocelot、SomethingNeedDoing）都把回傳宣告成可空，收得到 <c>null</c>。
+    /// </remarks>
     [EzIPC]
     public int? GetWorldChangeAetheryteByTerritoryType(uint territoryType)
     {
-        return (int)Utils.GetWorldChangeAetheryteByTerritoryType(territoryType);
+        var aetheryte = Utils.GetWorldChangeAetheryteByTerritoryType(territoryType);
+        if(aetheryte == null) return null;
+        return (int)aetheryte.Value;
     }
 
     [EzIPC]
     public bool ChangeWorld(string world)
+        => IpcFrameworkGate.Get(nameof(ChangeWorld), () => ChangeWorldCore(world), false);
+
+    private bool ChangeWorldCore(string world)
     {
         if(IsBusy()) return false;
         if(CanVisitCrossDC(world))
@@ -131,6 +323,24 @@ public class IPCProvider
     [EzIPC]
     public bool AethernetTeleport(string destination)
     {
+        // 空參數守衛留在呼叫端的執行緒上（理由同 ExecuteCommand）。
+        if(string.IsNullOrWhiteSpace(destination))
+        {
+            RejectEmptyIpcCommand(nameof(AethernetTeleport), destination);
+            return false;
+        }
+        return IpcFrameworkGate.Get(nameof(AethernetTeleport), () => AethernetTeleportCore(destination), false);
+    }
+
+    private bool AethernetTeleportCore(string destination)
+    {
+        // 空字串在 Utils.TryFindEqualsOrContains 的第二輪比對會以 StartsWith("") 命中
+        // **第一筆** 乙太網點，等於「隨便傳一個地方」。拒絕比亂傳誠實。
+        if(string.IsNullOrWhiteSpace(destination))
+        {
+            RejectEmptyIpcCommand(nameof(AethernetTeleport), destination);
+            return false;
+        }
         if(IsBusy()) return false;
         TaskTryTpToAethernetDestination.Enqueue(destination);
         return true;
@@ -194,6 +404,9 @@ public class IPCProvider
     /// <returns></returns>
     [EzIPC]
     public uint GetActiveAetheryte()
+        => IpcFrameworkGate.Get(nameof(GetActiveAetheryte), () => GetActiveAetheryteCore(), 0u);
+
+    private uint GetActiveAetheryteCore()
     {
         if(P.ActiveAetheryte != null)
         {
@@ -208,6 +421,9 @@ public class IPCProvider
     /// <returns></returns>
     [EzIPC]
     public uint GetActiveCustomAetheryte()
+        => IpcFrameworkGate.Get(nameof(GetActiveCustomAetheryte), () => GetActiveCustomAetheryteCore(), 0u);
+
+    private uint GetActiveCustomAetheryteCore()
     {
         if(S.Data.CustomAethernet.ActiveAetheryte != null)
         {
@@ -222,6 +438,9 @@ public class IPCProvider
     /// <returns></returns>
     [EzIPC]
     public uint GetActiveResidentialAetheryte()
+        => IpcFrameworkGate.Get(nameof(GetActiveResidentialAetheryte), () => GetActiveResidentialAetheryteCore(), 0u);
+
+    private uint GetActiveResidentialAetheryteCore()
     {
         if(S.Data.ResidentialAethernet.ActiveAetheryte != null)
         {
@@ -232,12 +451,18 @@ public class IPCProvider
 
     [EzIPC]
     public bool Teleport(uint destination, byte subIndex)
+        => IpcFrameworkGate.Get(nameof(Teleport), () => TeleportCore(destination, subIndex), false);
+
+    private bool TeleportCore(uint destination, byte subIndex)
     {
-        return S.TeleportService.TeleportToAetheryte(destination, subIndex);
+        return S.TeleportService.TeleportToAetheryte(destination, subIndex, abortChainWhenRefused: false);
     }
 
     [EzIPC]
     public bool TeleportToFC()
+        => IpcFrameworkGate.Get(nameof(TeleportToFC), () => TeleportToFCCore(), false);
+
+    private bool TeleportToFCCore()
     {
         if(!P.TaskManager.IsBusy)
         {
@@ -249,6 +474,9 @@ public class IPCProvider
 
     [EzIPC]
     public bool TeleportToHome()
+        => IpcFrameworkGate.Get(nameof(TeleportToHome), () => TeleportToHomeCore(), false);
+
+    private bool TeleportToHomeCore()
     {
         if(!P.TaskManager.IsBusy)
         {
@@ -260,6 +488,9 @@ public class IPCProvider
 
     [EzIPC]
     public bool TeleportToApartment()
+        => IpcFrameworkGate.Get(nameof(TeleportToApartment), () => TeleportToApartmentCore(), false);
+
+    private bool TeleportToApartmentCore()
     {
         if(!P.TaskManager.IsBusy)
         {
@@ -273,6 +504,29 @@ public class IPCProvider
     public (HousePathData Private, HousePathData FC) GetHousePathData(ulong CID)
     {
         return (Utils.GetHousePathDatas().FirstOrDefault(x => x.CID == CID && x.IsPrivate), Utils.GetHousePathDatas().FirstOrDefault(x => x.CID == CID && !x.IsPrivate));
+    }
+
+    /// <summary>
+    /// 與 <see cref="GetHousePathData"/> 同一份資料，一次只取個人房或部隊房其中一間。
+    /// 回傳只用 CoreLib 的型別：兩端宣告同形狀時 Dalamud 直接交出結果，不必像 <see cref="GetHousePathData"/> 那樣每次整份轉 JSON。
+    /// </summary>
+    /// <returns>
+    /// 沒有這間房時 <c>Found=false</c>、其餘欄位全是預設值。列舉以 int 回傳（數值同 <see cref="ResidentialAetheryteKind"/>／<see cref="HouseEnterMode"/>）。
+    /// 兩條路徑是複本（原本是 null 就回 null），呼叫端改了不影響 Lifestream 的設定。
+    /// </returns>
+    /// <remarks>與 <see cref="GetHousePathData"/> 一樣不轉派框架執行緒；呼叫端要在框架執行緒呼叫。形狀不可再改：要改就換新名字。</remarks>
+    [EzIPC]
+    public (bool Found, int ResidentialDistrict, int Ward, int Plot, List<Vector3> PathToEntrance, List<Vector3> PathToWorkshop, bool EnableHouseEnterModeOverride, int EnterModeOverride) GetHousePathFields(ulong CID, bool isPrivate)
+    {
+        foreach(var x in Utils.GetHousePathDatas())
+        {
+            if(x.CID != CID || x.IsPrivate != isPrivate) continue;
+            return (true, (int)x.ResidentialDistrict, x.Ward, x.Plot,
+                x.PathToEntrance == null ? null : new List<Vector3>(x.PathToEntrance),
+                x.PathToWorkshop == null ? null : new List<Vector3>(x.PathToWorkshop),
+                x.EnableHouseEnterModeOverride, (int)x.EnterModeOverride);
+        }
+        return default;
     }
 
     [EzIPC]
@@ -289,30 +543,45 @@ public class IPCProvider
 
     [EzIPC]
     public void EnqueuePropertyShortcut(TaskPropertyShortcut.PropertyType type, HouseEnterMode? mode)
+        => IpcFrameworkGate.Run(nameof(EnqueuePropertyShortcut), () => EnqueuePropertyShortcutCore(type, mode));
+
+    private void EnqueuePropertyShortcutCore(TaskPropertyShortcut.PropertyType type, HouseEnterMode? mode)
     {
         TaskPropertyShortcut.Enqueue(type, mode);
     }
 
     [EzIPC]
     public void EnterApartment(bool enter)
+        => IpcFrameworkGate.Run(nameof(EnterApartment), () => EnterApartmentCore(enter));
+
+    private void EnterApartmentCore(bool enter)
     {
         TaskPropertyShortcut.Enqueue(TaskPropertyShortcut.PropertyType.Apartment, null, null, enter);
     }
 
     [EzIPC]
     public void EnqueueInnShortcut(int? innIndex)
+        => IpcFrameworkGate.Run(nameof(EnqueueInnShortcut), () => EnqueueInnShortcutCore(innIndex));
+
+    private void EnqueueInnShortcutCore(int? innIndex)
     {
         TaskPropertyShortcut.Enqueue(TaskPropertyShortcut.PropertyType.Inn, default, innIndex);
     }
 
     [EzIPC]
     public void EnqueueLocalInnShortcut(int? innIndex)
+        => IpcFrameworkGate.Run(nameof(EnqueueLocalInnShortcut), () => EnqueueLocalInnShortcutCore(innIndex));
+
+    private void EnqueueLocalInnShortcutCore(int? innIndex)
     {
         TaskPropertyShortcut.Enqueue(TaskPropertyShortcut.PropertyType.Inn, default, innIndex, useSameWorld: true);
     }
 
     [EzIPC]
     public (ResidentialAetheryteKind Kind, int Ward, int Plot)? GetCurrentPlotInfo()
+        => IpcFrameworkGate.Get<(ResidentialAetheryteKind Kind, int Ward, int Plot)?>(nameof(GetCurrentPlotInfo), () => GetCurrentPlotInfoCore(), null);
+
+    private (ResidentialAetheryteKind Kind, int Ward, int Plot)? GetCurrentPlotInfoCore()
     {
         if(UIHouseReg.TryGetCurrentPlotInfo(out var kind, out var ward, out var plot))
         {
@@ -323,18 +592,27 @@ public class IPCProvider
 
     [EzIPC]
     public bool CanChangeInstance()
+        => IpcFrameworkGate.Get(nameof(CanChangeInstance), () => CanChangeInstanceCore(), false);
+
+    private bool CanChangeInstanceCore()
     {
         return S.InstanceHandler.CanChangeInstance();
     }
 
     [EzIPC]
     public int GetNumberOfInstances()
+        => IpcFrameworkGate.Get(nameof(GetNumberOfInstances), () => GetNumberOfInstancesCore(), 0);
+
+    private int GetNumberOfInstancesCore()
     {
         return S.InstanceHandler.InstancesInitizliaed(out var ret) ? ret : 0;
     }
 
     [EzIPC]
     public void ChangeInstance(int number)
+        => IpcFrameworkGate.Run(nameof(ChangeInstance), () => ChangeInstanceCore(number));
+
+    private void ChangeInstanceCore(int number)
     {
         TaskRemoveAfkStatus.Enqueue();
         TaskChangeInstance.Enqueue(number);
@@ -342,12 +620,18 @@ public class IPCProvider
 
     [EzIPC]
     public int GetCurrentInstance()
+        => IpcFrameworkGate.Get(nameof(GetCurrentInstance), () => GetCurrentInstanceCore(), 0);
+
+    private int GetCurrentInstanceCore()
     {
         return S.InstanceHandler.GetInstance();
     }
 
     [EzIPC]
     public bool? HasApartment()
+        => IpcFrameworkGate.Get<bool?>(nameof(HasApartment), () => HasApartmentCore(), null);
+
+    private bool? HasApartmentCore()
     {
         if(Player.Object.HomeWorld.RowId != Player.Object.CurrentWorld.RowId) return null;
         return TaskPropertyShortcut.GetApartmentAetheryteID().ID != 0;
@@ -355,6 +639,9 @@ public class IPCProvider
 
     [EzIPC]
     public bool? HasPrivateHouse()
+        => IpcFrameworkGate.Get<bool?>(nameof(HasPrivateHouse), () => HasPrivateHouseCore(), null);
+
+    private bool? HasPrivateHouseCore()
     {
         if(Player.Object.HomeWorld.RowId != Player.Object.CurrentWorld.RowId) return null;
         return TaskPropertyShortcut.GetPrivateHouseAetheryteID() != 0;
@@ -362,6 +649,9 @@ public class IPCProvider
 
     [EzIPC]
     public bool? HasFreeCompanyHouse()
+        => IpcFrameworkGate.Get<bool?>(nameof(HasFreeCompanyHouse), () => HasFreeCompanyHouseCore(), null);
+
+    private bool? HasFreeCompanyHouseCore()
     {
         if(Player.Object.HomeWorld.RowId != Player.Object.CurrentWorld.RowId) return null;
         return TaskPropertyShortcut.GetFreeCompanyAetheryteID() != 0;
@@ -369,12 +659,18 @@ public class IPCProvider
 
     [EzIPC]
     public void Move(List<Vector3> path)
+        => IpcFrameworkGate.Run(nameof(Move), () => MoveCore(path));
+
+    private void MoveCore(List<Vector3> path)
     {
         P.FollowPath.Move(path, true);
     }
 
     [EzIPC]
     public bool CanMoveToWorkshop()
+        => IpcFrameworkGate.Get(nameof(CanMoveToWorkshop), () => CanMoveToWorkshopCore(), false);
+
+    private bool CanMoveToWorkshopCore()
     {
         var data = Utils.GetFCPathData();
         if(data == null) return false;
@@ -388,6 +684,9 @@ public class IPCProvider
 
     [EzIPC]
     public void MoveToWorkshop()
+        => IpcFrameworkGate.Run(nameof(MoveToWorkshop), () => MoveToWorkshopCore());
+
+    private void MoveToWorkshopCore()
     {
         if(IsBusy()) return;
         var data = Utils.GetFCPathData();
@@ -406,10 +705,13 @@ public class IPCProvider
     }
 
     [EzIPC]
-    public bool CanAutoLogin() => Utils.CanAutoLogin();
+    public bool CanAutoLogin() => IpcFrameworkGate.Get(nameof(CanAutoLogin), () => Utils.CanAutoLogin(), false);
 
     [EzIPC]
     public bool ConnectAndOpenCharaSelect(string charaName, string charaHomeWorld)
+        => IpcFrameworkGate.Get(nameof(ConnectAndOpenCharaSelect), () => ConnectAndOpenCharaSelectCore(charaName, charaHomeWorld), false);
+
+    private bool ConnectAndOpenCharaSelectCore(string charaName, string charaHomeWorld)
     {
         if(IsBusy())
         {
@@ -420,6 +722,9 @@ public class IPCProvider
 
     [EzIPC]
     public bool InitiateTravelFromCharaSelectScreen(string charaName, string charaHomeWorld, string destination, bool noLogin)
+        => IpcFrameworkGate.Get(nameof(InitiateTravelFromCharaSelectScreen), () => InitiateTravelFromCharaSelectScreenCore(charaName, charaHomeWorld, destination, noLogin), false);
+
+    private bool InitiateTravelFromCharaSelectScreenCore(string charaName, string charaHomeWorld, string destination, bool noLogin)
     {
         if(IsBusy())
         {
@@ -430,12 +735,18 @@ public class IPCProvider
 
     [EzIPC]
     public bool CanInitiateTravelFromCharaSelectList()
+        => IpcFrameworkGate.Get(nameof(CanInitiateTravelFromCharaSelectList), () => CanInitiateTravelFromCharaSelectListCore(), false);
+
+    private bool CanInitiateTravelFromCharaSelectListCore()
     {
         return CharaSelectOverlay.TryGetValidCharaSelectListMenu(out var m);
     }
 
     [EzIPC]
     public bool ConnectAndTravel(string charaName, string charaHomeWorld, string destination, bool noLogin)
+        => IpcFrameworkGate.Get(nameof(ConnectAndTravel), () => ConnectAndTravelCore(charaName, charaHomeWorld, destination, noLogin), false);
+
+    private bool ConnectAndTravelCore(string charaName, string charaHomeWorld, string destination, bool noLogin)
     {
         if(IsBusy() || !CanAutoLogin())
         {
@@ -445,6 +756,150 @@ public class IPCProvider
         P.TaskManager.Enqueue(() => IpcUtils.InitiateTravelFromCharaSelectScreenInternal(charaName, charaHomeWorld, destination, noLogin));
         return true;
     }
+
+    #region Teleport panel favorites
+
+    // 讓別的外掛把「使用者已經在傳送面板收藏好的地點」直接當成導航目標。
+    // 🔴 這比讓呼叫端自己組路線安全得多:收藏項是**既知的乙太之光/乙太網點**,走的是面板按鈕
+    //    本來就在走的那條路(TaskTeleportPanelGo),不會出現自組跨區路線跑到別的城市那種事。
+
+    /// <summary>Teleport panel entries the user has starred, in the panel's own order.</summary>
+    /// <returns>(Id, SubIndex, DisplayName, Territory) for each favourite. DisplayName already honours the
+    /// user's rename. Id+SubIndex together identify an entry - the same aetheryte id can appear more than
+    /// once (housing sub-indices), so callers must keep both. Empty when nothing is starred.
+    /// Also empty while the teleport panel index has not been built yet (not logged in, or the very
+    /// first frame after login) - an empty list here is never an error, just try again shortly.</returns>
+    [EzIPC]
+    public List<(uint Id, byte SubIndex, string Name, uint Territory)> GetTeleportFavorites()
+        => IpcFrameworkGate.Get(nameof(GetTeleportFavorites), () => GetTeleportFavoritesCore(), new List<(uint Id, byte SubIndex, string Name, uint Territory)>());
+
+    private List<(uint Id, byte SubIndex, string Name, uint Territory)> GetTeleportFavoritesCore()
+    {
+        var result = new List<(uint, byte, string, uint)>();
+        // 🔴 GetSnapshot 不是 Get:IPC 路徑只讀既有快照、不觸發 Build();索引還沒建好時回空清單。
+        foreach(var x in Systems.TeleportPanel.TeleportPanelIndex.GetSnapshot())
+        {
+            if(!C.Favorites.Contains(x.Id)) continue;
+            result.Add((x.Id, x.SubIndex, x.DisplayName, x.Territory));
+        }
+        return result;
+    }
+
+    /// <summary>Travels to a starred teleport panel entry, exactly as clicking it in the favourites window does.</summary>
+    /// <returns>False when the entry is not a current favourite, or travelling cannot start right now
+    /// (Lifestream busy, no interactable player) - in that case nothing was queued, so the caller should
+    /// stop rather than wait for a completion that will never come.
+    /// Also false while the teleport panel index has not been built yet (not logged in, or the very
+    /// first frame after login).</returns>
+    [EzIPC]
+    public bool TeleportToFavorite(uint id, byte subIndex)
+        => IpcFrameworkGate.Get(nameof(TeleportToFavorite), () => TeleportToFavoriteCore(id, subIndex), false);
+
+    private bool TeleportToFavoriteCore(uint id, byte subIndex)
+    {
+        if(!C.Favorites.Contains(id)) return RejectFavorite(id, subIndex, "不在我的最愛裡");
+        if(P.TaskManager.IsBusy) return RejectFavorite(id, subIndex, "Lifestream 正在忙");
+        if(!Player.Interactable) return RejectFavorite(id, subIndex, "角色目前不可互動");
+
+        // IPC 路徑只讀既有快照、不觸發索引重建。索引還沒建好就回 false(什麼都沒排)。
+        foreach(var x in Systems.TeleportPanel.TeleportPanelIndex.GetSnapshot())
+        {
+            if(x.Id != id || x.SubIndex != subIndex) continue;
+            Tasks.Utility.TaskTeleportPanelGo.Enqueue(x);
+            return true;
+        }
+        return RejectFavorite(id, subIndex, "傳送面板索引裡沒有這一項（索引還沒建好，或這隻角色還沒共鳴）");
+    }
+
+    private static bool RejectFavorite(uint id, byte subIndex, string reason)
+    {
+        if(Systems.TravelDiag.ShouldLog($"TeleportToFavorite.{id}.{subIndex}.{reason}"))
+        {
+            PluginLog.Information($"[TeleportPanel] 拒絕 IPC TeleportToFavorite({id}, {subIndex})（什麼都沒排）：{reason}。");
+        }
+        return false;
+    }
+
+    #endregion
+
+    #region 空參數守衛
+
+    // 🔴🔴 裸 /li（不帶參數）在預設設定 LiCommandBehavior.Return_to_Home_World 下等於「把角色傳送回本世界」：
+    //      呼叫端只要不小心把目的地算成空字串，無人值守時就會被傳走（艦隊紅線「絕不用聊天指令呼叫空參數的 /li」的 IPC 版）。
+    //      守衛放在提供端：一次保護所有消費端，不必指望每個呼叫端自己擋。
+    // ⚠️ 只擋 null / 空字串 / 全空白，非空字串照常執行。
+
+    private static readonly string[] IpcCallerSkippedAssemblies =
+    [
+        "Lifestream", "ECommons", "Dalamud", "FFXIVClientStructs", "OtterGui",
+        "Lumina", "System", "Microsoft", "mscorlib", "netstandard",
+    ];
+
+    /// <summary>
+    /// 統一的拒絕點：寫一行 Information（要使用者回報的診斷），
+    /// 並盡力指出是哪個外掛呼叫的。節流只擋 log，不擋拒絕本身。
+    /// </summary>
+    private static void RejectEmptyIpcCommand(string endpoint, string received)
+    {
+        var caller = TryIdentifyIpcCaller();
+        // 🔴 這裡刻意**不用** EzThrottler：它是整個外掛共用的靜態 Dictionary 且零同步，
+        //    而這支從 IPC 端點進來，跑在**呼叫端的執行緒**上。並行插入弄壞的不只是這一個 key，
+        //    是整張表 —— 連帶弄壞外掛裡所有模組的節流。所以自帶字典＋自己的鎖。
+        //    首次必放行、key 帶呼叫端，不同外掛各自看得到第一次。
+        if(!ShouldLogReject($"{endpoint}.{caller}")) return;
+        var shown = received == null ? "null" : $"「{received}」";
+        PluginLog.Information($"[Lifestream IPC 守衛] 拒絕執行 {endpoint}({shown})：空參數等同裸 /li，預設設定下會把角色傳送回本世界，所以一律不執行。疑似呼叫端＝{caller}。請呼叫端改成傳明確的目的地，或在呼叫前自行判斷空值。");
+    }
+
+    /// <summary>同一個（端點＋呼叫端）組合的拒絕訊息重印間隔。</summary>
+    private const long RejectLogIntervalMs = 10000;
+
+    /// <summary>節流表上限，避免呼叫端身分意外發散時無限成長。</summary>
+    private const int MaxTrackedRejectKeys = 128;
+
+    private static readonly Dictionary<string, long> RejectLogTimes = [];
+
+    /// <summary>
+    /// 自帶的節流：首次必放行，之後每 <see cref="RejectLogIntervalMs"/> 毫秒放行一次。
+    /// 🔴 鎖內只碰字典 —— 不寫 log、不呼叫任何別的外掛、不做 I/O。
+    /// </summary>
+    private static bool ShouldLogReject(string key)
+    {
+        var now = Environment.TickCount64;
+        lock(RejectLogTimes)
+        {
+            if(RejectLogTimes.TryGetValue(key, out var last) && now - last < RejectLogIntervalMs) return false;
+            if(RejectLogTimes.Count >= MaxTrackedRejectKeys && !RejectLogTimes.ContainsKey(key)) RejectLogTimes.Clear();
+            RejectLogTimes[key] = now;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// CallGate 不帶呼叫端身分，只能從受管堆疊回推第一個既不是 Lifestream
+    /// 也不是框架的組件。這是盡力而為的診斷：回「不明」不代表沒事。
+    /// </summary>
+    private static string TryIdentifyIpcCaller()
+    {
+        try
+        {
+            var trace = new System.Diagnostics.StackTrace(false);
+            for(var i = 0; i < trace.FrameCount; i++)
+            {
+                var name = trace.GetFrame(i)?.GetMethod()?.DeclaringType?.Assembly.GetName().Name;
+                if(name == null) continue;
+                if(IpcCallerSkippedAssemblies.Any(x => name == x || name.StartsWith($"{x}.", StringComparison.Ordinal))) continue;
+                return name;
+            }
+        }
+        catch(Exception e)
+        {
+            return $"辨識失敗({e.GetType().Name})";
+        }
+        return "不明";
+    }
+
+    #endregion
 
     [EzIPCEvent] public System.Action OnHouseEnterError;
 }

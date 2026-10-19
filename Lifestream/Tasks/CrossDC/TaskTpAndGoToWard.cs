@@ -2,6 +2,7 @@
 using Dalamud.Game.ClientState.Objects.Enums;
 using ECommons.Automation;
 using ECommons.GameHelpers;
+using Callback = ECommons.Automation.Callback;
 using ECommons.Throttlers;
 using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -43,9 +44,25 @@ public static unsafe class TaskTpAndGoToWard
         if(C.WaitForScreenReady) P.TaskManager.Enqueue(Utils.WaitForScreen);
         P.TaskManager.Enqueue(() =>
         {
-            if(P.Territory != residentialArtheryte.GetTerritory() || (!Utils.ApproachConditionIsMet() && P.ActiveAetheryte?.IsAetheryte != true))
+            if(P.Territory != residentialArtheryte.GetTerritory())
             {
                 TaskTpToResidentialAetheryte.Insert(residentialArtheryte);
+            }
+            else if(P.ActiveAetheryte?.IsAetheryte != true)
+            {
+                if(Utils.GetReachableAetheryte(x => x.IsAetheryte()) != null && S.Data.DataStore.Aetherytes.Keys.TryGetFirst(a => a.ID == (uint)residentialArtheryte, out var rootAetheryte))
+                {
+                    P.TaskManager.InsertStack(() =>
+                    {
+                        TaskAethernetTeleport.Enqueue(rootAetheryte);
+                        P.TaskManager.Enqueue(Utils.WaitForScreenFalse);
+                        P.TaskManager.Enqueue(Utils.WaitForScreen);
+                    });
+                }
+                else
+                {
+                    TaskTpToResidentialAetheryte.Insert(residentialArtheryte);
+                }
             }
         }, "TaskTpToResidentialAetheryteIfNeeded");
         P.TaskManager.Enqueue(() => Utils.GetReachableAetheryte(x => x.ObjectKind == ObjectKind.Aetheryte) != null, "WaitUntilReachableAetheryteExists");
@@ -149,6 +166,8 @@ public static unsafe class TaskTpAndGoToWard
                             DuoLog.Error($"Apartment {apartmentNum + 1} is vacant, could not enter.");
                             return null;
                         }
+                        // 選房後窗關 ⇒ 不帶參數組(「回答」);換區那一發帶參數組,兩者互不干擾。
+                        if(!AddonPressGuard.TryPressOnce("MansionSelectRoom", addon, nameof(SelectApartment))) return false;
                         Callback.Fire(addon, true, 0, target);
                         return true;
                     }
@@ -160,7 +179,7 @@ public static unsafe class TaskTpAndGoToWard
                         DuoLog.Error($"Could not find apartment {apartmentNum + 1} (section {section} does not exist)");
                         return null;
                     }
-                    if(EzThrottler.Throttle("EnterApartmentRool", 5000))
+                    if(EzThrottler.Throttle("EnterApartmentRool", 5000) && AddonPressGuard.TryPressOnce("MansionSelectRoom", addon, "SelectApartment.Section", paramKey: $"1|{section}", escapeIsRoutine: true))
                     {
                         Callback.Fire(addon, true, 1, section);
                         return false;
@@ -173,10 +192,10 @@ public static unsafe class TaskTpAndGoToWard
 
     public static unsafe bool ConfirmApartmentEnterYesno()
     {
-        var addon = (AddonSelectYesno*)Utils.GetSpecificYesno(true, Lang.EnterApartmenr);
-        if(addon != null && addon->YesButton->IsEnabled)
+        var addon = (AddonSelectYesno*)Utils.GetSpecificYesno(Lang.EnterApartmenr, LegacyMatch.SpacelessContainsAny);
+        if(addon != null && IsButtonEnabled(addon->YesButton))
         {
-            if(EzThrottler.Throttle($"ConfirmApartmentEnter", 5000))
+            if(EzThrottler.Throttle($"ConfirmApartmentEnter", 5000) && AddonPressGuard.TryPressOnce("SelectYesno", addon, nameof(ConfirmApartmentEnterYesno)))
             {
                 new SelectYesnoMaster(addon).Yes();
                 return true;

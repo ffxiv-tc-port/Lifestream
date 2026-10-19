@@ -24,13 +24,17 @@ public static unsafe class TaskReturnToHomeWorldCharaSelect
     {
         if(TryGetAddonByName<AtkUnitBase>("LobbyWKTCheckHome", out var addon) && IsAddonReady(addon))
         {
-            if(addon->GetButtonNodeById(3)->IsEnabled)
+            if(IsButtonEnabled(addon->GetComponentButtonById(3)))
             {
                 if(DCChange.DCThrottle && EzThrottler.Throttle("ConfirmHomeWorldVisit", 5000))
                 {
-                    PluginLog.Debug($"[DCChange] Confirming home world transfer");
-                    addon->GetButtonNodeById(3)->ClickAddonButton(addon);
-                    return true;
+                    var button = addon->GetComponentButtonById(3);
+                    if(button != null && AddonPressGuard.TryPressOnce("LobbyWKTCheckHome", addon, nameof(ConfirmReturnToHomeWorld)))
+                    {
+                        PluginLog.Debug($"[DCChange] Confirming home world transfer");
+                        button->ClickAddonButton(addon);
+                        return true;
+                    }
                 }
             }
             else

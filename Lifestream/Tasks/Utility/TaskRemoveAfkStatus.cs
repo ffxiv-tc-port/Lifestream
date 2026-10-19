@@ -23,8 +23,8 @@ internal static class TaskRemoveAfkStatus
             if(MoveCancelConditions.Select(x => Svc.Condition[x]).Any(x => x))
             {
                 P.TaskManager.InsertMulti(
-                    new(() => Chat.ExecuteCommand("/automove on"), "Enable automove (AntiEmote)"),
-                    new(() => Chat.ExecuteCommand("/automove off"), "Disable automove (AntiEmote)"),
+                    new(Movement.AutomoveOwner.On, "Enable automove (AntiEmote)"),
+                    new(Movement.AutomoveOwner.Off, "Disable automove (AntiEmote)"),
                     new(() => !MoveCancelConditions.Select(x => Svc.Condition[x]).Any(x => x), "WaitUntilNotEmoting")
                     );
             }

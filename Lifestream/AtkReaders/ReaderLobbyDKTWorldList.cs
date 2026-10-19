@@ -15,8 +15,8 @@ public unsafe class ReaderLobbyDKTWorldList(AtkUnitBase* UnitBase, int BeginOffs
     {
         var dc = ExcelWorldHelper.GetDataCenters().FirstOrNull(x => x.Name.GetText() == SelectedDataCenter);
         if(dc == null) return 0;
-        var worlds = ExcelWorldHelper.GetPublicWorlds(dc.Value.RowId);
-        return worlds.Count(x => x.IsPublic());
+        var worlds = PublicWorlds.Get(dc.Value.RowId);
+        return worlds.Length;
     }
 
     public unsafe class RegionInfo(nint UnitBasePtr, int BeginOffset = 0) : AtkReader(UnitBasePtr, BeginOffset)

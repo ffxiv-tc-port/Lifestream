@@ -33,13 +33,14 @@ public class WotsitManager : IDisposable
 
     public void Dispose()
     {
-        ClearWotsit();
+        // 退訂放在 ClearWotsit 之前：它呼叫 Wotsit 的 IPC 可能擲例外，不能讓訂閱因此留在 CallGate 上。
         _faAvailable?.Unsubscribe(OnAvailable);
         _faInvoke?.Unsubscribe(HandleInvoke);
         ProperOnLogin.Unregister(OnLogin);
         Svc.ClientState.Logout -= OnLogout;
         EzConfig.OnSave -= ConfigSaved;
         Svc.ClientState.TerritoryChanged -= TerritoryChanged;
+        ClearWotsit();
         GC.SuppressFinalize(this);
     }
 
@@ -87,19 +88,21 @@ public class WotsitManager : IDisposable
 
     private void OnAvailable()
     {
-        PluginLog.Debug("WotsitManager: FA.Available triggered, forcing re-registration");
-        MaybeTryInit(true);
+        MaybeTryInit(true, "FA.Available triggered, forcing re-registration");
     }
 
     private void OnLogin()
     {
-        PluginLog.Debug("WotsitManager: ProperOnLogin.Available triggered, forcing re-registration");
-        MaybeTryInit(true);
+        MaybeTryInit(true, "ProperOnLogin.Available triggered, forcing re-registration");
     }
 
     private void OnLogout(int type, int code)
     {
-        PluginLog.Debug("WotsitManager: ClientState.Logout triggered, clearing wotsit");
+        // 沒裝 Wotsit 時登出照樣觸發:這一行要跟著 ClearWotsit 裡的閘門走,否則每次登出都寫一行。
+        if(Utils.WotsitInstalled())
+        {
+            PluginLog.Debug("WotsitManager: ClientState.Logout triggered, clearing wotsit");
+        }
         TryClearWotsit();
     }
 
@@ -109,21 +112,29 @@ public class WotsitManager : IDisposable
         {
             return;
         }
-        PluginLog.Debug("WotsitManager: Config saved, attempting re-registration");
-        MaybeTryInit(false);
+        MaybeTryInit(false, "Config saved, attempting re-registration");
     }
 
     private void TerritoryChanged(ushort territory)
     {
-        PluginLog.Debug($"WotsitManager: Territory changed to {territory}, attempting re-registration");
-        MaybeTryInit(false);
+        MaybeTryInit(false, $"Territory changed to {territory}, attempting re-registration");
     }
 
-    public void MaybeTryInit(bool force = false)
+    /// <summary>沒裝 Wotsit、或整合關著，就什麼都不做。</summary>
+    /// <remarks>
+    /// <paramref name="reason"/> 非空時在<b>閘門之後</b>寫一行 Debug。換區／登入／存設定這些
+    /// 事件在沒裝 Wotsit 的機器上照樣每次觸發,寫在閘門之前等於每次換區都留一行。
+    /// </remarks>
+    public void MaybeTryInit(bool force = false, string reason = "")
     {
         if(!C.WotsitIntegrationEnabled || !Utils.WotsitInstalled())
         {
             return;
+        }
+
+        if(!string.IsNullOrEmpty(reason))
+        {
+            PluginLog.Debug($"WotsitManager: {reason}");
         }
 
         try

@@ -75,10 +75,10 @@ public unsafe class SearchHelperOverlay : Window
 
         var additionalDescriptions = new Dictionary<string, string>
         {
-            ["help"] = "Show command help",
-            ["?"] = "Show command help",
-            ["commands"] = "Show command help",
-            ["stop"] = "Stop all tasks"
+            ["help"] = "Show command help".Loc(),
+            ["?"] = "Show command help".Loc(),
+            ["commands"] = "Show command help".Loc(),
+            ["stop"] = "Stop all tasks".Loc()
         };
 
         foreach(var kvp in additionalDescriptions)
@@ -108,7 +108,7 @@ public unsafe class SearchHelperOverlay : Window
         {
             var description = CommandDescriptions.TryGetValue(cmd, out var desc)
                 ? desc
-                : "Built-in command";
+                : "Built-in command".Loc();
             AddUniqueSuggestion(cmd, "Built-in", description);
         }
 
@@ -125,8 +125,8 @@ public unsafe class SearchHelperOverlay : Window
         {
             var stepCount = alias.Commands?.Count ?? 0;
             var desc = stepCount > 0
-                ? $"Custom sequence with {stepCount} step{(stepCount != 1 ? "s" : "")}"
-                : "Custom alias";
+                ? (stepCount != 1 ? "Custom sequence with ?? steps".Loc(stepCount) : "Custom sequence with ?? step".Loc(stepCount))
+                : "Custom alias".Loc();
             AddUniqueSuggestion(alias.Alias, "Custom Alias", desc);
         }
 
@@ -142,7 +142,7 @@ public unsafe class SearchHelperOverlay : Window
         {
             foreach(var world in S.Data.DataStore.Worlds)
             {
-                AddUniqueSuggestion(world, "World", $"Travel to {world}");
+                AddUniqueSuggestion(world, "World", "Travel to ??".Loc(world));
             }
         }
 
@@ -150,7 +150,7 @@ public unsafe class SearchHelperOverlay : Window
         {
             foreach(var world in S.Data.DataStore.DCWorlds)
             {
-                AddUniqueSuggestion(world, "DC World", $"Travel to {world} (cross-DC)");
+                AddUniqueSuggestion(world, "DC World", "Travel to ?? (cross-DC)".Loc(world));
             }
         }
     }
@@ -186,6 +186,8 @@ public unsafe class SearchHelperOverlay : Window
 
     public override void PreDraw()
     {
+        // base.PreDraw() 承載每視窗不透明度的 PushStyleVar(Alpha);自家的 style push 排在它之後。
+        base.PreDraw();
         if(C.AutoCompletionFixedWindow)
         {
             ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new(
@@ -214,6 +216,8 @@ public unsafe class SearchHelperOverlay : Window
     {
         ImGui.PopStyleVar(3);
         ImGui.PopStyleColor(2);
+        // 自家的 pop 做完才輪到 base.PostDraw() 收掉不透明度的 PushStyleVar。
+        base.PostDraw();
     }
 
     public override void Draw()
@@ -221,13 +225,13 @@ public unsafe class SearchHelperOverlay : Window
         if(FilteredSuggestions.Count == 0)
         {
             ImGui.PushStyleColor(ImGuiCol.Text, 0xFF808080);
-            ImGui.Text("No matching commands found");
+            ImGui.Text("No matching commands found".Loc());
             ImGui.PopStyleColor();
             return;
         }
 
         ImGui.PushStyleColor(ImGuiCol.Text, 0xFFFFFFFF);
-        ImGui.Text($"Lifestream Commands{(string.IsNullOrEmpty(FilterText) ? "" : $" matching '{FilterText}'")}:");
+        ImGui.Text(string.IsNullOrEmpty(FilterText) ? "Lifestream Commands:".Loc() : "Lifestream Commands matching '??':".Loc(FilterText));
         ImGui.PopStyleColor();
         ImGui.Separator();
 
@@ -281,7 +285,7 @@ public unsafe class SearchHelperOverlay : Window
 
         ImGui.Separator();
         ImGui.PushStyleColor(ImGuiCol.Text, 0xFF808080);
-        ImGui.Text("Click to complete");
+        ImGui.Text("Click to complete".Loc());
         ImGui.PopStyleColor();
         WindowSize = ImGui.GetWindowSize();
     }
@@ -308,17 +312,20 @@ public unsafe class SearchHelperOverlay : Window
         IsOpen = false;
     }
 
-    private static nint WantedVtblPtr
+    // 0＝還沒掃；-1＝掃過、對不上（同一場遊戲不會變好，不重掃）。
+    private static nint resolvedVtblPtr;
+
+    /// <summary>聊天輸入框元件的 vtable。回 false＝對不上：自動完成清單整個不出現。只在主執行緒呼叫。</summary>
+    internal static bool TryGetWantedVtblPtr(out nint ptr)
     {
-        get
+        if(resolvedVtblPtr == 0)
         {
-            if(field == 0)
-            {
-                field = Svc.SigScanner.GetStaticAddressFromSig("48 89 01 48 8D 05 ?? ?? ?? ?? 48 89 81 ?? ?? ?? ?? 48 8D 05 ?? ?? ?? ?? 48 89 81 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 8B 48 68", 4);
-            }
-            return field;
+            resolvedVtblPtr = Svc.SigScanner.TryGetStaticAddressFromSig("48 89 01 48 8D 05 ?? ?? ?? ?? 48 89 81 ?? ?? ?? ?? 48 8D 05 ?? ?? ?? ?? 48 89 81 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 8B 48 68", out var result, 4) && result != 0 ? result : -1;
+            if(resolvedVtblPtr == -1) PluginLog.Warning("[Lifestream] 特徵碼對不上（聊天輸入框元件）：在聊天欄輸入 /li 時的自動完成清單不會出現。");
         }
-    } = 0;
+        ptr = resolvedVtblPtr;
+        return resolvedVtblPtr != -1;
+    }
 
     private unsafe AtkComponentTextInput* GetActiveTextInput()
     {
@@ -329,7 +336,7 @@ public unsafe class SearchHelperOverlay : Window
         if(basePtr == null) return null;
 
         var vtblPtr = *(nint*)basePtr;
-        if(vtblPtr != WantedVtblPtr) return null;
+        if(!TryGetWantedVtblPtr(out var wantedVtblPtr) || vtblPtr != wantedVtblPtr) return null;
 
         return (AtkComponentTextInput*)((AtkComponentInputBase*)basePtr - 1);
     }

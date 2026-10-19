@@ -4,10 +4,12 @@ using ECommons.GameHelpers;
 using ECommons.SimpleGui;
 using Lifestream.Enums;
 using Lifestream.Systems;
+using Lifestream.Systems.Custom;
 using Lifestream.Tasks;
 using Lifestream.Tasks.CrossDC;
 using Lifestream.Tasks.CrossWorld;
 using Lifestream.Tasks.SameWorld;
+using System.Runtime.CompilerServices;
 
 namespace Lifestream.GUI;
 
@@ -15,9 +17,32 @@ public class Overlay : Window
 {
     private Overlay() : base("Lifestream Overlay", ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoFocusOnAppearing, true)
     {
+        // Draw 每幀要執行的各欄委派只在這裡建一次；排在 AddWindow 之前，加入視窗系統時就已備妥。
+        drawResidentialMain = () => DrawResidentialAethernet(false);
+        drawResidentialSubdivision = () => DrawResidentialAethernet(true);
+        drawCustomAethernet = DrawCustomAethernet;
+        drawNormalAethernet = DrawNormalAethernet;
+        drawWorldVisit = DrawWorldVisit;
+        drawHousingWards = DrawHousingWards;
+        drawInstances = DrawInstances;
         EzConfigGui.WindowSystem.AddWindow(this);
         IsOpen = true;
         new EzTerritoryChanged((x) => IsOpen = true);
+    }
+
+    private readonly Action drawResidentialMain;
+    private readonly Action drawResidentialSubdivision;
+    private readonly Action drawCustomAethernet;
+    private readonly Action drawNormalAethernet;
+    private readonly Action drawWorldVisit;
+    private readonly Action drawHousingWards;
+    private readonly Action drawInstances;
+
+    // 一幀最多 4 欄：一般乙太之光＋世界轉移＋房區＋分線（住宅區是 2 欄＋分線）。
+    [InlineArray(4)]
+    private struct DrawColumns
+    {
+        private Action element;
     }
 
     private Vector2 bWidth = new(10, 10);
@@ -29,6 +54,9 @@ public class Overlay : Window
 
     public override void PreDraw()
     {
+        // base.PreDraw() 承載 Dalamud 的每視窗不透明度(PushStyleVar(Alpha)),
+        // 漏掉它會讓該功能靜默失效;自家的 style push 一律排在它之後。
+        base.PreDraw();
         if(C.FixedPosition)
         {
             ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new Vector2(GetBasePosX(), GetBasePosY()) + C.Offset);
@@ -45,6 +73,8 @@ public class Overlay : Window
         {
             ImGui.PopStyleVar();
         }
+        // 自家的 pop 做完才輪到 base.PostDraw() 收掉不透明度的 PushStyleVar。
+        base.PostDraw();
     }
 
     private float GetBasePosX()
@@ -84,43 +114,45 @@ public class Overlay : Window
     public override void Draw()
     {
         RespectCloseHotkey = C.AllowClosingESC2;
-        List<Action> actions = [];
+        // 先判完要畫哪幾欄、再依序執行；緩衝在堆疊上、委派是建構時建好的，每幀不配置。
+        var actions = new DrawColumns();
+        var count = 0;
         if(S.Data.ResidentialAethernet.IsInResidentialZone())
         {
             if(C.ShowAethernet)
             {
-                actions.Add(() => DrawResidentialAethernet(false));
-                actions.Add(() => DrawResidentialAethernet(true));
+                actions[count++] = drawResidentialMain;
+                actions[count++] = drawResidentialSubdivision;
             }
         }
         else if(S.Data.CustomAethernet.ZoneInfo.ContainsKey(P.Territory))
         {
-            if(C.ShowAethernet) actions.Add(DrawCustomAethernet);
+            if(C.ShowAethernet) actions[count++] = drawCustomAethernet;
         }
         else if(P.ActiveAetheryte != null)
         {
-            if(C.ShowAethernet) actions.Add(DrawNormalAethernet);
-            if(P.ActiveAetheryte.Value.IsWorldChangeAetheryte() && C.ShowWorldVisit) actions.Add(DrawWorldVisit);
-            if(C.ShowWards && Utils.HousingAethernet.Contains(P.Territory) && P.ActiveAetheryte.Value.IsResidentialAetheryte()) actions.Add(DrawHousingWards);
+            if(C.ShowAethernet) actions[count++] = drawNormalAethernet;
+            if(P.ActiveAetheryte.Value.IsWorldChangeAetheryte() && C.ShowWorldVisit) actions[count++] = drawWorldVisit;
+            if(C.ShowWards && Utils.HousingAethernet.Contains(P.Territory) && P.ActiveAetheryte.Value.IsResidentialAetheryte()) actions[count++] = drawHousingWards;
         }
         if(S.InstanceHandler.GetInstance() != 0 && C.ShowInstanceSwitcher
             && (P.ActiveAetheryte == null || P.ActiveAetheryte.Value.IsAetheryte))
         {
-            actions.Add(DrawInstances);
+            actions[count++] = drawInstances;
         }
 
-        if(actions.Count == 1)
+        if(count == 1)
         {
             Safe(actions[0]);
         }
         else
         {
-            if(ImGui.BeginTable("LifestreamTable", Math.Max(1, actions.Count), ImGuiTableFlags.NoSavedSettings))
+            if(ImGui.BeginTable("LifestreamTable", Math.Max(1, count), ImGuiTableFlags.NoSavedSettings))
             {
-                foreach(var action in actions)
+                for(var i = 0; i < count; i++)
                 {
                     ImGui.TableNextColumn();
-                    Safe(action);
+                    Safe(actions[i]);
                 }
                 ImGui.EndTable();
             }
@@ -172,22 +204,26 @@ public class Overlay : Window
         var master = Utils.GetMaster();
         if(!C.Hidden.Contains(master.ID))
         {
-            var name = (C.Favorites.Contains(master.ID) ? "★ " : "") + (C.Renames.TryGetValue(master.ID, out var value) ? value : master.Name);
-            ResizeButton($"{Pad}{name}");
-            var md = P.ActiveAetheryte == master;
-            if(ImGuiEx.Button($"{Pad}{name}", ButtonSizeAetheryte, !md))
+            var name = (C.Favorites.Contains(master.ID) ? Lang.Symbols.HighQuality + " " : "") + (C.Renames.TryGetValue(master.ID, out var value) ? value : master.Name);
+            // 「最佳威兔洞」(175)這類沒有 AethernetName 的 master 名稱是空字串,不畫空按鈕
+            if(name != "")
             {
-                TaskRemoveAfkStatus.Enqueue();
-                TaskAethernetTeleport.Enqueue(master);
+                ResizeButton($"{Pad}{name}");
+                var md = P.ActiveAetheryte == master;
+                if(ImGuiEx.Button($"{Pad}{name}", ButtonSizeAetheryte, !md))
+                {
+                    TaskRemoveAfkStatus.Enqueue();
+                    TaskAethernetTeleport.Enqueue(master);
+                }
+                Popup(master);
             }
-            Popup(master);
         }
 
         foreach(var x in S.Data.DataStore.Aetherytes[master])
         {
             if(!C.Hidden.Contains(x.ID))
             {
-                var name = (C.Favorites.Contains(x.ID) ? "★ " : "") + (C.Renames.TryGetValue(x.ID, out var value) ? value : x.Name);
+                var name = (C.Favorites.Contains(x.ID) ? Lang.Symbols.HighQuality + " " : "") + (C.Renames.TryGetValue(x.ID, out var value) ? value : x.Name);
                 ResizeButton($"{Pad}{name}");
                 var d = P.ActiveAetheryte == x;
                 if(ImGuiEx.Button($"{Pad}{name}", ButtonSizeAetheryte, !d))
@@ -199,16 +235,42 @@ public class Overlay : Window
             }
         }
 
-        if(P.ActiveAetheryte.Value.ID == 70 && C.Firmament)
+        // 蒼天街與渴望灣這兩顆按鈕用的是 Lifestream 自己的偽 id，與傳送面板/我的最愛視窗**同一個鍵**，
+        // 所以在任一邊加星號，另一邊都看得到。
+        if(P.ActiveAetheryte.Value.ID == TaskAetheryteAethernetTeleport.FirmamentRootAetheryteId && C.Firmament)
         {
-            var name = "Firmament";
-            ResizeButton($"{Pad}{name}");
-            if(ImGui.Button($"{Pad}{name}", ButtonSizeAetheryte))
-            {
-                TaskRemoveAfkStatus.Enqueue();
-                TaskFirmanentTeleport.Enqueue();
-            }
+            DrawGatewayButton(TaskAetheryteAethernetTeleport.FirmamentAethernetId,
+                TaskAetheryteAethernetTeleport.FirmamentTerritoryId, "Firmament".Loc(), TaskFirmanentTeleport.Enqueue);
         }
+
+        // 比照蒼天街:站在「最佳威兔洞」(175)旁時提供渴望灣按鈕
+        if(P.ActiveAetheryte.Value.ID == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId && C.SinusArdorum)
+        {
+            DrawGatewayButton(TaskAetheryteAethernetTeleport.SinusArdorumAethernetId,
+                TaskAetheryteAethernetTeleport.SinusArdorumTerritoryId, "Sinus Ardorum".Loc(), TaskSinusArdorumTeleport.Enqueue);
+        }
+    }
+
+    /// <summary>
+    /// 玄關目的地(蒼天街/渴望灣)的按鈕。與上面一般乙太之光的按鈕一樣支援星號、備註與隱藏，
+    /// 因為它們跟傳送面板共用同一個我的最愛鍵。
+    /// </summary>
+    /// <param name="id">Lifestream 給這個目的地的偽 id，也是我的最愛/備註/隱藏的鍵。</param>
+    /// <param name="territory">目的地區域。只用來填 <see cref="IAetheryte"/>，右鍵選單本身只認 id。</param>
+    /// <param name="defaultName">沒有備註時顯示的名稱(已在地化)。</param>
+    /// <param name="enqueue">按下去要排的傳送流程。</param>
+    private void DrawGatewayButton(uint id, uint territory, string defaultName, Action enqueue)
+    {
+        if(C.Hidden.Contains(id)) return;
+        var name = (C.Favorites.Contains(id) ? Lang.Symbols.HighQuality + " " : "")
+            + (C.Renames.TryGetValue(id, out var value) && value != "" ? value : defaultName);
+        ResizeButton($"{Pad}{name}");
+        if(ImGui.Button($"{Pad}{name}", ButtonSizeAetheryte))
+        {
+            TaskRemoveAfkStatus.Enqueue();
+            enqueue();
+        }
+        Popup(new CustomAetheryte(default, territory, defaultName, id));
     }
 
     private void DrawResidentialAethernet(bool? subdivision = null)
@@ -224,7 +286,7 @@ public class Overlay : Window
                 if(subdivision != null && x.IsSubdivision != subdivision) continue;
                 if(!C.Hidden.Contains(x.ID))
                 {
-                    var name = (C.Favorites.Contains(x.ID) ? "★ " : "") + (C.Renames.TryGetValue(x.ID, out var value) ? value : x.Name);
+                    var name = (C.Favorites.Contains(x.ID) ? Lang.Symbols.HighQuality + " " : "") + (C.Renames.TryGetValue(x.ID, out var value) ? value : x.Name);
                     ResizeButton(name);
                     var d = S.Data.ResidentialAethernet.ActiveAetheryte == x;
                     if(ImGuiEx.Button($"{Pad}{name}", ButtonSizeAetheryte, !d))
@@ -250,7 +312,7 @@ public class Overlay : Window
                 if(C.Favorites.Contains(x.ID) != favorites) continue;
                 if(!C.Hidden.Contains(x.ID))
                 {
-                    var name = (C.Favorites.Contains(x.ID) ? "★ " : "") + (C.Renames.TryGetValue(x.ID, out var value) ? value : x.Name);
+                    var name = (C.Favorites.Contains(x.ID) ? Lang.Symbols.HighQuality + " " : "") + (C.Renames.TryGetValue(x.ID, out var value) ? value : x.Name);
                     ResizeButton(name);
                     var d = S.Data.CustomAethernet.ActiveAetheryte == x;
                     if(ImGuiEx.Button($"{Pad}{name}", ButtonSizeAetheryte, !d))
@@ -282,13 +344,18 @@ public class Overlay : Window
         }
         else
         {
-            ImGuiEx.Text($"""
-                Instances available, 
-                but not initialized.
-
-                To initialize instances, 
-                access aetheryte once.
-                """);
+            // 分線數只有乙太之光的分線選單才看得到:附一鍵按鈕自動跑同一套合法流程(互動水晶→讀分線清單→關閉選單)。
+            ImGuiEx.TextWrapped("Instance count unknown - the game only reveals it in the aetheryte's instance menu.".Loc());
+            var name = "Read instance list".Loc();
+            ResizeButton(name);
+            if(ImGuiEx.Button($"{Pad}{name}", ButtonSizeInstance, TaskInitInstanceData.CanInitialize()))
+            {
+                TaskInitInstanceData.EnqueueWithTeleport();
+            }
+            if(!TaskInitInstanceData.CanInitialize())
+            {
+                ImGuiEx.Text(ImGuiColors.DalamudGrey, "Stand near an aetheryte.".Loc());
+            }
         }
     }
 
@@ -300,15 +367,17 @@ public class Overlay : Window
         }
         if(ImGui.BeginPopup($"LifestreamPopup{x.ID}"))
         {
-            if(ImGuiEx.CollectionCheckbox("Favorite", x.ID, C.Favorites))
+            if(ImGuiEx.CollectionCheckbox("Favorite".Loc(), x.ID, C.Favorites))
             {
                 PluginLog.Debug($"Rebuilding data store");
+                // 取消我的最愛時把自訂排序/分類一併清掉，否則設定檔會靜默累積孤兒 id
+                Systems.TeleportPanel.FavoriteOrganizer.PruneIfNotFavorite(x.ID);
                 S.Data.DataStore = new();
                 EzConfig.Save();
             }
-            if(ImGuiEx.CollectionCheckbox("Hidden", x.ID, C.Hidden)) EzConfig.Save();
+            if(ImGuiEx.CollectionCheckbox("Hidden".Loc(), x.ID, C.Hidden)) EzConfig.Save();
             var newName = C.Renames.TryGetValue(x.ID, out var value) ? value : "";
-            ImGuiEx.Text($"Rename:");
+            ImGuiEx.Text("Rename:".Loc());
             ImGui.SetNextItemWidth(200f.Scale());
             if(ImGui.InputText($"##LifestreamRename", ref newName, 100))
             {
@@ -328,7 +397,7 @@ public class Overlay : Window
 
     private void DrawWorldVisit()
     {
-        var cWorld = Svc.ClientState.LocalPlayer?.CurrentWorld.ValueNullable?.Name.ToString();
+        var cWorld = Svc.Objects.LocalPlayer?.CurrentWorld.ValueNullable?.Name.ToString();
         foreach(var x in S.Data.DataStore.Worlds)
         {
             ResizeButton($"{Pad}{x}");
@@ -348,13 +417,29 @@ public class Overlay : Window
         }
     }
 
+    // 房區按鈕的兩種標籤只隨 LeftAlignPadding 變：依它快取 30 顆，每幀不再組字串。
+    private string[] wardLabels;
+    private string[] wardButtonLabels;
+    private int wardLabelsPadding;
+
     private void DrawHousingWards()
     {
+        if(wardLabels == null || wardLabelsPadding != C.LeftAlignPadding)
+        {
+            wardLabelsPadding = C.LeftAlignPadding;
+            wardLabels = new string[30];
+            wardButtonLabels = new string[30];
+            for(var i = 1; i <= 30; i++)
+            {
+                wardLabels[i - 1] = $"{Pad}{i}";
+                wardButtonLabels[i - 1] = $"{Pad}{i}##ward";
+            }
+        }
         for(var i = 1; i <= 30; i++)
         {
-            ResizeButton($"{Pad}{i}");
+            ResizeButton(wardLabels[i - 1]);
             var buttonSize = new Vector2((ButtonSizeInstance.X - ImGui.GetStyle().ItemSpacing.X * 2) / 3, ButtonSizeWorld.Y);
-            if(ImGuiEx.Button($"{Pad}{i}##ward", buttonSize))
+            if(ImGuiEx.Button(wardButtonLabels[i - 1], buttonSize))
             {
                 TaskRemoveAfkStatus.Enqueue();
                 TaskGoToResidentialDistrict.Enqueue(i);

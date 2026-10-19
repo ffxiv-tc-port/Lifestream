@@ -28,6 +28,7 @@ public static class WotsitEntryGenerator
         { 183, 3707 }, // Radz-at-Han
         { 216, 4504 }, // Tuliyollal
         { 217, 4503 }, // Solution Nine
+        { 175, 3966 }, // Bestways Burrow (最佳威兔洞, 渴望灣入口)
     };
 
     // Any invisible aethernet shards that should be added to wotsit. In the
@@ -240,6 +241,13 @@ public static class WotsitEntryGenerator
             {
                 var placeName = Svc.Data.GetExcelSheet<PlaceName>().GetRow(3435).Name.ToDalamudString().GetText();
                 yield return WotsitEntry.AetheryteAethernetTeleport(townName, placeName, rootAetheryte.ID, TaskAetheryteAethernetTeleport.FirmamentAethernetId);
+            }
+
+            // Special case for Sinus Ardorum (渴望灣) — 比照蒼天街,掛在「最佳威兔洞」(175)
+            if(C.SinusArdorum && rootAetheryte.ID == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId)
+            {
+                var placeName = Svc.Data.GetExcelSheet<PlaceName>().GetRow(5219).Name.ToDalamudString().GetText();
+                yield return WotsitEntry.AetheryteAethernetTeleport(townName, placeName, rootAetheryte.ID, TaskAetheryteAethernetTeleport.SinusArdorumAethernetId);
             }
         }
     }

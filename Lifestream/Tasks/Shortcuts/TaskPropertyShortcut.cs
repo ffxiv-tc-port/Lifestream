@@ -260,7 +260,7 @@ public static unsafe class TaskPropertyShortcut
             P.TaskManager.Enqueue(() => P.FollowPath.Waypoints.Count == 0, "Wait until movement completes");
             P.TaskManager.Enqueue(() =>
             {
-                var obj = Svc.Objects.FirstOrDefault(x => x.DataId.EqualsAny(InnNpc) && x.ObjectKind == ObjectKind.EventNpc && x.IsTargetable && Vector3.Distance(x.Position, Player.Position) < 10f);
+                var obj = Svc.Objects.FirstOrDefault(x => x.BaseId.EqualsAny(InnNpc) && x.ObjectKind == ObjectKind.EventNpc && x.IsTargetable && Vector3.Distance(x.Position, Player.Position) < 10f);
                 if(obj == null) return false;
                 if(!Utils.DismountIfNeeded()) return false;
                 if(obj.IsTarget())
@@ -282,15 +282,22 @@ public static unsafe class TaskPropertyShortcut
             }, "Interact with Inn NPC");
             P.TaskManager.Enqueue(() =>
             {
-                if(TryGetAddonMaster<AddonMaster.Talk>(out var talk))
+                // Talk 走艦隊 15 幀政策(與 Framework_Update 那一站共用同一把 key,同幀不會點兩次),並先過 IsAddonReady。
+                if(IPC.TextAdvanceManager.MayClickTalk && TryGetAddonMaster<AddonMaster.Talk>(out var talk) && talk.IsAddonReady
+                    && AddonPressGuard.TryPressOnce("Talk", talk.Base, "PropertyShortcut.InnTalk", escapeIsRoutine: true))
                 {
                     talk.Click();
                 }
-                var obj = Svc.Objects.FirstOrDefault(x => x.DataId.EqualsAny(InnNpc) && x.ObjectKind == ObjectKind.EventNpc && x.IsTargetable && Vector3.Distance(x.Position, Player.Position) < 10f);
+                var obj = Svc.Objects.FirstOrDefault(x => x.BaseId.EqualsAny(InnNpc) && x.ObjectKind == ObjectKind.EventNpc && x.IsTargetable && Vector3.Distance(x.Position, Player.Position) < 10f);
                 if(obj == null) return false;
-                if(obj.IsTarget() && TryGetAddonMaster<AddonMaster.SelectString>(out var m))
+                // TryGetAddonMaster 回的是任何已載入的實例,不看 LoadedState/IsVisible ⇒ 還要 IsAddonReady:
+                //    對尚未就緒的 SelectString 讀 PopupMenu 的項目、再送 Select 是攔不到的 AccessViolation;
+                //    AddonPressGuard 擋得住「同一扇窗按過再按」,擋不住「這扇窗根本還沒就緒」—— 兩道都要。
+                if(obj.IsTarget() && TryGetAddonMaster<AddonMaster.SelectString>(out var m) && m.IsAddonReady)
                 {
-                    if(m.Entries.Length > 2 && EzThrottler.Throttle("SelectRetireInn", 5000))
+                    // 讀到 U+FFFD ＝ 選單記憶體正在變動(多半是上一發選擇之後正在關閉),這一幀不碰。
+                    if(AddonPressGuard.AnyTextUnstable("SelectString", m.Entries.Select(x => x.Text))) return false;
+                    if(m.Entries.Length > 2 && EzThrottler.Throttle("SelectRetireInn", 5000) && AddonPressGuard.TryPressOnce("SelectString", m.Base, "SelectRetireInn", paramKey: "0"))
                     {
                         m.Entries[0].Select();
                         return true;
@@ -301,7 +308,8 @@ public static unsafe class TaskPropertyShortcut
             P.TaskManager.Enqueue(() =>
             {
                 if(!IsScreenReady()) return true;
-                if(TryGetAddonMaster<AddonMaster.Talk>(out var talk))
+                if(IPC.TextAdvanceManager.MayClickTalk && TryGetAddonMaster<AddonMaster.Talk>(out var talk) && talk.IsAddonReady
+                    && AddonPressGuard.TryPressOnce("Talk", talk.Base, "PropertyShortcut.SkipTalk", escapeIsRoutine: true))
                 {
                     talk.Click();
                 }
@@ -321,7 +329,12 @@ public static unsafe class TaskPropertyShortcut
     {
         enterApartment ??= C.EnterMyApartment;
         var a = GetApartmentAetheryteID();
-        var nextToMyApt = AgentHUD.Instance()->MapMarkers.Any(x => x.IconId.EqualsAny(60790u, 60792u) && Vector3.Distance(Player.Position, x.Position) < 50f) && Svc.Objects.Any(x => x.DataId == 2007402 && Vector3.Distance(x.Position, Player.Position) < 20f);
+        // AgentHUD 取得器合法回 null。拿不到就當作「人不在自己的公寓旁邊」——
+        // 那是保守的一邊:會照常先傳送過去,而不是誤判成已經到了、直接跳過移動。
+        var hud = AgentHUD.Instance();
+        var nextToMyApt = hud != null
+            && hud->MapMarkers.Any(x => x.IconId.EqualsAny(60790u, 60792u) && Vector3.Distance(Player.Position, x.Position) < 50f)
+            && Svc.Objects.Any(x => x.BaseId == 2007402 && Vector3.Distance(x.Position, Player.Position) < 20f);
         P.TaskManager.BeginStack();
         try
         {
@@ -404,10 +417,10 @@ public static unsafe class TaskPropertyShortcut
 
     private static bool ConfirmHouseEntrance()
     {
-        var addon = Utils.GetSpecificYesno(Lang.ConfirmHouseEntrance);
+        var addon = Utils.GetSpecificYesno(Lang.ConfirmHouseEntrance, LegacyMatch.SpacelessEqualsAny);
         if(addon != null)
         {
-            if(IsAddonReady(addon) && EzThrottler.Throttle("SelectYesno"))
+            if(IsAddonReady(addon) && EzThrottler.Throttle("SelectYesno") && AddonPressGuard.TryPressOnce("SelectYesno", addon, nameof(ConfirmHouseEntrance)))
             {
                 new AddonMaster.SelectYesno((nint)addon).Yes();
                 return true;

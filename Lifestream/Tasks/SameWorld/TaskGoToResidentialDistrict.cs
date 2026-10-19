@@ -2,6 +2,7 @@
 using ECommons.Automation;
 using ECommons.Automation.UIInput;
 using ECommons.GameHelpers;
+using Callback = ECommons.Automation.Callback;
 using ECommons.Throttlers;
 using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -28,10 +29,10 @@ public static unsafe class TaskGoToResidentialDistrict
     public static bool ConfirmYesNoGoToWard()
     {
         if(Svc.Condition[ConditionFlag.BetweenAreas] || Svc.Condition[ConditionFlag.BetweenAreas51]) return true;
-        var x = (AddonSelectYesno*)Utils.GetSpecificYesno(true, Lang.TravelTo);
+        var x = (AddonSelectYesno*)Utils.GetSpecificYesno(Lang.TravelTo, LegacyMatch.SpacelessContainsAny);
         if(x != null)
         {
-            if(x->YesButton->IsEnabled && EzThrottler.Throttle("ConfirmTravelTo"))
+            if(IsButtonEnabled(x->YesButton) && EzThrottler.Throttle("ConfirmTravelTo") && AddonPressGuard.TryPressOnce("SelectYesno", x, nameof(ConfirmYesNoGoToWard)))
             {
                 new AddonMaster.SelectYesno(x).Yes();
                 return true;
@@ -50,7 +51,8 @@ public static unsafe class TaskGoToResidentialDistrict
             }
             else
             {
-                if(EzThrottler.Throttle("HousingSelectBlockSelectWard"))
+                // 換頁不關窗 ⇒ 粒度含頁碼、走多次互動窗的逃生口;之後 GoToWard 對同一扇窗按的確認鈕是「回答」(不帶參數組)。
+                if(EzThrottler.Throttle("HousingSelectBlockSelectWard") && AddonPressGuard.TryPressOnce("HousingSelectBlock", addon, nameof(SelectWard), paramKey: $"1|{ward - 1}", escapeIsRoutine: true))
                 {
                     Callback.Fire(addon, true, 1, ward - 1);
                     return true;
@@ -64,10 +66,10 @@ public static unsafe class TaskGoToResidentialDistrict
     {
         if(TryGetAddonByName<AtkUnitBase>("HousingSelectBlock", out var addon) && IsAddonReady(addon))
         {
-            var button = addon->GetButtonNodeById(34);
-            if(button->IsEnabled)
+            var button = addon->GetComponentButtonById(34);
+            if(IsButtonEnabled(button))
             {
-                if(EzThrottler.Throttle("HousingSelectBlockConfirm"))
+                if(EzThrottler.Throttle("HousingSelectBlockConfirm") && AddonPressGuard.TryPressOnce("HousingSelectBlock", addon, nameof(GoToWard)))
                 {
                     button->ClickAddonButton(addon);
                     return true;

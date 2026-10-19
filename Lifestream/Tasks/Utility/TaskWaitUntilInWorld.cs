@@ -14,7 +14,7 @@ internal static class TaskWaitUntilInWorld
     {
         if(checkDc)
         {
-            if(Player.Available && ExcelWorldHelper.Get(world)?.DataCenter.RowId == Svc.ClientState.LocalPlayer.CurrentWorld.Value.DataCenter.RowId)
+            if(Player.Available && ExcelWorldHelper.Get(world)?.DataCenter.RowId == Svc.Objects.LocalPlayer.CurrentWorld.Value.DataCenter.RowId)
             {
                 return true;
             }
