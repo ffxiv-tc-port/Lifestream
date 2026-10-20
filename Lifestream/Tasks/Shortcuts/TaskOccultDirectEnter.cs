@@ -11,6 +11,7 @@ namespace Lifestream.Tasks.Shortcuts;
 /// 並在每一步記下目前是哪一步；關鍵步驟之後檢查結果，不成立就寫一行 Information、清空佇列停下。
 /// 佇列提前清空（逾時中止、找不到目標、右鍵進度條）由 <see cref="Tick"/> 補記是停在哪一步。
 /// 只在框架執行緒使用（按鈕與 Framework_Update）。
+/// 「到蜃景鎮」走同一份步驟、做到搭船那步為止（<c>stopAtMirageTown</c>）；不要另抄一份步驟。
 /// </summary>
 public static class TaskOccultDirectEnter
 {
@@ -21,6 +22,9 @@ public static class TaskOccultDirectEnter
 
     private static bool Active;
     private static bool Reported;
+    private static bool StopAtMirageTown;
+    private static string Tag => StopAtMirageTown ? "[到蜃景鎮]" : "[直接進島]";
+    private static string NotReached => StopAtMirageTown ? "沒有抵達蜃景鎮" : "沒有進入新月島";
     private static int CurrentStep = -1;
     private static string CurrentLabel = "";
     private static int TimedOutStep = -1;
@@ -34,7 +38,8 @@ public static class TaskOccultDirectEnter
 
     public static bool IsEntryRow(TeleportPanelEntry x) => !x.IsAetheryte && x.SubIndex == 0 && x.Id != 0 && x.Id == AethernetId;
 
-    public static void Enqueue()
+    /// <param name="stopAtMirageTown">true＝抵達蜃景鎮就收工，不跟傑弗瑞對話、不進島。</param>
+    public static void Enqueue(bool stopAtMirageTown)
     {
         if(Utils.IsBusy())
         {
@@ -49,7 +54,7 @@ public static class TaskOccultDirectEnter
         var npcIdx = cmds.FindLastIndex(c => c.Kind == CustomAliasKind.Interact);
         if(cmds.Count == 0 || cmds[0].Kind != CustomAliasKind.Teleport_to_Aetheryte || aethernetIdx < 0 || warpIdx < aethernetIdx || npcIdx < warpIdx)
         {
-            PluginLog.Error("[直接進島] 內建的新月島路線步驟不是預期的形狀，不執行。");
+            PluginLog.Error($"{(stopAtMirageTown ? "[到蜃景鎮]" : "[直接進島]")} 內建的新月島路線步驟不是預期的形狀，不執行。");
             return;
         }
         var cityTerritory = Svc.Data.GetExcelSheet<Aetheryte>().GetRowOrDefault(cmds[0].Aetheryte)?.Territory.RowId ?? 0;
@@ -59,6 +64,11 @@ public static class TaskOccultDirectEnter
         if(SouthHornTerritories.Contains(territory))
         {
             Notify.Info("You are already in the Occult Crescent.".Loc());
+            return;
+        }
+        if(stopAtMirageTown && MirageTownTerritories.Contains(territory))
+        {
+            Notify.Info("You are already in the Mirage town.".Loc());
             return;
         }
         int start;
@@ -77,18 +87,21 @@ public static class TaskOccultDirectEnter
         }
         Active = true;
         Reported = false;
+        StopAtMirageTown = stopAtMirageTown;
         CurrentStep = -1;
         CurrentLabel = "";
         TimedOutStep = -1;
-        PluginLog.Information($"[直接進島] 開始：從第 {start + 1}/{cmds.Count} 步「{labels[start]}」起（目前區域 {territory}）。");
+        // 到蜃景鎮：只做到搭船那步（含），抵達的檢查在迴圈後面補。
+        var last = stopAtMirageTown ? warpIdx + 1 : cmds.Count;
+        PluginLog.Information($"{Tag} 開始：從第 {start + 1}/{last} 步「{labels[start]}」起（目前區域 {territory}）。");
 
-        for(var i = start; i < cmds.Count;)
+        for(var i = start; i < last;)
         {
             var end = i + 1;
             if(cmds[i].Kind.EqualsAny(CustomAliasKind.Move_to_point, CustomAliasKind.Navmesh_to_point, CustomAliasKind.Circular_movement))
             {
                 // 與 CustomAlias.Enqueue 相同的併段規則，連續的移動點仍走成一條路徑。
-                while(end < cmds.Count && cmds[end].Kind == CustomAliasKind.Move_to_point && alias.IsChainedWithNext(end - 1)) end++;
+                while(end < last && cmds[end].Kind == CustomAliasKind.Move_to_point && alias.IsChainedWithNext(end - 1)) end++;
             }
             var step = i;
             if(step == aethernetIdx + 1 && start <= aethernetIdx)
@@ -109,6 +122,17 @@ public static class TaskOccultDirectEnter
             }
             i = end;
         }
+        if(stopAtMirageTown)
+        {
+            EnqueueExpectTerritory(warpIdx, labels, MirageTownTerritories, 30000, "30 秒內沒有抵達蜃景鎮");
+            P.TaskManager.Enqueue(() =>
+            {
+                Active = false;
+                Reported = true;
+                PluginLog.Information("[到蜃景鎮] 已到蜃景鎮。");
+            }, "OccultDirectEnter: arrived at Mirage town");
+            return;
+        }
         EnqueueExpectTerritory(cmds.Count - 1, labels, SouthHornTerritories, 60000, "60 秒內沒有進入新月島（進入確認沒出現、還在排隊，或選單沒按到）");
         P.TaskManager.Enqueue(() =>
         {
@@ -127,7 +151,7 @@ public static class TaskOccultDirectEnter
         P.followPath?.Stop();
         var where = CurrentStep < 0 ? "第一步開始前" : $"第 {CurrentStep + 1} 步「{CurrentLabel}」";
         var why = TimedOutStep >= 0 && TimedOutStep == CurrentStep ? "這一步逾時" : "任務被中止（找不到目標、逾時，或手動右鍵進度條／停止）";
-        PluginLog.Information($"[直接進島] 停在{where}：{why}，沒有進入新月島；接下來請手動操作。");
+        PluginLog.Information($"{Tag} 停在{where}：{why}，{NotReached}；接下來請手動操作。");
     }
 
     private static void OnTaskTimeout(TaskManagerTask task, ref long remainingTimeMS)
@@ -153,7 +177,7 @@ public static class TaskOccultDirectEnter
         Active = false;
         Reported = true;
         P.followPath?.Stop();
-        PluginLog.Information($"[直接進島] 停在第 {step + 1} 步「{labels[step]}」：{reason}；已停止，接下來請手動操作。");
+        PluginLog.Information($"{Tag} 停在第 {step + 1} 步「{labels[step]}」：{reason}；已停止，接下來請手動操作。");
         return null;
     }
 

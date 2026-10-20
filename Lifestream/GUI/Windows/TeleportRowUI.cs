@@ -43,13 +43,16 @@ internal static class TeleportRowUI
         var hasLanding = C.AetheryteLandings.ContainsKey(x.Id);
         var label = GetLabel(x, showZone, isFavorite, hasLanding);
 
-        // 新月島路線那座城內乙太之光的列：右邊留一顆「直接進島」的寬度，列本身的行為不變。
+        // 新月島路線那座城內乙太之光的列：右邊留「到蜃景鎮」「直接進島」兩顆的寬度，列本身的行為不變。
+        // 「直接進島」維持在最右邊，新按鈕插在它左邊，既有按鈕的位置不動。
         var occultButton = TaskOccultDirectEnter.IsEntryRow(x) ? "Enter island".Loc() : null;
+        var mirageButton = occultButton != null ? "To the Mirage town".Loc() : null;
         var rowSize = default(Vector2);
         if(occultButton != null)
         {
             var style = ImGui.GetStyle();
-            rowSize.X = Math.Max(1f, ImGui.GetContentRegionAvail().X - ImGui.CalcTextSize(occultButton).X - style.FramePadding.X * 2 - style.ItemSpacing.X);
+            var buttons = ImGui.CalcTextSize(occultButton).X + ImGui.CalcTextSize(mirageButton).X + (style.FramePadding.X * 2 + style.ItemSpacing.X) * 2;
+            rowSize.X = Math.Max(1f, ImGui.GetContentRegionAvail().X - buttons);
         }
 
         if(hasLanding) ImGui.PushStyleColor(ImGuiCol.Text, LandingColor);
@@ -75,13 +78,17 @@ internal static class TeleportRowUI
         }
 
         DrawContextMenu(x);
-        if(occultButton != null) DrawOccultButton(occultButton);
+        if(occultButton != null)
+        {
+            DrawOccultButton(mirageButton, true);
+            DrawOccultButton(occultButton, false);
+        }
 
         ImGui.PopID();
         return clicked;
     }
 
-    private static void DrawOccultButton(string text)
+    private static void DrawOccultButton(string text, bool stopAtMirageTown)
     {
         ImGui.SameLine();
         var busy = Utils.IsBusy();
@@ -91,10 +98,12 @@ internal static class TeleportRowUI
         // 說明畫在 EndDisabled 之後：停用時也看得到，也不會跟著停用的半透明變淡。
         if(ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
         {
-            var tip = "Go all the way into the Occult Crescent: teleport to Tuliyollal, take the aethernet, walk to the ferry and talk to Jeffroy. If you are already in the Mirage town it continues from there. Clicking the row itself still only takes you to the aethernet shard. Right-click the progress bar to stop.".Loc();
+            var tip = stopAtMirageTown
+                ? "Same route as Enter island, but stop once you arrive in the Mirage town: teleport to Tuliyollal, take the aethernet, walk to the ferry and take it. It does not talk to Jeffroy or enter the island. Right-click the progress bar to stop.".Loc()
+                : "Go all the way into the Occult Crescent: teleport to Tuliyollal, take the aethernet, walk to the ferry and talk to Jeffroy. If you are already in the Mirage town it continues from there. Clicking the row itself still only takes you to the aethernet shard. Right-click the progress bar to stop.".Loc();
             ImGui.SetTooltip(busy ? $"{"Lifestream is busy".Loc()}\n{tip}" : tip);
         }
-        if(pressed) TaskOccultDirectEnter.Enqueue();
+        if(pressed) TaskOccultDirectEnter.Enqueue(stopAtMirageTown);
     }
 
     /// <summary>
