@@ -31,6 +31,18 @@ internal static class FieldFlightDecision
         return true;
     }
 
+    /// <summary>
+    /// 地圖點導航（<c>GoToMapPoint</c> IPC）的最後一段：呼叫端要求飛行時才套用 <see cref="ShouldFly"/>；
+    /// 只會把「飛」降成「不飛」，不看「可飛行時改用飛行」開關（那是使用者自己的目的地用的）。
+    /// </summary>
+    /// <param name="requested">呼叫端傳進來的 fly。</param>
+    internal static bool ShouldFlyMapPoint(bool requested, bool zoneFlyable, bool diving, bool inCombat,
+        float distanceXZ, float minDistance, out string reason)
+    {
+        if(!requested) { reason = "呼叫端沒有要求飛行"; return false; }
+        return ShouldFly(true, zoneFlyable, diving, inCombat, distanceXZ, minDistance, out reason);
+    }
+
     internal static float EffectiveThreshold(float minDistance)
         => float.IsNaN(minDistance) || minDistance < DistanceFloor ? DistanceFloor : minDistance;
 }

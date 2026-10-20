@@ -102,9 +102,9 @@ public static unsafe class TaskGotoDestination
 
         PluginLog.Information($"[Goto] 地圖點 ⇒ {ExcelTerritoryHelper.GetName(dest.Territory)}({dest.Territory}) "
             + $"XZ({dest.WorldX:F1}, {dest.WorldZ:F1});跨區={crossZone};會經過讀取畫面={zoned};"
-            + $"要求飛行={fly},實際飛行={willFly}。");
+            + $"要求飛行={fly},區域可飛預判={willFly}(最後一段落點解析後再依距離門檻定案)。");
 
-        var run = new MapPointRun() { Dest = dest, Fly = willFly, Zoned = zoned };
+        var run = new MapPointRun() { Dest = dest, RequestedFly = fly, Zoned = zoned };
         // ⚠️ 逾時刻意不中止:逾時了也要走到下一步,由 ResolveFloorAndGo 判斷是「沒到對的區域」
         //    還是「網格沒建好」並印出對應的訊息 —— 靜默中止是最難回報的失敗形式。
         P.TaskManager.Enqueue(() => WaitNavmeshFresh(run), "GotoMapPointWaitNavFresh",
@@ -395,8 +395,8 @@ public static unsafe class TaskGotoDestination
     private sealed class MapPointRun
     {
         public MapPointDestination Dest = new();
-        /// <summary>經過可飛判定之後的最終值,不是呼叫端要求的原值。</summary>
-        public bool Fly;
+        /// <summary>呼叫端要求的原值;實際飛不飛在落點解析後由 <see cref="FieldFlightDecision.ShouldFlyMapPoint"/> 定案。</summary>
+        public bool RequestedFly;
         /// <summary>這一趟會不會經過讀取畫面(＝需不需要做 navmesh 的 stale 閘門)。</summary>
         public bool Zoned;
         public bool SawNavNotReady;
@@ -492,9 +492,16 @@ public static unsafe class TaskGotoDestination
             return true;
         }
 
-        PluginLog.Information($"[Goto] 地圖點落點解析完成:XZ({dest.WorldX:F1}, {dest.WorldZ:F1}) ⇒ {floor.Value:F1},飛行={run.Fly}。");
+        PluginLog.Information($"[Goto] 地圖點落點解析完成:XZ({dest.WorldX:F1}, {dest.WorldZ:F1}) ⇒ {floor.Value:F1}。");
+        var territory = P.Territory;
+        var flyable = IsFlyingUnlockedIn(territory);
+        var distance = Player.Available ? DistanceXZ(Player.Position, floor.Value) : float.NaN;
+        var fly = FieldFlightDecision.ShouldFlyMapPoint(run.RequestedFly, flyable, Svc.Condition[ConditionFlag.Diving],
+            Svc.Condition[ConditionFlag.InCombat], distance, C.GotoAutoFlyMinDistance, out var reason);
+        PluginLog.Information($"[Goto] 地圖點: 最後一段用{(fly ? "飛行" : "地面")}——{reason}"
+            + $"（區域 {territory} 可飛={flyable}、水平距離 {distance:F1} 米、門檻 {FieldFlightDecision.EffectiveThreshold(C.GotoAutoFlyMinDistance):F0} 米、要求飛行={run.RequestedFly}）。");
         // 📌 此刻佇列是空的(本任務是 EnqueueToMapPoint 排的最後一個),所以 Enqueue 等同 Insert。
-        EnqueueNavTo(floor.Value, run.Fly);
+        EnqueueNavTo(floor.Value, fly);
         return true;
     }
 
