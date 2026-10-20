@@ -260,7 +260,8 @@ internal static unsafe class UISettings
                     (-1, 0, 0) => "Disable".Loc(),
                     _ => $"{ExcelTerritoryHelper.GetName((uint)pref.Territory)}, W{pref.Ward}, P{pref.Plot}"
                 };
-                if(ImGui.BeginCombo("Preferred shared estate for ??".Loc(Player.NameWithWorld), name))
+                // CID 在換世界／切換區域時仍非 0，但那幾幀 LocalPlayer 是 null、NameWithWorld 回 null（Loc 對 null 參數會擲）。
+                if(ImGui.BeginCombo("Preferred shared estate for ??".Loc(Player.NameWithWorld ?? "?"), name))
                 {
                     foreach(var x in Svc.AetheryteList.Where(x => x.IsSharedHouse))
                     {
