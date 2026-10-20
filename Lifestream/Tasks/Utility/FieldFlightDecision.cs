@@ -14,16 +14,18 @@ internal static class FieldFlightDecision
     /// <param name="zoneFlyable">所在區域現在能飛。</param>
     /// <param name="diving">潛水中。</param>
     /// <param name="inCombat">戰鬥中。</param>
+    /// <param name="inFlight">已在空中：不看距離與戰鬥照飛，否則從空中要地面路線可能回空路徑、停在半空。</param>
     /// <param name="distanceXZ">角色到目標的水平直線距離；量不到傳 NaN（＝走地面）。</param>
     /// <param name="minDistance">使用者設定的門檻；低於 <see cref="DistanceFloor"/> 時以下限為準。</param>
     /// <param name="reason">給 log 的一句理由。</param>
-    internal static bool ShouldFly(bool enabled, bool zoneFlyable, bool diving, bool inCombat,
+    internal static bool ShouldFly(bool enabled, bool zoneFlyable, bool diving, bool inCombat, bool inFlight,
         float distanceXZ, float minDistance, out string reason)
     {
         var threshold = EffectiveThreshold(minDistance);
         if(!enabled) { reason = "「可飛行時改用飛行」關閉"; return false; }
         if(!zoneFlyable) { reason = "此區域不能飛（不是一般野外，或風脈還沒收集完）"; return false; }
         if(diving) { reason = "潛水中"; return false; }
+        if(inFlight && !float.IsNaN(distanceXZ)) { reason = $"已在飛行中（距離 {distanceXZ:F1} 米），照舊飛過去"; return true; }
         if(inCombat) { reason = "戰鬥中"; return false; }
         if(float.IsNaN(distanceXZ)) { reason = "量不到角色位置"; return false; }
         if(!(distanceXZ > threshold)) { reason = $"距離 {distanceXZ:F1} 米未超過門檻 {threshold:F0} 米"; return false; }
@@ -33,14 +35,14 @@ internal static class FieldFlightDecision
 
     /// <summary>
     /// 地圖點導航（<c>GoToMapPoint</c> IPC）的最後一段：呼叫端要求飛行時才套用 <see cref="ShouldFly"/>；
-    /// 只會把「飛」降成「不飛」，不看「可飛行時改用飛行」開關（那是使用者自己的目的地用的）。
+    /// 只會把「飛」降成「不飛」（已在空中除外，見 inFlight），不看「可飛行時改用飛行」開關（那是使用者自己的目的地用的）。
     /// </summary>
     /// <param name="requested">呼叫端傳進來的 fly。</param>
-    internal static bool ShouldFlyMapPoint(bool requested, bool zoneFlyable, bool diving, bool inCombat,
+    internal static bool ShouldFlyMapPoint(bool requested, bool zoneFlyable, bool diving, bool inCombat, bool inFlight,
         float distanceXZ, float minDistance, out string reason)
     {
         if(!requested) { reason = "呼叫端沒有要求飛行"; return false; }
-        return ShouldFly(true, zoneFlyable, diving, inCombat, distanceXZ, minDistance, out reason);
+        return ShouldFly(true, zoneFlyable, diving, inCombat, inFlight, distanceXZ, minDistance, out reason);
     }
 
     internal static float EffectiveThreshold(float minDistance)
