@@ -254,7 +254,7 @@ internal static unsafe class WorldChange
         else if(S.Data.CustomAethernet.QuasiAethernetZones.Contains(P.Territory) && TryGetAddonMaster<AddonMaster.SelectString>(out var m) && m.IsAddonReady)
         {
             if(AddonPressGuard.AnyTextUnstable("SelectString", m.Entries.Select(e => e.Text))) return false;
-            if(Utils.TryFindEqualsOrContains(m.Entries, e => e.Text, name, out var entry))
+            if(Utils.TryFindEqualsOrContains(m.Entries, e => e.Text, name, out var entry, partialRequiresUnique: true))
             {
                 if(EzThrottler.Throttle("TeleportToAethernetDestination", 2000) && AddonPressGuard.TryPressOnce("SelectString", m.Base, "TeleportToAethernetDestination.Quasi", paramKey: entry.Index.ToString()))
                 {

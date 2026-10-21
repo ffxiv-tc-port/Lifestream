@@ -227,12 +227,16 @@ internal static unsafe partial class Utils
         return Svc.Objects.FirstOrDefault(x => x.IsTargetable && x.Name.ToString().EqualsIgnoreCaseAny(Lang.AdditionalChambersEntrance));
     }
 
-    public static bool TryFindEqualsOrContains<T>(IEnumerable<T> haystack, Func<T, string> haystackConverterToString, string needle, out T result)
+    public static bool TryFindEqualsOrContains<T>(IEnumerable<T> haystack, Func<T, string> haystackConverterToString, string needle, out T result, bool partialRequiresUnique = false)
     {
-        return TryFindEqualsOrContains(haystack, haystackConverterToString, [needle], out result);
+        return TryFindEqualsOrContains(haystack, haystackConverterToString, [needle], out result, partialRequiresUnique);
     }
 
-    public static bool TryFindEqualsOrContains<T>(IEnumerable<T> haystack, Func<T, string> haystackConverterToString, IEnumerable<string> needles, out T result)
+    /// <param name="partialRequiresUnique">
+    /// true＝相等比不到時，前綴／包含兩個退路只在恰好命中一項時採用；命中多項回 false（呼叫端不按）並記一行 Information。
+    /// false＝沿用原行為（取第一個命中）。
+    /// </param>
+    public static bool TryFindEqualsOrContains<T>(IEnumerable<T> haystack, Func<T, string> haystackConverterToString, IEnumerable<string> needles, out T result, bool partialRequiresUnique = false)
     {
         foreach(var x in haystack)
         {
@@ -244,6 +248,10 @@ internal static unsafe partial class Utils
                     return true;
                 }
             }
+        }
+        if(partialRequiresUnique)
+        {
+            return TryFindUniquePartial(haystack, haystackConverterToString, needles, out result);
         }
         foreach(var x in haystack)
         {
@@ -265,6 +273,45 @@ internal static unsafe partial class Utils
                     result = x;
                     return true;
                 }
+            }
+        }
+        result = default;
+        return false;
+    }
+
+    private static readonly (string Kind, Func<string, string, bool> Match)[] PartialMatchers =
+    [
+        ("前綴", (h, n) => h.StartsWith(n, StringComparison.OrdinalIgnoreCase)),
+        ("包含", (h, n) => h.Contains(n, StringComparison.OrdinalIgnoreCase)),
+    ];
+    private static string LastAmbiguousPartialKey;
+    private static long LastAmbiguousPartialAt;
+
+    // 只在框架執行緒呼叫（記 log 的去重欄位沒有鎖）。包含命中集合必定涵蓋前綴命中集合，所以前綴多筆就不必再試包含。
+    private static bool TryFindUniquePartial<T>(IEnumerable<T> haystack, Func<T, string> haystackConverterToString, IEnumerable<string> needles, out T result)
+    {
+        foreach(var (kind, match) in PartialMatchers)
+        {
+            var hits = haystack.Where(x => needles.Any(n => match(haystackConverterToString(x), n))).ToList();
+            if(hits.Count == 1)
+            {
+                result = hits[0];
+                return true;
+            }
+            if(hits.Count > 1)
+            {
+                var texts = string.Join("／", hits.Select(haystackConverterToString));
+                var key = $"{kind}|{string.Join("／", needles)}|{texts}";
+                var now = Environment.TickCount64;
+                // 呼叫端每幀重試：同一組結果 10 秒內只記一次。
+                if(key != LastAmbiguousPartialKey || now - LastAmbiguousPartialAt > 10_000)
+                {
+                    LastAmbiguousPartialKey = key;
+                    LastAmbiguousPartialAt = now;
+                    PluginLog.Information($"[Lifestream] 選單比對：「{string.Join("／", needles)}」沒有完全相同的選項，以{kind}比對命中 {hits.Count} 項（{texts}），無法確定是哪一項，這次不按。");
+                }
+                result = default;
+                return false;
             }
         }
         result = default;
