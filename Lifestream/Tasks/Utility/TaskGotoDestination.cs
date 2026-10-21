@@ -496,10 +496,11 @@ public static unsafe class TaskGotoDestination
         var territory = P.Territory;
         var flyable = IsFlyingUnlockedIn(territory);
         var distance = Player.Available ? DistanceXZ(Player.Position, floor.Value) : float.NaN;
+        var heightDiff = Player.Available ? floor.Value.Y - Player.Position.Y : float.NaN;
         var fly = FieldFlightDecision.ShouldFlyMapPoint(run.RequestedFly, flyable, Svc.Condition[ConditionFlag.Diving],
-            Svc.Condition[ConditionFlag.InCombat], Svc.Condition[ConditionFlag.InFlight], distance, C.GotoAutoFlyMinDistance, out var reason);
+            Svc.Condition[ConditionFlag.InCombat], Svc.Condition[ConditionFlag.InFlight], distance, heightDiff, C.GotoAutoFlyMinDistance, out var reason);
         PluginLog.Information($"[Goto] 地圖點: 最後一段用{(fly ? "飛行" : "地面")}——{reason}"
-            + $"（區域 {territory} 可飛={flyable}、水平距離 {distance:F1} 米、門檻 {FieldFlightDecision.EffectiveThreshold(C.GotoAutoFlyMinDistance):F0} 米、要求飛行={run.RequestedFly}）。");
+            + $"（區域 {territory} 可飛={flyable}、水平距離 {distance:F1} 米、高低差 {heightDiff:F1} 米、門檻 {FieldFlightDecision.EffectiveThreshold(C.GotoAutoFlyMinDistance):F0} 米、要求飛行={run.RequestedFly}）。");
         // 📌 此刻佇列是空的(本任務是 EnqueueToMapPoint 排的最後一個),所以 Enqueue 等同 Insert。
         EnqueueNavTo(floor.Value, fly);
         return true;
