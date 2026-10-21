@@ -726,37 +726,37 @@ public static unsafe class TaskGotoDestination
 
     /// <summary>
     /// 抵達後降落，不下坐騎（野外導航沒有「抵達後下坐騎」的設定；房區那個只管房區）。
-    /// 做法同 Questionable LandExecutor：在空中且動作可用時送一般動作 23，每秒最多一次、最多 5 次，落地（InFlight 消失）即完成。
+    /// 在空中且動作可用時送一般動作 23（跳下），落地（InFlight 消失）即完成；重送與否見 <see cref="LandRetryGate"/>
+    /// （跳下在地面騎乘時＝下坐騎，所以降落途中不重送）。
     /// </summary>
     private static void InsertLand()
     {
         if(!Svc.Condition[ConditionFlag.InFlight]) return;
-        var attempts = 0;
-        long nextAt = 0;
+        var gate = new LandRetryGate();
         P.TaskManager.Insert(() =>
         {
             if(!Svc.Condition[ConditionFlag.InFlight])
             {
-                PluginLog.Information($"[Goto] 已降落（送出降落 {attempts} 次）。");
+                PluginLog.Information($"[Goto] 已降落（送出降落 {gate.Sends} 次）。");
                 return true;
             }
+            if(!Player.Available) return false;
             var now = Environment.TickCount64;
-            if(attempts < LandMaxAttempts && now >= nextAt)
+            var y = Player.Position.Y;
+            if(!gate.ShouldSend(now, y)) return false;
+            var am = ActionManager.Instance();
+            if(am == null || am->GetActionStatus(ActionType.GeneralAction, 23) != 0)
             {
-                nextAt = now + 1000;
-                var am = ActionManager.Instance();
-                if(am != null && am->GetActionStatus(ActionType.GeneralAction, 23) == 0)
-                {
-                    attempts++;
-                    am->UseAction(ActionType.GeneralAction, 23);
-                    if(attempts == 1) PluginLog.Information("[Goto] 抵達目標上空：送出降落。");
-                }
+                gate.OnNotReady(now, y);
+                return false;
             }
+            var accepted = am->UseAction(ActionType.GeneralAction, 23);
+            gate.OnSent(now, y);
+            if(gate.Sends == 1) PluginLog.Information($"[Goto] 抵達目標上空：送出降落（遊戲回傳 {accepted}）。");
+            else PluginLog.Information($"[Goto] 仍在空中、高度 {LandRetryGate.StallWindowMs / 1000.0:F1} 秒內沒在下降：再送一次降落（第 {gate.Sends}/{LandRetryGate.MaxSends} 次，遊戲回傳 {accepted}）。");
             return false;
         }, "GotoFlyLand", new(timeLimitMS: 10000, abortOnTimeout: false));
     }
-
-    private const int LandMaxAttempts = 5;
 
     /// <summary>離目標還有這麼遠卻「已經沒在走」,才算飛行路線失敗(不然一兩點的短路徑會被誤判)。</summary>
     private const float FlyPathFailureDistance = FieldFlightDecision.DistanceFloor;
