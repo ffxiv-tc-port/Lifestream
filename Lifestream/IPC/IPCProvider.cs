@@ -156,10 +156,7 @@ public class IPCProvider
     private void AbortCore(string caller)
     {
         Systems.TravelDiag.LogAbort($"IPC Lifestream.Abort（呼叫端＝{caller ?? "不明"}）");
-        Movement.VnavMoveOwner.StopIfOurs("IPC Lifestream.Abort");
-        Movement.AutomoveOwner.StopIfOurs("IPC Lifestream.Abort");
-        P.TaskManager.Abort();
-        P.followPath?.Stop();
+        Movement.TravelStop.StopAll("IPC Lifestream.Abort");
     }
 
     /// <summary>

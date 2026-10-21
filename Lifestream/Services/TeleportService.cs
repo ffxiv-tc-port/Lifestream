@@ -75,8 +75,7 @@ public unsafe class TeleportService
         if(string.IsNullOrWhiteSpace(gameText)) gameText = "Game status code ??.".Loc(refused);
         PluginLog.Information($"[Teleport] 傳送被遊戲拒絕已 {elapsedMs / 1000.0:F1} 秒（狀態 {refused}「{gameText}」），不再等待、中止任務鏈。");
         TravelDiag.LogAbort($"傳送被遊戲拒絕（狀態 {refused}）");
-        P.TaskManager.Abort();
-        P.followPath?.Stop();
+        Movement.TravelStop.StopAll("傳送被遊戲拒絕");
         ChatQueue.Red($"[Lifestream] {"Teleport refused by the game: ?? Stopped the remaining steps.".Loc(gameText)}");
     }
 

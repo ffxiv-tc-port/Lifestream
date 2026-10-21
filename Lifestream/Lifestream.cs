@@ -196,10 +196,7 @@ public unsafe class Lifestream : IDalamudPlugin
         {
             TravelDiag.LogAbort(abortSource ?? $"{command} stop 指令");
             Notify.Info($"Discarding {TaskManager.NumQueuedTasks + (TaskManager.IsBusy ? 1 : 0)} tasks");
-            VnavMoveOwner.StopIfOurs("stop 指令");
-            AutomoveOwner.StopIfOurs("stop 指令");
-            TaskManager.Abort();
-            followPath?.Stop();
+            TravelStop.StopAll("stop 指令");
             TabUtility.TargetWorldID = 0;
         }
         else if(arguments != "" && C.AllowCustomOverrides && ProcessCustomShortcuts(arguments))
