@@ -185,6 +185,7 @@ internal static class TaskAetheryteAethernetTeleport
 
         // Target and ensure we're in range to interact.
         P.TaskManager.EnqueueDelay(10, true);
+        P.TaskManager.Enqueue(TaskAethernetRoute.WaitForArrival(territoryId), "WaitForTeleportArrival", WaitForLoadingScreen);
         P.TaskManager.Enqueue(WorldChange.TargetReachableMasterAetheryte);
         P.TaskManager.Enqueue(() =>
         {

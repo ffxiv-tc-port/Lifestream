@@ -194,6 +194,28 @@ internal static class TaskAethernetRoute
     private static bool IsStandingAt(TinyAetheryte node) => P.ActiveAetheryte != null && P.ActiveAetheryte.Value.ID == node.ID;
 
     /// <summary>
+    /// 傳送抵達閘門:在目的區域、讀取結束、畫面已淡入才放行。
+    /// 刻意不省:剛抵達某區就立刻再傳送時,上一次的淡入還亮著,<c>WaitForScreenFalse</c> 會被它誤放行,
+    /// 後面的鎖定/自動移動就落在讀取畫面裡被吞掉,<c>WaitUntilMasterAetheryteExists</c> 空等到逾時。
+    /// 同區傳送時前兩項立刻成立,行為與沒有這道閘門時相同。
+    /// </summary>
+    internal static Func<bool?> WaitForArrival(uint territoryId)
+    {
+        var logged = false;
+        return () =>
+        {
+            if(!Player.Available) return false;
+            if(Svc.ClientState.TerritoryType == territoryId && !Svc.Condition[ConditionFlag.BetweenAreas] && !Svc.Condition[ConditionFlag.BetweenAreas51] && IsScreenReady()) return true;
+            if(!logged)
+            {
+                logged = true;
+                PluginLog.Information($"[Aethernet] Teleport has not arrived yet (zone {Svc.ClientState.TerritoryType}, want {territoryId}) - waiting before targeting the aetheryte.");
+            }
+            return false;
+        };
+    }
+
+    /// <summary>
     /// 退路:傳送到主水晶再走乙太網。任何一層捷徑失敗時都退到這裡。
     /// 🔴 用 <c>InsertMulti</c> 不是 <c>Enqueue</c>:它是在佇列執行途中才被呼叫的,呼叫端早就把
     /// 「等讀取畫面 → 導航/落點」排在後面了,用 Enqueue 會讓傳送排到那些之後。
@@ -216,6 +238,7 @@ internal static class TaskAethernetRoute
                 }
             }, "FallbackConditionalTeleportToRootAetheryte"),
             new FrameDelayTask(10),
+            new(WaitForArrival(root.TerritoryType), "WaitForTeleportArrival", TaskAetheryteAethernetTeleport.WaitForLoadingScreen),
             new(WorldChange.TargetReachableMasterAetheryte),
             new(() =>
             {
