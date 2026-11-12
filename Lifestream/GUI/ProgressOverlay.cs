@@ -58,7 +58,7 @@ public class ProgressOverlay : Window
             if(ImGui.IsMouseClicked(ImGuiMouseButton.Right))
             {
                 TravelDiag.LogAbort("進度條右鍵");
-                Movement.TravelStop.StopAll("進度條右鍵");
+                Movement.TravelStop.StopAll("進度條右鍵", disarmShutdown: true);
             }
         }
         float percent;

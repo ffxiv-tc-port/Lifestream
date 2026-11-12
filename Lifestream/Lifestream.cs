@@ -196,8 +196,7 @@ public unsafe class Lifestream : IDalamudPlugin
         {
             TravelDiag.LogAbort(abortSource ?? $"{command} stop 指令");
             Notify.Info($"Discarding {TaskManager.NumQueuedTasks + (TaskManager.IsBusy ? 1 : 0)} tasks");
-            TravelStop.StopAll("stop 指令");
-            TabUtility.TargetWorldID = 0;
+            TravelStop.StopAll("stop 指令", disarmShutdown: true);
         }
         else if(arguments != "" && C.AllowCustomOverrides && ProcessCustomShortcuts(arguments))
         {
@@ -683,19 +682,21 @@ public unsafe class Lifestream : IDalamudPlugin
                 m.Click();
             }
         }
-        if(TabUtility.TargetWorldID != 0)
+        // 目標可能被別的執行緒（IPC Abort）清成 0：整段用同一份快照，關遊戲前再確認一次沒被解除。
+        var shutdownTarget = TabUtility.TargetWorldID;
+        if(shutdownTarget != 0)
         {
-            if(Player.Available && Player.Object.CurrentWorld.RowId == TabUtility.TargetWorldID && IsScreenReady())
+            if(Player.Available && Player.Object.CurrentWorld.RowId == shutdownTarget && IsScreenReady())
             {
                 if(EzThrottler.Throttle("TerminateGame", 60000))
                 {
-                    Environment.Exit(0);
+                    if(TabUtility.TargetWorldID == shutdownTarget) Environment.Exit(0);
                 }
                 else
                 {
                     if(EzThrottler.Throttle("WarnTerminate", 1000))
                     {
-                        DuoLog.Warning($"Arrived to {ExcelWorldHelper.GetName(TabUtility.TargetWorldID)}. Game is shutting down in {EzThrottler.GetRemainingTime("TerminateGame") / 1000} seconds. Type \"/li stop\" to cancel.");
+                        DuoLog.Warning($"Arrived to {ExcelWorldHelper.GetName(shutdownTarget)}. Game is shutting down in {EzThrottler.GetRemainingTime("TerminateGame") / 1000} seconds. Type \"/li stop\" to cancel.");
                     }
                 }
             }
@@ -719,6 +720,8 @@ public unsafe class Lifestream : IDalamudPlugin
         // 忙碌中卸載時兩把鎖都要還；放在 ECommonsMain.Dispose 之前(它會釋放共享資料)。
         GenericHelpers.Safe(TextAdvanceManager.Release);
         GenericHelpers.Safe(YesAlreadyManager.EnableIfNeeded);
+        // 要在 ECommonsMain.Dispose 之前：它會釋放 vnavmesh 的 IPC 綁定與聊天指令送出端。
+        TravelStop.StopOwnMovementOnUnload();
         followPath?.Dispose();
         GenericHelpers.Safe(EzIpcFailureLog.Disable);
         GenericHelpers.Safe(ChatQueue.Disable);

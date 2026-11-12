@@ -43,19 +43,21 @@ public class IPCProvider
         // 🔴 空參數守衛必須留在**呼叫端的執行緒**上：RejectEmptyIpcCommand 是靠走受管堆疊
         //    認出呼叫者的，一旦搬到遊戲主執行緒，呼叫端的組件就已經不在堆疊上，
         //    診斷會整批退化成「不明」。Core 裡那份守衛保留當第二道，語意相同。
-        if(string.IsNullOrWhiteSpace(arguments))
+        if(IsEffectivelyEmptyCommand(arguments))
         {
             RejectEmptyIpcCommand(nameof(ExecuteCommand), arguments);
             return;
         }
         // 「stop」會中止任務鏈；呼叫端只認得出在它自己的執行緒上，所以在進閘門之前先認。
         var abortSource = arguments == "stop" ? $"IPC ExecuteCommand(「stop」)（呼叫端＝{TryIdentifyIpcCaller()}）" : null;
+        // 關機目標在進閘門前就解除：閘門逾時（讀取畫面中）或卸載期會整段不跑。
+        if(abortSource != null) GUI.TabUtility.DisarmShutdown(abortSource);
         IpcFrameworkGate.Run(nameof(ExecuteCommand), () => ExecuteCommandCore(arguments, abortSource));
     }
 
     private void ExecuteCommandCore(string arguments, string abortSource = null)
     {
-        if(string.IsNullOrWhiteSpace(arguments))
+        if(IsEffectivelyEmptyCommand(arguments))
         {
             // 🔴🔴 空參數＝裸 /li＝（預設設定下）把角色傳送回本世界。
             //      詳見本檔尾端「空參數守衛」區塊。
@@ -150,13 +152,15 @@ public class IPCProvider
         // 真的有東西可中止時才回推呼叫端：回推要走一次受管堆疊，而且只能在呼叫端的執行緒上做。
         var busy = Svc.Framework.IsInFrameworkUpdateThread ? IsBusyCore() : IsBusySnapshot;
         var caller = busy ? TryIdentifyIpcCaller() : null;
+        // 關機目標在進閘門前就解除：閘門逾時（讀取畫面中）或卸載期會整段不跑。
+        GUI.TabUtility.DisarmShutdown($"IPC Lifestream.Abort（呼叫端＝{caller ?? "不明"}）");
         IpcFrameworkGate.Run(nameof(Abort), () => AbortCore(caller));
     }
 
     private void AbortCore(string caller)
     {
         Systems.TravelDiag.LogAbort($"IPC Lifestream.Abort（呼叫端＝{caller ?? "不明"}）");
-        Movement.TravelStop.StopAll("IPC Lifestream.Abort");
+        Movement.TravelStop.StopAll("IPC Lifestream.Abort", disarmShutdown: true);
     }
 
     /// <summary>
@@ -824,13 +828,21 @@ public class IPCProvider
     // 🔴🔴 裸 /li（不帶參數）在預設設定 LiCommandBehavior.Return_to_Home_World 下等於「把角色傳送回本世界」：
     //      呼叫端只要不小心把目的地算成空字串，無人值守時就會被傳走（艦隊紅線「絕不用聊天指令呼叫空參數的 /li」的 IPC 版）。
     //      守衛放在提供端：一次保護所有消費端，不必指望每個呼叫端自己擋。
-    // ⚠️ 只擋 null / 空字串 / 全空白，非空字串照常執行。
+    // ⚠️ 只擋「以逗號切開後沒有任何非空段」的字串（null、空白、「,」「 , 」），其餘照常執行。
 
     private static readonly string[] IpcCallerSkippedAssemblies =
     [
         "Lifestream", "ECommons", "Dalamud", "FFXIVClientStructs", "OtterGui",
         "Lumina", "System", "Microsoft", "mscorlib", "netstandard",
     ];
+
+    /// <summary>
+    /// 與 <c>ProcessCommandInternal</c> 同一套切法：切完一段都不剩，就和裸 <c>/li</c> 走同一條路
+    /// （而且連 <c>LiCommandBehavior</c> 都不看，因為原字串不是 ""）。
+    /// </summary>
+    internal static bool IsEffectivelyEmptyCommand(string arguments)
+        => string.IsNullOrWhiteSpace(arguments)
+        || arguments.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length == 0;
 
     /// <summary>
     /// 統一的拒絕點：寫一行 Information（要使用者回報的診斷），
@@ -845,7 +857,7 @@ public class IPCProvider
         //    首次必放行、key 帶呼叫端，不同外掛各自看得到第一次。
         if(!ShouldLogReject($"{endpoint}.{caller}")) return;
         var shown = received == null ? "null" : $"「{received}」";
-        PluginLog.Information($"[Lifestream IPC 守衛] 拒絕執行 {endpoint}({shown})：空參數等同裸 /li，預設設定下會把角色傳送回本世界，所以一律不執行。疑似呼叫端＝{caller}。請呼叫端改成傳明確的目的地，或在呼叫前自行判斷空值。");
+        PluginLog.Information($"[Lifestream IPC 守衛] 拒絕執行 {endpoint}({shown})：空參數（含只有逗號）等同裸 /li，預設設定下會把角色傳送回本世界，所以一律不執行。疑似呼叫端＝{caller}。請呼叫端改成傳明確的目的地，或在呼叫前自行判斷空值。");
     }
 
     /// <summary>同一個（端點＋呼叫端）組合的拒絕訊息重印間隔。</summary>
