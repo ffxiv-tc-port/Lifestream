@@ -135,5 +135,6 @@ internal static partial class Lang
         return fallbacks;
     }
 
-    public static readonly string AethernetShardTooltipPlaceholder = Svc.Data.GetExcelSheet<PlaceName>().GetRow(1300).Name.GetText();
+    // 靜態欄位初始式擲例外＝整個 Lang 型別不能用；查不到列回 null（CustomAethernet 會濾掉）。
+    public static readonly string AethernetShardTooltipPlaceholder = Systems.Custom.CustomAethernet.GetPlaceName(1300);
 }

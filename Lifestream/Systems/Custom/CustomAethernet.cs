@@ -91,9 +91,22 @@ public sealed class CustomAethernet
         }
     }
 
+    /// <summary>查不到列回 null（記 Warning），不擲：這裡在服務建構時跑，擲出去整個服務會是 null。</summary>
     public static string GetPlaceName(uint id)
     {
-        return Svc.Data.GetExcelSheet<PlaceName>().GetRow(id).Name.GetText();
+        var name = Svc.Data.GetExcelSheet<PlaceName>().GetRowOrDefault(id)?.Name.GetText();
+        if(name == null) PluginLog.Warning($"[Aethernet] PlaceName 表查不到列 {id}，略過這個自訂乙太網點（資料表可能隨改版變動）。");
+        return name;
+    }
+
+    public CustomAethernet()
+    {
+        // 名稱查不到的點整筆略過，同區其他點照常可用。
+        foreach(var zone in ZoneInfo.Values)
+        {
+            zone.Aetherytes.RemoveAll(a => a.Name == null);
+            zone.GenericAetheryteNames.RemoveAll(n => n == null);
+        }
     }
 
     public CustomAetheryte? ActiveAetheryte = null;

@@ -44,10 +44,12 @@ public class DataStore
                 if(x.IsAetheryte)
                 {
                     Aetherytes[GetTinyAetheryte(x)] = [];
-                    terr.Add(x.Territory.Value.RowId);
+                    terr.Add(x.Territory.RowId);
                 }
             }
         });
+        // 建構子擲例外＝整個服務是 null、Framework_Update 每幀 NRE；找不到主水晶的乙太網點略過、彙總記一次。
+        var orphans = new List<uint>();
         Svc.Data.GetExcelSheet<Aetheryte>().Each(x =>
         {
             if(x.AethernetGroup != 0)
@@ -55,11 +57,20 @@ public class DataStore
                 if(!x.IsAetheryte)
                 {
                     var a = GetTinyAetheryte(x);
-                    Aetherytes[GetMaster(a)].Add(a);
-                    terr.Add(x.Territory.Value.RowId);
+                    if(!Aetherytes.TryGetValue(GetMaster(a), out var siblings))
+                    {
+                        orphans.Add(x.RowId);
+                        return;
+                    }
+                    siblings.Add(a);
+                    terr.Add(x.Territory.RowId);
                 }
             }
         });
+        if(orphans.Count > 0)
+        {
+            PluginLog.Warning($"[Aethernet] {orphans.Count} 個乙太網點找不到同組的主水晶，已略過（Aetheryte 列 {string.Join(",", orphans)}；資料表可能隨改版變動）。");
+        }
         foreach(var x in Aetherytes.Keys.ToArray())
         {
             Aetherytes[x] = [.. Aetherytes[x].OrderBy(x => GetAetheryteSortOrder(x.ID))];
@@ -97,7 +108,7 @@ public class DataStore
 
     internal void BuildWorlds()
     {
-        BuildWorlds(Svc.Objects.LocalPlayer.CurrentWorld.Value.DataCenter.Value.RowId);
+        BuildWorlds(Svc.Objects.LocalPlayer.CurrentWorld.Value.DataCenter.RowId);
         if(Player.Available)
         {
             if(P.AutoRetainerApi?.Ready == true && C.UseAutoRetainerAccounts)
@@ -149,14 +160,14 @@ public class DataStore
         }
         else
         {
-            var map = Svc.Data.GetExcelSheet<Map>().FirstOrDefault(m => m.TerritoryType.RowId == aetheryte.Territory.Value.RowId);
-            var scale = map.SizeFactor;
-            if(Svc.Data.GetSubrowExcelSheet<MapMarker>().AllRows().TryGetFirst(m => m.DataType == (aetheryte.IsAetheryte ? 3 : 4) && m.DataKey.RowId == (aetheryte.IsAetheryte ? aetheryte.RowId : aetheryte.AethernetName.RowId), out var mapMarker))
+            // 找不到地圖時座標留 0（同「找不到標記」）：預設值的 Map 一讀欄位就擲。
+            if(Svc.Data.GetExcelSheet<Map>().TryGetFirst(m => m.TerritoryType.RowId == aetheryte.Territory.RowId, out var map)
+                && Svc.Data.GetSubrowExcelSheet<MapMarker>().AllRows().TryGetFirst(m => m.DataType == (aetheryte.IsAetheryte ? 3 : 4) && m.DataKey.RowId == (aetheryte.IsAetheryte ? aetheryte.RowId : aetheryte.AethernetName.RowId), out var mapMarker))
             {
-                AethersX = Utils.ConvertMapMarkerToRawPosition(mapMarker.X, scale);
-                AethersY = Utils.ConvertMapMarkerToRawPosition(mapMarker.Y, scale);
+                AethersX = Utils.ConvertMapMarkerToRawPosition(mapMarker.X, map.SizeFactor);
+                AethersY = Utils.ConvertMapMarkerToRawPosition(mapMarker.Y, map.SizeFactor);
             }
         }
-        return new(new(AethersX, AethersY), aetheryte.Territory.Value.RowId, aetheryte.RowId, aetheryte.AethernetGroup);
+        return new(new(AethersX, AethersY), aetheryte.Territory.RowId, aetheryte.RowId, aetheryte.AethernetGroup);
     }
 }
