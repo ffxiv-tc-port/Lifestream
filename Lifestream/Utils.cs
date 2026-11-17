@@ -227,74 +227,6 @@ internal static unsafe partial class Utils
         return Svc.Objects.FirstOrDefault(x => x.IsTargetable && x.Name.ToString().EqualsIgnoreCaseAny(Lang.AdditionalChambersEntrance));
     }
 
-    public static bool TryFindEqualsOrContains<T>(IEnumerable<T> haystack, Func<T, string> haystackConverterToString, string needle, out T result, bool partialRequiresUnique = false)
-    {
-        return TryFindEqualsOrContains(haystack, haystackConverterToString, [needle], out result, partialRequiresUnique);
-    }
-
-    /// <param name="partialRequiresUnique">
-    /// true＝相等比不到時，前綴／包含兩個退路只在恰好命中一項時採用；命中多項回 false（呼叫端不按）並記一行 Information。
-    /// false＝沿用原行為（取第一個命中）。
-    /// </param>
-    public static bool TryFindEqualsOrContains<T>(IEnumerable<T> haystack, Func<T, string> haystackConverterToString, IEnumerable<string> needles, out T result, bool partialRequiresUnique = false)
-    {
-        if(TryFindEquals(haystack, haystackConverterToString, needles, out result)) return true;
-        if(partialRequiresUnique)
-        {
-            return TryFindUniquePartial(haystack, haystackConverterToString, needles, out result, out _);
-        }
-        foreach(var x in haystack)
-        {
-            foreach(var n in needles)
-            {
-                if(haystackConverterToString(x).StartsWith(n, StringComparison.OrdinalIgnoreCase))
-                {
-                    result = x;
-                    return true;
-                }
-            }
-        }
-        foreach(var x in haystack)
-        {
-            foreach(var n in needles)
-            {
-                if(haystackConverterToString(x).Contains(n, StringComparison.OrdinalIgnoreCase))
-                {
-                    result = x;
-                    return true;
-                }
-            }
-        }
-        result = default;
-        return false;
-    }
-
-    /// <summary>相等優先；前綴／包含只在恰好命中一項時採用（同 <c>partialRequiresUnique: true</c>）。</summary>
-    /// <param name="ambiguous">部分比對命中多項時＝那些項目的文字（已記 Information、回 false）；其他情況為 null。</param>
-    public static bool TryFindEqualsOrUniquePartial<T>(IEnumerable<T> haystack, Func<T, string> haystackConverterToString, IEnumerable<string> needles, out T result, out string[] ambiguous)
-    {
-        ambiguous = null;
-        if(TryFindEquals(haystack, haystackConverterToString, needles, out result)) return true;
-        return TryFindUniquePartial(haystack, haystackConverterToString, needles, out result, out ambiguous);
-    }
-
-    private static bool TryFindEquals<T>(IEnumerable<T> haystack, Func<T, string> haystackConverterToString, IEnumerable<string> needles, out T result)
-    {
-        foreach(var x in haystack)
-        {
-            foreach(var n in needles)
-            {
-                if(haystackConverterToString(x).EqualsIgnoreCase(n))
-                {
-                    result = x;
-                    return true;
-                }
-            }
-        }
-        result = default;
-        return false;
-    }
-
     private static readonly (string Kind, Func<string, string, bool> Match)[] PartialMatchers =
     [
         ("前綴", (h, n) => h.StartsWith(n, StringComparison.OrdinalIgnoreCase)),
@@ -302,58 +234,6 @@ internal static unsafe partial class Utils
     ];
     private static string LastAmbiguousPartialKey;
     private static long LastAmbiguousPartialAt;
-
-    // 只在框架執行緒呼叫（記 log 的去重欄位沒有鎖）。包含命中集合必定涵蓋前綴命中集合，所以前綴多筆就不必再試包含。
-    private static bool TryFindUniquePartial<T>(IEnumerable<T> haystack, Func<T, string> haystackConverterToString, IEnumerable<string> needles, out T result, out string[] ambiguous)
-    {
-        ambiguous = null;
-        foreach(var (kind, match) in PartialMatchers)
-        {
-            var hits = haystack.Where(x => needles.Any(n => match(haystackConverterToString(x), n))).ToList();
-            if(hits.Count == 1)
-            {
-                result = hits[0];
-                return true;
-            }
-            if(hits.Count > 1)
-            {
-                ambiguous = [.. hits.Select(haystackConverterToString)];
-                var texts = string.Join("／", ambiguous);
-                var key = $"{kind}|{string.Join("／", needles)}|{texts}";
-                var now = Environment.TickCount64;
-                // 呼叫端每幀重試：同一組結果 10 秒內只記一次。
-                if(key != LastAmbiguousPartialKey || now - LastAmbiguousPartialAt > 10_000)
-                {
-                    LastAmbiguousPartialKey = key;
-                    LastAmbiguousPartialAt = now;
-                    PluginLog.Information($"[Lifestream] 選單比對：「{string.Join("／", needles)}」沒有完全相同的選項，以{kind}比對命中 {hits.Count} 項（{texts}），無法確定是哪一項，這次不按。");
-                }
-                result = default;
-                return false;
-            }
-        }
-        result = default;
-        return false;
-    }
-
-    public static Dictionary<uint, string> KnownAetherytes
-    {
-        get
-        {
-            if(field == null)
-            {
-                field = [];
-                foreach(var x in KnownAetherytesByCategories)
-                {
-                    foreach(var v in x.Value)
-                    {
-                        field[v.Key] = v.Value;
-                    }
-                }
-            }
-            return field;
-        }
-    }
 
     public static Dictionary<string, Dictionary<uint, string>> KnownAetherytesByCategories
     {
@@ -415,126 +295,9 @@ internal static unsafe partial class Utils
         return (P.ActiveAetheryte == null || !P.ActiveAetheryte.Value.IsAetheryte) && Utils.GetReachableAetheryte(x => x.IsAetheryte()) != null;
     }
 
-    public static string GetAethernetNameWithOverrides(uint id)
-    {
-        // TC (Traditional Chinese) isn't one of the languages the bundled KnownAetherytes dataset was captured in,
-        // so its names never match the TC client's aethernet menu ("Destination could not be found"). Try the live
-        // Excel sheet first - it resolves in whatever language the running client's game data is - and only fall
-        // back to the bundled dataset for entries that aren't real Aetheryte sheet rows (Firmament's synthetic ID).
-        var live = Svc.Data.GetExcelSheet<Aetheryte>().GetRowOrDefault(id)?.AethernetName.Value.Name.GetText();
-        if(!string.IsNullOrEmpty(live)) return live;
-        if(Utils.KnownAetherytes.TryGetValue(id, out var ret)) return ret;
-        return null;
-    }
-
     public static bool WotsitInstalled()
     {
         return Svc.PluginInterface.InstalledPlugins.Any(x => x.InternalName == "Dalamud.FindAnything" && x.IsLoaded);
-    }
-
-    public static string ParseSheetPattern(string s)
-    {
-        try
-        {
-            {
-                var match = ParseSheetValueRegex().Match(s);
-                if(match.Success)
-                {
-                    var type = typeof(Addon).Assembly.GetType($"Lumina.Excel.Sheets.{match.Groups[1].Value}", true);
-                    var rowId = uint.Parse(match.Groups[2].Value);
-                    var col = match.Groups[3].Value;
-                    var result = Svc.Data.GetType().GetMethod("GetExcelSheet", ReflectionHelper.AllFlags).MakeGenericMethod([type]).Invoke(Svc.Data, [null, null]).Call("GetRow", [rowId]).GetFoP(col);
-                    if(result is ReadOnlySeString ross)
-                    {
-                        return ross.GetText();
-                    }
-                    return result.ToString();
-                }
-            }
-            {
-                var match = ParseQuestDialogueTextSheetRegex().Match(s);
-                if(match.Success)
-                {
-                    var sheet = Svc.Data.GetExcelSheet<QuestDialogueText>(name: match.Groups[1].Value);
-                    var rowId = uint.Parse(match.Groups[2].Value);
-                    var col = match.Groups[3].Value;
-                    var result = sheet.Call("GetRow", [rowId]).GetFoP(col);
-                    if(result is ReadOnlySeString ross)
-                    {
-                        if(match.Groups[4].Success)
-                        {
-                            ross = ResolveSheetMacros(ross, [.. match.Groups[4].Value.Split(',').Select(uint.Parse)]);
-                        }
-                        return ross.GetText();
-                    }
-                    return result.ToString();
-                }
-            }
-            return s;
-        }
-        catch(Exception e)
-        {
-            e.Log();
-            return s;
-        }
-    }
-
-    [GeneratedRegex(@"^<([a-z]+):([0-9]+):([a-z]+)>$", RegexOptions.IgnoreCase)]
-    private static partial Regex ParseSheetValueRegex();
-
-    // 選用的第 4 段是逗號分隔的 lnum1、lnum2…，只用來代換表字串裡的 <sheet(表,列,欄)> 巨集；
-    // 不給時走原本的 GetText（巨集整段剝掉）。
-    [GeneratedRegex(@"^<QuestDialogueText:([a-z_/0-9]+):([0-9]+):([a-z]+)(?::([0-9]+(?:,[0-9]+)*))?>$", RegexOptions.IgnoreCase)]
-    private static partial Regex ParseQuestDialogueTextSheetRegex();
-
-    /// <summary>
-    /// 把 <c>&lt;sheet(表,列,欄)&gt;</c> 巨集換成該表該欄的字串（列、欄可為常數或 lnumN）。
-    /// 其他巨集與解不出來的 sheet 巨集原樣保留，之後照舊由 GetText 剝掉。
-    /// </summary>
-    private static ReadOnlySeString ResolveSheetMacros(ReadOnlySeString str, uint[] localNumbers)
-    {
-        var sb = new Lumina.Text.SeStringBuilder();
-        foreach(var payload in str.AsSpan())
-        {
-            if(payload.Type == ReadOnlySePayloadType.Macro && payload.MacroCode == Lumina.Text.Payloads.MacroCode.Sheet && TryReadSheetMacro(payload, localNumbers, out var text))
-            {
-                sb.Append(text);
-            }
-            else
-            {
-                sb.Append(payload);
-            }
-        }
-        return sb.ToReadOnlySeString();
-    }
-
-    private static bool TryReadSheetMacro(ReadOnlySePayloadSpan payload, uint[] localNumbers, out ReadOnlySeString text)
-    {
-        text = default;
-        var args = payload.GetEnumerator();
-        if(!args.MoveNext() || !args.Current.TryGetString(out var sheetNameStr)) return false;
-        if(!args.MoveNext() || !TryResolveMacroNumber(args.Current, localNumbers, out var rowId)) return false;
-        if(!args.MoveNext() || !TryResolveMacroNumber(args.Current, localNumbers, out var colIndex)) return false;
-        var sheetName = sheetNameStr.ExtractText();
-        if(!Svc.Data.Excel.SheetNames.Contains(sheetName)) return false;
-        if(!Svc.Data.GetExcelSheet<Lumina.Excel.RawRow>(name: sheetName).TryGetRow(rowId, out var row)) return false;
-        if(colIndex >= row.Columns.Count || row.Columns[(int)colIndex].Type != Lumina.Data.Structs.Excel.ExcelColumnDataType.String) return false;
-        text = row.ReadStringColumn((int)colIndex);
-        return true;
-    }
-
-    private static bool TryResolveMacroNumber(ReadOnlySeExpressionSpan expr, uint[] localNumbers, out uint value)
-    {
-        if(expr.TryGetUInt(out value)) return true;
-        if(expr.TryGetParameterExpression(out var type, out var operand)
-            && (Lumina.Text.Expressions.ExpressionType)type == Lumina.Text.Expressions.ExpressionType.LocalNumber
-            && operand.TryGetUInt(out var index) && index >= 1 && index <= localNumbers.Length)
-        {
-            value = localNumbers[index - 1];
-            return true;
-        }
-        value = 0;
-        return false;
     }
 
     public static string GetMountName(int id)
@@ -544,33 +307,6 @@ internal static unsafe partial class Utils
     public static string GetWorldFromCID(ulong cid)
     {
         return Utils.GetCharaName(cid)?.Split("@").SafeSelect(1);
-    }
-
-    public static bool IsInsideHouse()
-    {
-        return P.Territory.EqualsAny<uint>(
-            Houses.Private_Cottage_Mist, Houses.Private_House_Mist, Houses.Private_Mansion_Mist,
-            Houses.Private_Cottage_Empyreum, Houses.Private_House_Empyreum, Houses.Private_Mansion_Empyreum,
-            Houses.Private_Cottage_Shirogane, Houses.Private_House_Shirogane, Houses.Private_Mansion_Shirogane,
-            Houses.Private_Cottage_The_Goblet, Houses.Private_House_The_Goblet, Houses.Private_Mansion_The_Goblet,
-            Houses.Private_Cottage_The_Lavender_Beds, Houses.Private_House_The_Lavender_Beds, Houses.Private_Mansion_The_Lavender_Beds,
-            1249, 1250, 1251
-            );
-    }
-
-    public static bool IsInsideWorkshop()
-    {
-        return P.Territory.EqualsAny(Houses.Company_Workshop_Empyreum, Houses.Company_Workshop_Mist, Houses.Company_Workshop_Shirogane, Houses.Company_Workshop_The_Goblet, Houses.Company_Workshop_The_Lavender_Beds);
-    }
-
-    public static bool IsInsidePrivateChambers()
-    {
-        return P.Territory.EqualsAny(Houses.Private_Chambers_Empyreum, Houses.Private_Chambers_Mist, Houses.Private_Chambers_Shirogane, Houses.Private_Chambers_The_Goblet, Houses.Private_Chambers_The_Lavender_Beds);
-    }
-
-    public static bool IsTerritoryResidentialDistrict(ushort obj)
-    {
-        return obj.EqualsAny(ResidentalAreas.Mist, ResidentalAreas.Shirogane, ResidentalAreas.Empyreum, ResidentalAreas.The_Goblet, ResidentalAreas.The_Lavender_Beds);
     }
 
     public static string GetCharaName(ulong cid)
@@ -640,35 +376,6 @@ internal static unsafe partial class Utils
         return isJumping || isAirDismount;
     }
 
-    public static void DrawWorldSelector(ICollection<int> worldList)
-    {
-        ImGuiEx.CollectionCheckbox("All", PublicWorlds.Get().Select(x => (int)x.RowId), worldList);
-        ImGui.Indent();
-        // 用 PublicWorlds.AllRegions() 而不是 Enum.GetValues<Region>()：ECommons 的列舉沒有台服的 8，
-        // 直接迭代列舉會讓陸行鳥資料中心與其底下的世界整組消失——而同一個畫面上方的
-        // PublicWorlds.Get()（全部聚合）是含台服的，兩者會不一致。
-        var regions = PublicWorlds.AllRegions();
-        foreach(var r in regions)
-        {
-            ImGuiEx.CollectionCheckbox(PublicWorlds.RegionDisplayName(r), PublicWorlds.Get(r).Select(x => (int)x.RowId), worldList);
-            var dc = ExcelWorldHelper.GetDataCenters(r);
-            ImGui.Indent();
-            foreach(var d in dc)
-            {
-                var worlds = PublicWorlds.Get(d.RowId);
-                ImGuiEx.CollectionCheckbox(d.Name.ToString(), worlds.Select(x => (int)x.RowId), worldList);
-                ImGui.Indent();
-                foreach(var w in worlds.OrderBy(x => x.Name.ToString()))
-                {
-                    ImGuiEx.CollectionCheckbox(w.Name.ToString(), (int)w.RowId, worldList);
-                }
-                ImGui.Unindent();
-            }
-            ImGui.Unindent();
-        }
-        ImGui.Unindent();
-    }
-
     public static bool IsTravelBlocked(string charaName, Number charaWorld, Number sourceWorld, string targetWorld)
     {
         return IsTravelBlocked(charaName, charaWorld, sourceWorld, ExcelWorldHelper.Get(targetWorld).Value.RowId);
@@ -711,205 +418,6 @@ internal static unsafe partial class Utils
     {
         FrameThrottler.Throttle("LifestreamGenericThrottle", num, true);
     }
-    public static void ScreenToWorldSelector(string id, ref Vector3 point)
-    {
-        ref var isInWorldToScreen = ref Ref<bool>.Get($"{id}_screenToWorldSelector");
-        if(isInWorldToScreen)
-        {
-            if(Svc.GameGui.ScreenToWorld(ImGui.GetIO().MousePos, out var worldPos))
-            {
-                point = worldPos;
-            }
-            ImGui.BeginTooltip();
-            ImGuiEx.Text(LocText.PointLeftClickToFinish.Loc(point.ToString("F2")));
-            ImGui.EndTooltip();
-            if(IsKeyPressed((int)Keys.LButton))
-            {
-                isInWorldToScreen = false;
-            }
-        }
-    }
-
-    public static void BeginScreenToWorldSelection(string id, Vector3 point)
-    {
-        ref var isInWorldToScreen = ref Ref<bool>.Get($"{id}_screenToWorldSelector");
-        if(Svc.GameGui.WorldToScreen(point, out var screenPos))
-        {
-            SetCursorTo((int)screenPos.X, (int)screenPos.Y);
-        }
-        isInWorldToScreen = true;
-    }
-
-    public static void ScreenToWorldSelector(string id, ref Vector2 point)
-    {
-        ref var isInWorldToScreen = ref Ref<bool>.Get($"{id}_screenToWorldSelector");
-        if(isInWorldToScreen)
-        {
-            //PluginLog.Debug($"{ImGui.GetIO().MousePos}");
-            if(Svc.GameGui.ScreenToWorld(ImGui.GetIO().MousePos, out var worldPos))
-            {
-                point = worldPos.ToVector2();
-            }
-            ImGui.BeginTooltip();
-            ImGuiEx.Text(LocText.PointLeftClickToFinish.Loc(point.ToString("F2")));
-            ImGui.EndTooltip();
-            if(IsKeyPressed((int)Keys.LButton))
-            {
-                isInWorldToScreen = false;
-            }
-        }
-    }
-
-    public static void BeginScreenToWorldSelection(string id, Vector2 point)
-    {
-        ref var isInWorldToScreen = ref Ref<bool>.Get($"{id}_screenToWorldSelector");
-        if(Svc.GameGui.WorldToScreen(point.ToVector3(Player.Position.Y), out var screenPos))
-        {
-            SetCursorTo((int)screenPos.X, (int)screenPos.Y);
-        }
-        isInWorldToScreen = true;
-    }
-
-    public static void SetCursorTo(int x, int y)
-    {
-        for(var i = 0; i < 1000; i++)
-        {
-            if(WindowFunctions.TryFindGameWindow(out var hwnd))
-            {
-                var point = new POINT() { x = x, y = y };
-                if(FXWindows.ClientToScreen(hwnd, &point))
-                {
-                    FXWindows.SetCursorPos(point.x, point.y);
-                }
-                break;
-            }
-        }
-
-    }
-
-    public static void DrawVector2Selector(string id, ref Vector2 value)
-    {
-        ImGui.SetNextItemWidth(150f.Scale());
-        ImGui.DragFloat2($"##vec{id}", ref value, 0.01f);
-        ImGui.SameLine();
-        if(ImGuiEx.IconButton(FontAwesomeIcon.MapPin, $"myPos{id}", enabled: Player.Interactable))
-        {
-            value = Player.Position.ToVector2();
-        }
-        ImGuiEx.Tooltip("To player positon".Loc());
-        ImGui.SameLine(0, 1);
-        if(ImGuiEx.IconButton(FontAwesomeIcon.Crosshairs, $"target{id}", enabled: Svc.Targets.Target != null))
-        {
-            value = Svc.Targets.Target.Position.ToVector2();
-        }
-        ImGuiEx.Tooltip("To target positon".Loc());
-        ImGui.SameLine(0, 1);
-        if(ImGuiEx.IconButton(FontAwesomeIcon.MousePointer, $"target{id}", enabled: Player.Interactable))
-        {
-            BeginScreenToWorldSelection(id, value);
-        }
-        ScreenToWorldSelector(id, ref value);
-        ImGuiEx.Tooltip("Select with mouse".Loc());
-        ImGui.SameLine(0, 1);
-        // AgentMap.Instance() 是 AgentGetterGenerator 產出的兩層可空取得器
-        // (`agentModule == null ? null : GetAgentByInternalId(...)`)——合法回 null。
-        // 這裡在繪製路徑每幀跑,取一次、判一次,拿不到就把按鈕停用(fail-closed)。
-        var flagAgent = AgentMap.Instance();
-        if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && flagAgent != null && flagAgent->FlagMarkerCount > 0))
-        {
-            var marker = flagAgent->FlagMapMarkers[0];
-            value = new(marker.XFloat, marker.YFloat);
-        }
-        ScreenToWorldSelector(id, ref value);
-        ImGuiEx.Tooltip("To map flag".Loc());
-        ImGui.SameLine(0, 1);
-        if(ImGuiEx.IconButton(FontAwesomeIcon.Brush, $"splatoon{id}") && TryGetSelectedSplatoonElementPosition(out var fromSplatoon))
-        {
-            value = fromSplatoon.ToVector2();
-        }
-        ImGuiEx.Tooltip("From selected Splatoon element".Loc());
-    }
-
-    // 讀 Splatoon 設定視窗目前選中的元素座標（反射它的內部靜態欄位，只在按鈕按下時做）；讀不到就提示並回 false。
-    private static bool TryGetSelectedSplatoonElementPosition(out Vector3 position)
-    {
-        position = default;
-        try
-        {
-            if(!DalamudReflector.TryGetDalamudPlugin("Splatoon", out var instance, true, true))
-            {
-                Notify.Error("Splatoon is not installed".Loc());
-                return false;
-            }
-            var element = instance.GetStaticFoP("Splatoon.ConfigGui.CGuiLayouts.LayoutDrawSelector", "CurrentElement");
-            if(element == null)
-            {
-                Notify.Error("Element is not selected".Loc());
-                return false;
-            }
-            position = new Vector3(element.GetFoP<float>("refX"), element.GetFoP<float>("refZ"), element.GetFoP<float>("refY"));
-            return true;
-        }
-        catch(Exception e)
-        {
-            e.Log();
-            Notify.Error("An error occurred while retrieving element coordinates".Loc());
-            return false;
-        }
-    }
-
-    public static void DrawVector3Selector(string id, ref Vector3 value)
-    {
-        ImGui.SetNextItemWidth(150f.Scale());
-        ImGui.DragFloat3($"##vec{id}", ref value, 0.01f);
-        ImGui.SameLine();
-        if(ImGuiEx.IconButton(FontAwesomeIcon.MapPin, $"myPos{id}", enabled: Player.Interactable))
-        {
-            value = Player.Position;
-        }
-        ImGuiEx.Tooltip("To player positon".Loc());
-        ImGui.SameLine(0, 1);
-        if(ImGuiEx.IconButton(FontAwesomeIcon.Crosshairs, $"target{id}", enabled: Svc.Targets.Target != null))
-        {
-            value = Svc.Targets.Target.Position;
-        }
-        ImGuiEx.Tooltip("To target positon".Loc());
-        ImGui.SameLine(0, 1);
-        if(ImGuiEx.IconButton(FontAwesomeIcon.MousePointer, $"target{id}", enabled: Player.Interactable))
-        {
-            BeginScreenToWorldSelection(id, value);
-        }
-        ScreenToWorldSelector(id, ref value);
-        ImGuiEx.Tooltip("Select with mouse".Loc());
-        ImGui.SameLine(0, 1);
-        // AgentMap 取得器合法回 null,取一次、判一次,拿不到就停用按鈕。
-        var flagAgent = AgentMap.Instance();
-        if(ImGuiEx.IconButton(FontAwesomeIcon.Flag, $"flag{id}", enabled: Player.Interactable && flagAgent != null && flagAgent->FlagMarkerCount > 0))
-        {
-            var marker = flagAgent->FlagMapMarkers[0];
-            value = new(marker.XFloat, 0, marker.YFloat);
-        }
-        ScreenToWorldSelector(id, ref value);
-        ImGuiEx.Tooltip("To map flag".Loc());
-        ImGui.SameLine(0, 1);
-        if(ImGuiEx.IconButton(FontAwesomeIcon.Brush, $"splatoon{id}") && TryGetSelectedSplatoonElementPosition(out var fromSplatoon))
-        {
-            value = fromSplatoon;
-        }
-        ImGuiEx.Tooltip("From selected Splatoon element".Loc());
-    }
-
-    public static IEnumerable<uint> GetAllRegisteredAethernetDestinations()
-    {
-        foreach(var x in S.Data.DataStore.Aetherytes)
-        {
-            yield return x.Key.ID;
-            foreach(var v in x.Value)
-            {
-                yield return v.ID;
-            }
-        }
-    }
 
     public static WorldChangeAetheryte AdjustGateway(this WorldChangeAetheryte gateway)
     {
@@ -928,12 +436,6 @@ internal static unsafe partial class Utils
         return gateway;
     }
 
-    public static bool IsAddonVisible(string name)
-    {
-        if(TryGetAddonByName<AtkUnitBase>(name, out var addon) && addon->IsVisible) return true;
-        return false;
-    }
-
     public static List<World> GetVisitableWorldsFrom(World source)
     {
         var ret = new List<World>();
@@ -946,12 +448,6 @@ internal static unsafe partial class Utils
             if(!ret.Contains(x)) ret.Add(x);
         }
         return ret;
-    }
-
-    public static List<HousePathData> GetHousePathDatas()
-    {
-        if(P.DisableHousePathData) return [];
-        return C.HousePathDatas;
     }
 
     public static bool IsAetheryteEligibleForCustomAlias(IGameObject go)
@@ -967,56 +463,10 @@ internal static unsafe partial class Utils
 
     public static uint[] HousingAethernet = [MainCities.Limsa_Lominsa_Lower_Decks, MainCities.Uldah_Steps_of_Nald, MainCities.New_Gridania, MainCities.Foundation, MainCities.Kugane];
 
-    public static HousePathData GetFCPathData() => Utils.GetHousePathDatas().FirstOrDefault(x => x.CID == Player.CID && !x.IsPrivate);
-    public static HousePathData GetPrivatePathData() => Utils.GetHousePathDatas().FirstOrDefault(x => x.CID == Player.CID && x.IsPrivate);
-    public static HousePathData GetCustomPathData(ResidentialAetheryteKind kind, int ward, int plot)
-    {
-        return C.HousePathDatas.FirstOrDefault(x => x.ResidentialDistrict == kind && x.Ward == ward && x.Plot == plot) ?? C.CustomHousePathDatas.FirstOrDefault(x => x.ResidentialDistrict == kind && x.Ward == ward && x.Plot == plot);
-    }
-
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <param name="territory"></param>
-    /// <param name="plot">Start with 0</param>
-    /// <returns></returns>
-    public static Vector3? GetPlotEntrance(uint territory, int plot)
-    {
-        if(S.Data.ResidentialAethernet.HousingData.Data.TryGetValue(territory, out var data) && data.Count > plot && data[plot].Path.Count > 0) return data[plot].Path[^1];
-        return null;
-    }
-
-    public static IGameObject GetNearestEntrance(out float Distance)
-    {
-        var currentDistance = float.MaxValue;
-        IGameObject currentObject = null;
-
-        foreach(var x in Svc.Objects)
-        {
-            if(x.IsTargetable && Lang.Entrance.Matches(x.Name.ToString(), LegacyMatch.EqualsIgnoreCaseAny))
-            {
-                var distance = Vector3.Distance(Svc.Objects.LocalPlayer.Position, x.Position);
-                if(distance < currentDistance)
-                {
-                    currentDistance = distance;
-                    currentObject = x;
-                }
-            }
-        }
-        Distance = currentDistance;
-        return currentObject;
-    }
-
     public static void DisplayInfo(string s, bool? displayChat = null, bool? displayPopup = null)
     {
         if(displayChat ?? C.DisplayChatTeleport) ChatQueue.Green($"[Lifestream] {s}");
         if(displayPopup ?? C.DisplayPopupNotifications) Notify.Info(s);
-    }
-
-    public static HouseEnterMode GetHouseEnterMode(this HousePathData data)
-    {
-        if(data != null && data.EnableHouseEnterModeOverride) return data.EnterModeOverride;
-        return C.HouseEnterMode;
     }
 
     public static bool IsBusy()
@@ -1051,146 +501,6 @@ internal static unsafe partial class Utils
         return false;
     }
 
-    public static bool TryParseAddressBookEntry(string s, out AddressBookEntry entry, bool retry = false)
-    {
-        entry = null;
-        {
-            var regex = ReplaceAddressBookRegex(@"(%worlds)%delimiter(%city)%delimiter(W|ward)%shortDelimiter%numeric%delimiter(P|plot)%shortDelimiter%numeric");
-            PluginLog.Debug($"Testing vs: {regex}");
-            var result = Regex.Match(s, regex, RegexOptions.IgnoreCase);
-            if(result.Success)
-            {
-                PluginLog.Debug($"→Success: {result.Groups.Values.Select(x => x.Value).Skip(1).Print()}");
-                entry = BuildAddressBookEntry(result.Groups[1].Value, result.Groups[2].Value, result.Groups[4].Value, result.Groups[6].Value, false, false);
-                if(entry != null) return true;
-            }
-        }
-        {
-            var regex = ReplaceAddressBookRegex(@"(%worlds)%delimiter(%city)%delimiter(W|ward)%shortDelimiter%numeric%optDelimiter(s|sub|subdivision)%delimiter(A|apartment)%shortDelimiter%numeric");
-            PluginLog.Debug($"Testing vs: {regex}");
-            var result = Regex.Match(s, regex, RegexOptions.IgnoreCase);
-            if(result.Success)
-            {
-                PluginLog.Debug($"→Success: {result.Groups.Values.Select(x => x.Value).Skip(1).Print()}");
-                entry = BuildAddressBookEntry(result.Groups[1].Value, result.Groups[2].Value, result.Groups[4].Value, result.Groups[7].Value, true, true);
-                if(entry != null) return true;
-            }
-        }
-        {
-            var regex = ReplaceAddressBookRegex(@"(%worlds)%delimiter(%city)%delimiter(W|ward)%shortDelimiter%numeric%delimiter(A|apartment)%shortDelimiter%numeric%optDelimiter(s|sub|subdivision)");
-            PluginLog.Debug($"Testing vs: {regex}");
-            var result = Regex.Match(s, regex, RegexOptions.IgnoreCase);
-            if(result.Success)
-            {
-                PluginLog.Debug($"→Success: {result.Groups.Values.Select(x => x.Value).Skip(1).Print()}");
-                entry = BuildAddressBookEntry(result.Groups[1].Value, result.Groups[2].Value, result.Groups[4].Value, result.Groups[6].Value, true, true);
-                if(entry != null) return true;
-            }
-        }
-        {
-            var regex = ReplaceAddressBookRegex(@"(%worlds)%delimiter(%city)%delimiter(W|ward)%shortDelimiter%numeric%delimiter(A|apartment)%shortDelimiter%numeric");
-            PluginLog.Debug($"Testing vs: {regex}");
-            var result = Regex.Match(s, regex, RegexOptions.IgnoreCase);
-            if(result.Success)
-            {
-                PluginLog.Debug($"→Success: {result.Groups.Values.Select(x => x.Value).Skip(1).Print()}");
-                entry = BuildAddressBookEntry(result.Groups[1].Value, result.Groups[2].Value, result.Groups[4].Value, result.Groups[6].Value, true, false);
-                if(entry != null) return true;
-            }
-        }
-        {
-            var regex = ReplaceAddressBookRegex(@"(%worlds)%delimiter(%city)%delimiter(W|ward|)%shortDelimiter%numeric%delimiter(P|plot|)%shortDelimiter%numeric");
-            PluginLog.Debug($"Testing vs: {regex}");
-            var result = Regex.Match(s, regex, RegexOptions.IgnoreCase);
-            if(result.Success)
-            {
-                PluginLog.Debug($"→Success: {result.Groups.Values.Select(x => x.Value).Skip(1).Print()}");
-                entry = BuildAddressBookEntry(result.Groups[1].Value, result.Groups[2].Value, result.Groups[4].Value, result.Groups[6].Value, false, false);
-                if(entry != null) return true;
-            }
-        }
-        if(!retry)
-        {
-            if(TryParseAddressBookEntry(Player.CurrentWorld + ", " + s, out entry, true))
-            {
-                return entry != null;
-            }
-        }
-        return entry != null;
-    }
-
-    public static string ReplaceAddressBookRegex(string str)
-    {
-        var cities = "goblet|the goblet|lavender beds|the lavender beds|lavender|lb|empy|empyreum|shiro|shirogane|mist";
-        var worlds = PublicWorlds.Get().Select(x => x.Name.ToString()).Join("|") + "|[a-z]{3,30}";
-        return str.Replace("%worlds", worlds)
-            .Replace("%delimiter", @"[\s\.\,\-\(\)\t]{1,10}")
-            .Replace("%optDelimiter", @"[\s\.\,\-\(\)\t]{0,10}")
-            .Replace("%city", cities)
-            .Replace("%shortDelimiter", @"[\s\.\-\t]{0,3}")
-            .Replace("%numeric", "([0-9]{1,2})");
-    }
-
-    public static AddressBookEntry BuildAddressBookEntry(string worldStr, string cityStr, string wardNum, string plotApartmentNum, bool isApartment, bool isSubdivision, string name = null)
-    {
-        var world = ExcelWorldHelper.Get(worldStr, true);
-        if(world == null)
-        {
-            foreach(var x in PublicWorlds.Get())
-            {
-                if(x.Name.ToString().StartsWith(worldStr, StringComparison.OrdinalIgnoreCase))
-                {
-                    world = x;
-                    break;
-                }
-            }
-        }
-        if(world == null) return null;
-        var city = ParseResidentialAetheryteKind(cityStr);
-        if(city == null) return null;
-        if(int.TryParse(wardNum, out var ward) && int.TryParse(plotApartmentNum, out var plot))
-        {
-            var entry = new AddressBookEntry()
-            {
-                City = city.Value,
-                World = (int)world?.RowId,
-                PropertyType = isApartment ? PropertyType.Apartment : PropertyType.House,
-                Ward = ward,
-                Apartment = plot,
-                Plot = plot,
-                ApartmentSubdivision = isSubdivision,
-            };
-            if(name != null) entry.Name = name;
-            return entry;
-        }
-        return null;
-    }
-
-    public static ResidentialAetheryteKind? ParseResidentialAetheryteKind(string s)
-    {
-        if(s.ContainsAny(StringComparison.OrdinalIgnoreCase, "mist"))
-        {
-            return ResidentialAetheryteKind.Limsa;
-        }
-        if(s.ContainsAny(StringComparison.OrdinalIgnoreCase, "goblet"))
-        {
-            return ResidentialAetheryteKind.Uldah;
-        }
-        if(s.ContainsAny(StringComparison.OrdinalIgnoreCase, "empy"))
-        {
-            return ResidentialAetheryteKind.Foundation;
-        }
-        if(s.ContainsAny(StringComparison.OrdinalIgnoreCase, "shiro"))
-        {
-            return ResidentialAetheryteKind.Kugane;
-        }
-        if(s.ContainsAny(StringComparison.OrdinalIgnoreCase, "lavender", "beds", "lb"))
-        {
-            return ResidentialAetheryteKind.Gridania;
-        }
-        return null;
-    }
-
     public static bool IsTeleporterInstalled()
     {
         return Svc.PluginInterface.InstalledPlugins.Any(x => x.InternalName == "TeleporterPlugin" && x.IsLoaded);
@@ -1199,163 +509,14 @@ internal static unsafe partial class Utils
     private static bool ReportedIsHereNullEntry = false;
     private static bool ReportedIsHereNullPlayer = false;
 
-    public static bool IsHere(this AddressBookEntry entry)
-    {
-        // 絕不從這裡擲例外：本方法在通訊錄分頁的每幀繪製路徑上。
-        // ECommons 的 ConfigWindow.Draw 用 GenericHelpers.Safe 包住整個主視窗，
-        // 例外會被吞下並每幀寫一行 Error（不會觸發 Dalamud 的視窗錯誤畫面），
-        // 但堆疊會從這裡一路展開到 Safe()，ImGui 的 BeginTabBar / BeginTabItem /
-        // BeginChild 都不會收尾，分頁內容每幀繪製到一半就斷掉。
-        if(entry == null)
-        {
-            if(!ReportedIsHereNullEntry)
-            {
-                ReportedIsHereNullEntry = true;
-                PluginLog.Information("[AddressBook] IsHere 提前結束：通訊錄項目(entry) 為 null，視為「不在此處」。此訊息每次載入插件只顯示一次。");
-            }
-            return false;
-        }
-        var h = HousingManager.Instance();
-        if(h == null) return false;
-        var player = Player.Object;
-        if(player == null)
-        {
-            if(!ReportedIsHereNullPlayer)
-            {
-                ReportedIsHereNullPlayer = true;
-                PluginLog.Information("[AddressBook] IsHere 提前結束：Player.Object(本機角色) 為 null，通常是登入畫面、角色選擇畫面或正在切換區域。視為「不在此處」。此訊息每次載入插件只顯示一次。");
-            }
-            return false;
-        }
-        if(entry.World != player.CurrentWorld.RowId) return false;
-        if(h->GetCurrentWard() != entry.Ward - 1) return false;
-        if(Utils.GetResidentialAetheryteByTerritoryType(P.Territory) != entry.City) return false;
-        if(entry.PropertyType == PropertyType.House)
-        {
-            return h->GetCurrentPlot() == entry.Plot - 1;
-        }
-        if(entry.PropertyType == PropertyType.Apartment)
-        {
-            if(entry.ApartmentSubdivision && h->GetCurrentDivision() != 2) return false;
-            return entry.Apartment == h->GetCurrentRoom();
-        }
-        return false;
-    }
-
-    public static bool IsQuickTravelAvailable(this AddressBookEntry entry)
-    {
-        if(S.Data.ResidentialAethernet.HousingData.Data.SafeSelect(entry.City.GetResidentialTerritory())?.SafeSelect(entry.Ward - 1)?.AethernetID.EqualsAny(ResidentialAethernet.StartingAetherytes) != false) return false;
-        var h = HousingManager.Instance();
-        return h != null && entry.City.GetResidentialTerritory() == P.Territory && Player.Available && h->GetCurrentWard() == entry.Ward - 1 && S.Data.ResidentialAethernet.ActiveAetheryte != null && entry.World == Player.Object.CurrentWorld.RowId;
-    }
-
-    public static void GoTo(this AddressBookEntry entry)
-    {
-        if(!Player.Available)
-        {
-            Notify.Error($"Can not travel while character is not available");
-            return;
-        }
-        if(!S.Data.DataStore.DCWorlds.Contains(ExcelWorldHelper.GetName(entry.World)) && !S.Data.DataStore.Worlds.Contains(ExcelWorldHelper.GetName(entry.World)))
-        {
-            Notify.Error($"Can not travel to {ExcelWorldHelper.GetName(entry.World)}");
-            return;
-        }
-        if(entry.IsQuickTravelAvailable())
-        {
-            if(entry.PropertyType == PropertyType.House)
-            {
-                TaskTpAndGoToWard.EnqueueFromResidentialAetheryte(entry.City, entry.Plot - 1, false, default, false);
-            }
-            else if(entry.PropertyType == PropertyType.Apartment)
-            {
-                TaskTpAndGoToWard.EnqueueFromResidentialAetheryte(entry.City, entry.Apartment - 1, true, entry.ApartmentSubdivision, false);
-            }
-        }
-        else
-        {
-            if(entry.PropertyType == PropertyType.House)
-            {
-                TaskTpAndGoToWard.Enqueue(ExcelWorldHelper.GetName(entry.World), entry.City, entry.Ward, entry.Plot - 1, false, default);
-            }
-            else if(entry.PropertyType == PropertyType.Apartment)
-            {
-                TaskTpAndGoToWard.Enqueue(ExcelWorldHelper.GetName(entry.World), entry.City, entry.Ward, entry.Apartment - 1, true, entry.ApartmentSubdivision);
-            }
-        }
-    }
-
     public static string FancyDigits(this int n)
     {
         return n.ToString().ReplaceByChar(Lang.Digits.Normal, Lang.Digits.GameFont);
     }
 
-    public static void SaveGeneratedHousingData()
-    {
-        EzConfig.SaveConfiguration(S.Data.ResidentialAethernet.HousingData, "GeneratedHousingData.json", false);
-    }
-
-    public static float CalculatePathDistance(Vector3[] vectors)
-    {
-        var distance = 0f;
-        for(var i = 0; i < vectors.Length - 1; i++)
-        {
-            distance += Vector3.Distance(vectors[i], vectors[i + 1]);
-        }
-        return distance;
-    }
-
     public static bool? WaitForScreen() => IsScreenReady();
 
     public static bool? WaitForScreenFalse() => !IsScreenReady();
-
-    public static bool ResidentialAetheryteEnumSelector(string name, ref ResidentialAetheryteKind refConfigField)
-    {
-        var ret = false;
-        var names = TabAddressBook.ResidentialNames;
-        if(ImGui.BeginCombo(name, names.SafeSelect(refConfigField) ?? $"{refConfigField}"))
-        {
-            var values = Enum.GetValues<ResidentialAetheryteKind>();
-            foreach(var x in values)
-            {
-                var equals = x == refConfigField;
-                if(x.RenderIcon(ImGui.CalcTextSize("A").Y)) ImGui.SameLine(0, 1);
-                if(ImGui.Selectable(names.SafeSelect(x) ?? $"{x}", equals))
-                {
-                    ret = true;
-                    refConfigField = x;
-                }
-                if(ImGui.IsWindowAppearing() && equals) ImGui.SetScrollHereY();
-            }
-            ImGui.EndCombo();
-        }
-        return ret;
-    }
-
-    public static string GetAutoName(this AddressBookEntry entry)
-    {
-        var builder = new StringBuilder();
-        builder.Append(ExcelWorldHelper.GetName(entry.World));
-        builder.Append(", ");
-        builder.Append(TabAddressBook.ResidentialNames.SafeSelect(entry.City) ?? "???");
-        builder.Append(", Ward ");
-        builder.Append(entry.Ward);
-        if(entry.PropertyType == PropertyType.House)
-        {
-            builder.Append(", Plot ");
-            builder.Append(entry.Plot);
-        }
-        if(entry.PropertyType == PropertyType.Apartment)
-        {
-            builder.Append(", Apartment ");
-            builder.Append(entry.Apartment);
-            if(entry.ApartmentSubdivision)
-            {
-                builder.Append(" (subdivision)");
-            }
-        }
-        return builder.ToString();
-    }
 
     public static bool RenderIcon(this ResidentialAetheryteKind residentialAetheryte, float? size = null)
     {
@@ -1478,23 +639,6 @@ internal static unsafe partial class Utils
         return "???";
     }
 
-    internal static IGameObject GetReachableMasterAetheryte(bool littleDistance = false) => GetReachableAetheryte(x => Utils.TryGetTinyAetheryteFromIGameObject(x, out var ae) && ae.Value.IsAetheryte, littleDistance);
-
-    internal static IGameObject GetReachableWorldChangeAetheryte(bool littleDistance = false) => GetReachableAetheryte(x => Utils.TryGetTinyAetheryteFromIGameObject(x, out var ae) && ae?.IsWorldChangeAetheryte() == true, littleDistance);
-
-    internal static IGameObject GetReachableResidentialAetheryte(bool littleDistance = false) => GetReachableAetheryte(x => Utils.TryGetTinyAetheryteFromIGameObject(x, out var ae) && ae?.IsResidentialAetheryte() == true, littleDistance);
-
-    internal static IGameObject GetReachableAetheryte(Predicate<IGameObject> predicate, bool littleDistance = false)
-    {
-        if(!Player.Available) return null;
-        var a = Svc.Objects.OrderBy(x => Vector3.DistanceSquared(Player.Object.Position, x.Position)).FirstOrDefault(x => predicate(x));
-        if(a != null && a.IsTargetable && Vector3.Distance(a.Position, Player.Object.Position) < (littleDistance ? 13f : 30f))
-        {
-            return a;
-        }
-        return null;
-    }
-
     /// <summary>
     /// 「值得嘗試鎖定+自動移動走過去用」的距離上限。刻意比 <see cref="GetReachableAetheryte"/>
     /// 預設的 30y 寬:那個門檻是給「已經在互動範圍附近,頂多再修正幾步」的情境用的,
@@ -1503,66 +647,6 @@ internal static unsafe partial class Utils
     /// <c>ApproachTimeLimitMS</c>),逾時就退回傳送。
     /// </summary>
     private const float AethernetNetworkNodeApproachRange = 50f;
-
-    /// <summary>
-    /// 找出「屬於指定以太之光網路」且摸得到的節點——主水晶本身,或它底下任一個子節點(城內以太之光)。
-    /// 用途:2.0 的城市各有兩張地圖(利姆薩上/下層甲板、烏爾達哈娜爾神殿/太陽神草原、格里達尼亞
-    /// 新/舊街),兩張圖屬於同一個以太之光網路,但只有其中一張圖上有主水晶本體。人站在沒有主水晶
-    /// 的那張圖時,<see cref="GetReachableMasterAetheryte"/> 永遠摸不到東西;這個方法改成只要是
-    /// 同一個網路的任何節點都算,身邊摸得到就能直接互動、不必先傳送到另一張圖的主水晶。
-    /// </summary>
-    /// <param name="root">要找哪一個乙太網的節點。</param>
-    /// <param name="excludeId">
-    /// 要排除的節點 ID,通常是「這趟的目的地本身」。用目的地自己開選單再選自己會被遊戲以
-    /// LogMessage 1478「此處為目前所在地。」拒絕,所以找可走節點時要把它排掉,讓流程退回原本的
-    /// 「傳送到主水晶再走乙太網」。
-    /// </param>
-    internal static IGameObject GetReachableAethernetNetworkNode(TinyAetheryte root, uint? excludeId = null)
-    {
-        if(!Player.Available) return null;
-        if(!S.Data.DataStore.Aetherytes.TryGetValue(root, out var children)) return null;
-        var a = Svc.Objects.OrderBy(x => Vector3.DistanceSquared(Player.Object.Position, x.Position))
-            .FirstOrDefault(x => Utils.TryGetTinyAetheryteFromIGameObjectLenient(x, out var ae)
-                && ae.Value.ID != excludeId
-                && (ae.Value.ID == root.ID || children.Any(c => c.ID == ae.Value.ID)));
-        if(a != null && a.IsTargetable && Vector3.Distance(a.Position, Player.Object.Position) < AethernetNetworkNodeApproachRange)
-        {
-            return a;
-        }
-        return null;
-    }
-
-    /// <summary>
-    /// 找出「指定的那一座乙太之光」在物件表裡的實體。找不到代表它沒載入(太遠,或根本不在這一區),
-    /// 呼叫端必須要有退路。判定用寬鬆版,理由見 <see cref="TryGetTinyAetheryteFromIGameObjectLenient"/>。
-    ///
-    /// 🔴 回傳的 <see cref="IGameObject"/> **只在當下這一幀有效**,絕對不要跨幀保存 —— 呼叫端一律
-    /// 每次重查(物件表的包裝是共用的,存取時會就地改寫 <c>Address</c>)。
-    /// </summary>
-    internal static IGameObject GetAethernetNodeObject(TinyAetheryte node)
-    {
-        if(!Player.Available) return null;
-        if(node.TerritoryType != P.Territory) return null;
-        return Svc.Objects.FirstOrDefault(x => Utils.TryGetTinyAetheryteFromIGameObjectLenient(x, out var ae) && ae.Value.ID == node.ID);
-    }
-
-    /// <summary>
-    /// 目前 <see cref="Lifestream.ActiveAetheryte"/>(每幀依 <see cref="GetValidAetheryte"/> 更新,
-    /// 只在真的站到節點旁邊才會設值)是否已經是指定以太之光網路裡的節點——主水晶本身或任一子節點。
-    /// 用來判斷「走到能互動的節點了嗎」,不管走到的是主水晶還是網路裡的哪一個城內以太之光。
-    /// </summary>
-    /// <param name="root">要比對哪一個乙太網。</param>
-    /// <param name="excludeId">
-    /// 與 <see cref="GetReachableAethernetNetworkNode"/> 的同名參數同一個理由:走位途中剛好經過目的地
-    /// 本身時,不要把它當成「已抵達可用節點」而拿它開選單(選自己會被拒絕)。
-    /// </param>
-    internal static bool IsActiveAetheryteInNetwork(TinyAetheryte root, uint? excludeId = null)
-    {
-        if(P.ActiveAetheryte == null) return false;
-        if(P.ActiveAetheryte.Value.ID == excludeId) return false;
-        if(P.ActiveAetheryte.Value.ID == root.ID) return true;
-        return S.Data.DataStore.Aetherytes.TryGetValue(root, out var children) && children.Any(c => c.ID == P.ActiveAetheryte.Value.ID);
-    }
 
     internal static bool IsDisallowedToChangeWorld()
     {
@@ -1612,53 +696,6 @@ internal static unsafe partial class Utils
         "ContentsFinderConfirm",
         "SelectString"
     ];
-    // 參數用具體型別：foreach 走 HashSet 的結構列舉器，疊加介面每幀判斷時不再裝箱。
-    internal static bool IsAddonsVisible(HashSet<string> addons)
-    {
-        foreach(var x in addons)
-        {
-            if(TryGetAddonByName<AtkUnitBase>(x, out var a) && a->IsVisible) return true;
-        }
-        return false;
-    }
-    internal static bool IsMapActive()
-    {
-        if(TryGetAddonByName<AtkUnitBase>("AreaMap", out var map) && IsAddonReady(map) && map->IsVisible)
-        {
-            return true;
-        }
-        return false;
-    }
-
-    internal static AetheryteUseState CanUseAetheryte()
-    {
-        if(P.TaskManager.IsBusy || IsOccupied() || IsDisallowedToUseAethernet()) return AetheryteUseState.None;
-        if(S.Data.DataStore.Territories.Contains(P.Territory) && P.ActiveAetheryte != null) return AetheryteUseState.Normal;
-        if(S.Data.ResidentialAethernet.IsInResidentialZone() && S.Data.ResidentialAethernet.ActiveAetheryte != null) return AetheryteUseState.Residential;
-        if(S.Data.CustomAethernet.ZoneInfo.ContainsKey(P.Territory) && S.Data.CustomAethernet.ActiveAetheryte != null) return AetheryteUseState.Custom;
-        return AetheryteUseState.None;
-    }
-
-    internal static TinyAetheryte GetMaster()
-    {
-        return P.ActiveAetheryte.Value.GetMaster();
-    }
-
-    internal static TinyAetheryte GetMaster(this TinyAetheryte a)
-    {
-        return a.IsAetheryte ? a : S.Data.DataStore.GetMaster(a);
-    }
-
-    // 這兩支 Overlay 每幀都會呼叫：用 is 樣式比對，EqualsAny 每次都會配置 params 陣列與委派。
-    internal static bool IsWorldChangeAetheryte(this TinyAetheryte t)
-    {
-        return t.ID is 2 or 8 or 9;
-    }
-
-    internal static bool IsResidentialAetheryte(this TinyAetheryte t)
-    {
-        return t.ID is 2 or 8 or 9 or 70 or 111;
-    }
 
     private static Dictionary<ResidentialAetheryteKind, uint> TerritoryForResidentialAetheryte = new()
     {
@@ -1683,99 +720,6 @@ internal static unsafe partial class Utils
         [WorldChangeAetheryte.Limsa] = MainCities.Limsa_Lominsa_Lower_Decks,
     };
 
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <param name="r"></param>
-    /// <returns>Aetheryte city (Limsa, Uldah, etc)</returns>
-    internal static uint GetTerritory(this ResidentialAetheryteKind r)
-    {
-        return TerritoryForResidentialAetheryte[r];
-    }
-
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <param name="r"></param>
-    /// <returns>Residential TerritoryType id (mist, goblet, etc)</returns>
-    internal static uint GetResidentialTerritory(this ResidentialAetheryteKind r)
-    {
-        return ResidentialTerritoryForResidentialAetheryte[r];
-    }
-    internal static string GetName(this ResidentialAetheryteKind r)
-    {
-        return ExcelTerritoryHelper.Get(r.GetResidentialTerritory())?.PlaceName.ValueNullable?.Name.ToString();
-    }
-
-    internal static uint GetTerritory(this WorldChangeAetheryte r)
-    {
-        return TerritoryForWorldChangeAetheryte[r];
-    }
-
-    internal static ResidentialAetheryteKind? GetResidentialAetheryteByTerritoryType(uint territoryType)
-    {
-        var t = Svc.Data.GetExcelSheet<TerritoryType>().GetRowOrDefault(territoryType);
-        if(t == null) return null;
-        if(t.Value.PlaceNameRegion.RowId == 2402) return ResidentialAetheryteKind.Kugane;
-        if(t.Value.PlaceNameRegion.RowId == 25) return ResidentialAetheryteKind.Foundation;
-        if(t.Value.PlaceNameRegion.RowId == 23) return ResidentialAetheryteKind.Gridania;
-        if(t.Value.PlaceNameRegion.RowId == 24) return ResidentialAetheryteKind.Uldah;
-        if(t.Value.PlaceNameRegion.RowId == 22) return ResidentialAetheryteKind.Limsa;
-        return null;
-    }
-
-    internal static WorldChangeAetheryte? GetWorldChangeAetheryteByTerritoryType(uint territoryType)
-    {
-        var c = TerritoryForWorldChangeAetheryte.FindKeysByValue(territoryType);
-        return c.Any() ? c.First() : null;
-    }
-
-    internal static bool TryGetTinyAetheryteFromIGameObject(IGameObject a, out TinyAetheryte? t, uint? TerritoryType = null)
-        => TryGetTinyAetheryteFromIGameObjectCore(a, false, out t, TerritoryType);
-
-    /// <summary>
-    /// 跟 <see cref="TryGetTinyAetheryteFromIGameObject"/> 完全相同,只差在「什麼算乙太之光物件」的判定
-    /// 放寬成 <see cref="IsAetheryte(IGameObject)"/>:<see cref="ObjectKind.Aetheryte"/> 算,DataId 落在 <see cref="AethernetShards"/> 裡的 EventObj 也算。
-    /// 🔴 嚴格版硬性要求 <c>ObjectKind == ObjectKind.Aetheryte</c>,但有些乙太之光在物件表裡不是這個 ObjectKind、只能靠 DataId 認出來,
-    /// 每幀決定 <see cref="Lifestream.ActiveAetheryte"/> 的 <see cref="GetValidAetheryte"/> 用的正是這個寬鬆的判定;
-    /// 拿嚴格版去找「身邊摸得到的同網路節點」,在那些城市會永遠回 null,而**失敗形式是完全靜默地退回傳送**。
-    /// ⚠️ 嚴格版刻意不放寬:它被用在世界移動/住宅區/主水晶身分比對等流程,放寬會連帶改變那些流程的行為。
-    /// </summary>
-    internal static bool TryGetTinyAetheryteFromIGameObjectLenient(IGameObject a, out TinyAetheryte? t, uint? TerritoryType = null)
-        => TryGetTinyAetheryteFromIGameObjectCore(a, true, out t, TerritoryType);
-
-    private static bool TryGetTinyAetheryteFromIGameObjectCore(IGameObject a, bool lenientObjectKind, out TinyAetheryte? t, uint? TerritoryType)
-    {
-        TerritoryType ??= P.Territory;
-        if(a == null)
-        {
-            t = default;
-            return false;
-        }
-        if(lenientObjectKind ? a.IsAetheryte() : a.ObjectKind == ObjectKind.Aetheryte)
-        {
-            var pos2 = a.Position.ToVector2();
-            foreach(var x in S.Data.DataStore.Aetherytes)
-            {
-                if(x.Key.TerritoryType == TerritoryType && Vector2.Distance(x.Key.Position, pos2) < 10)
-                {
-                    t = x.Key;
-                    return true;
-                }
-                foreach(var l in x.Value)
-                {
-                    if(l.TerritoryType == TerritoryType && Vector2.Distance(l.Position, pos2) < 10)
-                    {
-                        t = l;
-                        return true;
-                    }
-                }
-            }
-        }
-        t = default;
-        return false;
-    }
-
     internal static float ConvertMapMarkerToMapCoordinate(int pos, float scale)
     {
         var num = scale / 100f;
@@ -1796,50 +740,6 @@ internal static unsafe partial class Utils
         return (float)((pos / 1000f * num + 1024.0) / 2048.0 * 41.0 / num + 1.0);
     }
 
-    internal static AtkUnitBase* GetSpecificYesno(params string[] s) => GetSpecificYesno(false, s);
-
-    internal static AtkUnitBase* GetSpecificYesno(bool contains, params string[] s) => GetSpecificYesno(rawText =>
-    {
-        var text = rawText.Replace(" ", "");
-        return contains ?
-            text.ContainsAny(s.Select(x => x.Replace(" ", "")))
-            : text.EqualsAny(s.Select(x => x.Replace(" ", "")));
-    }, () => s.Print());
-
-    internal static AtkUnitBase* GetSpecificYesno(GameTextMatcher text, Func<string, string[], bool> legacy)
-        => GetSpecificYesno(rawText => text.Matches(rawText, legacy), text.Describe);
-
-    private static AtkUnitBase* GetSpecificYesno(Func<string, bool> matches, Func<string> describe)
-    {
-        for(var i = 1; i < 100; i++)
-        {
-            try
-            {
-                var addon = (AtkUnitBase*)Svc.GameGui.GetAddonByName("SelectYesno", i).Address;
-                if(addon == null) return null;
-                if(IsAddonReady(addon))
-                {
-                    // 讀不到就跳過這個 SelectYesno 繼續往下掃(fail-closed):
-                    // 不能拿空字串去比對,否則「讀不到」會被誤判成「內容為空的相符」而按下確認。
-                    if(!TryGetNodeText(addon, 15, out var rawText)) continue;
-                    // 讀到 U+FFFD ＝ 這扇窗的記憶體正在變動(多半是關閉中),這一幀當作沒比中,不要按它。
-                    if(AddonPressGuard.IsTextUnstable("SelectYesno", rawText)) continue;
-                    if(matches(rawText))
-                    {
-                        PluginLog.Verbose($"SelectYesno {describe()} addon {i}");
-                        return addon;
-                    }
-                }
-            }
-            catch(Exception e)
-            {
-                e.Log();
-                return null;
-            }
-        }
-        return null;
-    }
-
     // 登出確認視窗有兩種文字:一般情況是 Addon#115,正在排隊等待副本時遊戲會換成 Addon#17531。
     // 台服的 Addon 表沒有 17531 這一列,而 Lumina 的 GetRow(uint) 對不存在的列會擲 ArgumentOutOfRangeException,
     // 每次輪詢都會走到這裡,所以一律用 TryGetRow:取不到就只留 115 那一組。
@@ -1848,98 +748,6 @@ internal static unsafe partial class Utils
     private const uint LogOutYesnoQueuedForDutyAddonRow = 17531;
     private static string[] LogOutYesnoTextsCache;
 
-    internal static AtkUnitBase* GetLogOutYesno()
-    {
-        var texts = GetLogOutYesnoTexts();
-        // 兩列都取不到才會是空的;此時不要拿空陣列去比對,否則等於「任何視窗都不相符」以外還可能誤按。
-        if(texts.Length == 0) return null;
-        return GetSpecificYesno(texts);
-    }
-
-    private static string[] GetLogOutYesnoTexts()
-    {
-        if(LogOutYesnoTextsCache != null) return LogOutYesnoTextsCache;
-        var sheet = Svc.Data.GetExcelSheet<Addon>();
-        var texts = new List<string>();
-        var hasNormal = sheet.TryGetRow(LogOutYesnoAddonRow, out var normal);
-        if(hasNormal) texts.Add(normal.Text.GetText());
-        var hasQueued = sheet.TryGetRow(LogOutYesnoQueuedForDutyAddonRow, out var queued);
-        if(hasQueued) texts.Add(queued.Text.GetText());
-        LogOutYesnoTextsCache = [.. texts];
-        PluginLog.Information($"[Lifestream] 登出確認視窗文字解析完成:Addon#{LogOutYesnoAddonRow}={(hasNormal ? "有" : "無")}、" +
-            $"Addon#{LogOutYesnoQueuedForDutyAddonRow}={(hasQueued ? "有" : "無(台服常態,排隊等副本時的登出沿用一般判定)")};" +
-            $"共 {LogOutYesnoTextsCache.Length} 組候選文字。");
-        return LogOutYesnoTextsCache;
-    }
-
-    internal static string[] GetAvailableWorldDestinations()
-    {
-        if(TryGetAddonByName<AtkUnitBase>("WorldTravelSelect", out var addon) && IsAddonReady(addon))
-        {
-            List<string> arr = [];
-            for(var i = 3; i <= 9; i++)
-            {
-                // 🔴 六跳節點鏈每一層都要驗。取不到就 break ＝ 與既有的「空字串代表清單到底了」同一條路徑,
-                // 回傳截短的清單(fail-closed:少列出目的地只會讓人手動處理,列出錯的才會傳錯地方)。
-                var item = GetComponentNodeSafe(addon, 4, i);
-                if(!TryGetNodeText(GetComponentNodeSafe(item, 4), out var text)) break;
-                if(text == "") break;
-                arr.Add(text);
-            }
-            return [.. arr];
-        }
-        return Array.Empty<string>();
-    }
-
-    internal static string[] GetAvailableAethernetDestinations()
-    {
-        if(TryGetAddonByName<AtkUnitBase>("TelepotTown", out var addon) && IsAddonReady(addon))
-        {
-            List<string> arr = [];
-            for(var i = 1; i <= 52; i++)
-            {
-                // 🔴 一樣是六跳節點鏈,而且迴圈上限 52 沒對 NodeListCount 驗過 ——
-                // GetComponentNodeSafe 會把上界與元素判空一起做掉。
-                var item = GetComponentNodeSafe(addon, 16, i);
-                if(!TryGetNodeText(GetComponentNodeSafe(item, 3), out var rawText)) break;
-                var text = rawText.Trim();
-                if(text == "") break;
-                arr.Add(text);
-            }
-            return [.. arr];
-        }
-        return Array.Empty<string>();
-    }
-
-    internal static IGameObject GetValidAetheryte()
-    {
-        foreach(var x in Svc.Objects)
-        {
-            if(x.IsAetheryte())
-            {
-                var d2d = Vector2.Distance(Svc.Objects.LocalPlayer.Position.ToVector2(), x.Position.ToVector2());
-                var d3d = Vector3.Distance(Svc.Objects.LocalPlayer.Position, x.Position);
-                if(S.Data.ResidentialAethernet.IsInResidentialZone() && d3d > 4.6f) continue;
-                if(S.Data.CustomAethernet.ZoneInfo.TryGetValue(P.Territory, out var zinfo) && d3d > zinfo.MaxInteractionDistance) continue;
-
-                if(d2d < 11f
-                    && d3d < 15f
-                    && x.IsVPosValid()
-                    && x.IsTargetable)
-                {
-                    return x;
-                }
-            }
-        }
-        return null;
-    }
-
-    public static bool IsAetheryte(this IGameObject obj)
-    {
-        if(obj.ObjectKind == ObjectKind.Aetheryte) return true;
-        return Utils.AethernetShards.Contains(obj.BaseId);
-    }
-
     internal static bool IsVPosValid(this IGameObject x)
     {
         /*if(x.Name.ToString() == Lang.AethernetShard)
@@ -1947,52 +755,6 @@ internal static unsafe partial class Utils
             return MathF.Abs(Player.Object.Position.Y - x.Position.Y) < 0.965;
         }*/
         return true;
-    }
-
-    internal static bool TrySelectSpecificEntry(string text, Func<bool> Throttle)
-    {
-        return TrySelectSpecificEntry(new string[] { text }, Throttle);
-    }
-
-    internal static bool TrySelectSpecificEntry(IEnumerable<string> text, Func<bool> Throttle)
-        => TrySelectSpecificEntry(entries => entries.FindIndex(x => x.EqualsAny(text)), () => text.Print(), Throttle);
-
-    internal static bool TrySelectSpecificEntry(GameTextMatcher text, Func<bool> Throttle)
-        => TrySelectSpecificEntry(entries => text.FindIndex(entries, LegacyMatch.EqualsAny), text.Describe, Throttle);
-
-    private static bool TrySelectSpecificEntry(Func<List<string>, int> pick, Func<string> describe, Func<bool> Throttle)
-    {
-        if(TryGetAddonByName<AddonSelectString>("SelectString", out var addon) && IsAddonReady(&addon->AtkUnitBase))
-        {
-            var entries = GetEntries(addon);
-            // 讀到 U+FFFD ＝ 選單記憶體正在變動(多半是上一層選單關閉中),這一幀不碰。
-            if(AddonPressGuard.AnyTextUnstable("SelectString", entries)) return false;
-            var index = pick(entries);
-            if(index >= 0)
-            {
-                var entry = entries[index];
-                // SelectString 全外掛唯一的 choke point。粒度=(窗,位址,索引):同一扇仍開著的選單
-                // 選不同項目照常放行,只擋「同位址同索引在窗走完前再選」。被擋回 false 與「還沒找到」走同一條路。
-                if(index >= 0 && Throttle() && AddonPressGuard.TryPressOnce("SelectString", addon, "TrySelectSpecificEntry", paramKey: index.ToString()))
-                {
-                    new AddonMaster.SelectString(addon).Entries[index].Select();
-                    PluginLog.Debug($"TrySelectSpecificEntry: selecting {entry}/{index} as requested by {describe()}");
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    internal static List<string> GetEntries(AddonSelectString* addon)
-    {
-        var list = new List<string>();
-        for(var i = 0; i < addon->PopupMenu.PopupMenu.EntryCount; i++)
-        {
-            list.Add(MemoryHelper.ReadSeStringNullTerminated((nint)addon->PopupMenu.PopupMenu.EntryNames[i].Value).GetText().Trim());
-        }
-        //PluginLog.Debug($"{list.Print()}");
-        return list;
     }
 
     internal static int GetServiceAccount(string name, uint world) => GetServiceAccount($"{name}@{ExcelWorldHelper.GetName(world)}");
