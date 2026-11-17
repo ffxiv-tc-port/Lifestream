@@ -81,19 +81,10 @@ public unsafe class OverrideMovement : IDisposable
     // inside a try; the degraded behaviour is "don't override" (Original has already run).
     // NOTE: this does NOT catch AccessViolationException. What it catches is e.g. the InvalidOperationException
     // ClientStructs' [StaticAddress]/[MemberFunction] members throw when their signature stops resolving.
-    private long _detourErrors;
-    private DateTime _lastDetourErrorLog = DateTime.MinValue;
+    private readonly DetourErrorLog _detourErrors = new();
 
     private void OnDetourError(Exception ex)
-    {
-        ++_detourErrors;
-        // this runs per frame - never log unthrottled. Information because users are asked to report it.
-        var now = DateTime.UtcNow;
-        if(now - _lastDetourErrorLog < TimeSpan.FromSeconds(30))
-            return;
-        _lastDetourErrorLog = now;
-        PluginLog.Information($"OverrideMovement: movement override threw, leaving the game's own movement input alone (total {_detourErrors}): {ex}");
-    }
+        => _detourErrors.Report(null, ex, static (_, total, e) => $"OverrideMovement: movement override threw, leaving the game's own movement input alone (total {total}): {e}");
 
     private void RMIWalkDetour(void* self, float* sumLeft, float* sumForward, float* sumTurnLeft, byte* haveBackwardOrStrafe, byte* a6, byte bAdditiveUnk)
     {

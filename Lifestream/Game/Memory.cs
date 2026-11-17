@@ -41,20 +41,10 @@ public unsafe class Memory : IDisposable
     // 而 **Original 一律留在 try 外照樣呼叫** —— 我們的記錄失敗絕不能改變遊戲原本的行為。
     // ⚠️ try 攔不到 AccessViolationException(在 .NET Core 是 corrupted-state exception)。
     //    針對裸指標的防護是下面那些判空,不是 try。
-    private long _detourErrors;
-    private DateTime _lastDetourErrorLog = DateTime.MinValue;
+    private readonly DetourErrorLog _detourErrors = new();
 
     private void OnDetourError(string site, Exception ex)
-    {
-        ++_detourErrors;
-        // 節流:這些 detour 可能連續觸發,不節流會把 log 灌爆反而讓使用者回報不出東西。
-        // Information:要使用者回報的診斷。
-        var now = DateTime.UtcNow;
-        if(now - _lastDetourErrorLog < TimeSpan.FromSeconds(30))
-            return;
-        _lastDetourErrorLog = now;
-        PluginLog.Information($"[Memory] {site} 的診斷記錄擲出受管理例外,已吞下、Original 照常執行(累計 {_detourErrors}): {ex}");
-    }
+        => _detourErrors.Report(site, ex, static (s, total, e) => $"[Memory] {s} 的診斷記錄擲出受管理例外,已吞下、Original 照常執行(累計 {total}): {e}");
 
     internal byte OpenPartyFinderInfoDetour(void* agentLfg, ulong contentId)
     {

@@ -59,19 +59,10 @@ public unsafe class OverrideCamera : IDisposable
     // inside a try; the degraded behaviour is "don't override" (Original has already run).
     // NOTE: this does NOT catch AccessViolationException. What it catches is e.g. the InvalidOperationException
     // ClientStructs' [StaticAddress]/[MemberFunction] members throw when their signature stops resolving.
-    private long _detourErrors;
-    private DateTime _lastDetourErrorLog = DateTime.MinValue;
+    private readonly DetourErrorLog _detourErrors = new();
 
     private void OnDetourError(Exception ex)
-    {
-        ++_detourErrors;
-        // this runs per frame - never log unthrottled. Information because users are asked to report it.
-        var now = DateTime.UtcNow;
-        if(now - _lastDetourErrorLog < TimeSpan.FromSeconds(30))
-            return;
-        _lastDetourErrorLog = now;
-        PluginLog.Information($"OverrideCamera: camera override threw, leaving the game's own camera input alone (total {_detourErrors}): {ex}");
-    }
+        => _detourErrors.Report(null, ex, static (_, total, e) => $"OverrideCamera: camera override threw, leaving the game's own camera input alone (total {total}): {e}");
 
     private void RMICameraDetour(Camera* self, int inputMode, float speedH, float speedV)
     {
