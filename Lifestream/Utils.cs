@@ -238,20 +238,10 @@ internal static unsafe partial class Utils
     /// </param>
     public static bool TryFindEqualsOrContains<T>(IEnumerable<T> haystack, Func<T, string> haystackConverterToString, IEnumerable<string> needles, out T result, bool partialRequiresUnique = false)
     {
-        foreach(var x in haystack)
-        {
-            foreach(var n in needles)
-            {
-                if(haystackConverterToString(x).EqualsIgnoreCase(n))
-                {
-                    result = x;
-                    return true;
-                }
-            }
-        }
+        if(TryFindEquals(haystack, haystackConverterToString, needles, out result)) return true;
         if(partialRequiresUnique)
         {
-            return TryFindUniquePartial(haystack, haystackConverterToString, needles, out result);
+            return TryFindUniquePartial(haystack, haystackConverterToString, needles, out result, out _);
         }
         foreach(var x in haystack)
         {
@@ -279,6 +269,32 @@ internal static unsafe partial class Utils
         return false;
     }
 
+    /// <summary>相等優先；前綴／包含只在恰好命中一項時採用（同 <c>partialRequiresUnique: true</c>）。</summary>
+    /// <param name="ambiguous">部分比對命中多項時＝那些項目的文字（已記 Information、回 false）；其他情況為 null。</param>
+    public static bool TryFindEqualsOrUniquePartial<T>(IEnumerable<T> haystack, Func<T, string> haystackConverterToString, IEnumerable<string> needles, out T result, out string[] ambiguous)
+    {
+        ambiguous = null;
+        if(TryFindEquals(haystack, haystackConverterToString, needles, out result)) return true;
+        return TryFindUniquePartial(haystack, haystackConverterToString, needles, out result, out ambiguous);
+    }
+
+    private static bool TryFindEquals<T>(IEnumerable<T> haystack, Func<T, string> haystackConverterToString, IEnumerable<string> needles, out T result)
+    {
+        foreach(var x in haystack)
+        {
+            foreach(var n in needles)
+            {
+                if(haystackConverterToString(x).EqualsIgnoreCase(n))
+                {
+                    result = x;
+                    return true;
+                }
+            }
+        }
+        result = default;
+        return false;
+    }
+
     private static readonly (string Kind, Func<string, string, bool> Match)[] PartialMatchers =
     [
         ("前綴", (h, n) => h.StartsWith(n, StringComparison.OrdinalIgnoreCase)),
@@ -288,8 +304,9 @@ internal static unsafe partial class Utils
     private static long LastAmbiguousPartialAt;
 
     // 只在框架執行緒呼叫（記 log 的去重欄位沒有鎖）。包含命中集合必定涵蓋前綴命中集合，所以前綴多筆就不必再試包含。
-    private static bool TryFindUniquePartial<T>(IEnumerable<T> haystack, Func<T, string> haystackConverterToString, IEnumerable<string> needles, out T result)
+    private static bool TryFindUniquePartial<T>(IEnumerable<T> haystack, Func<T, string> haystackConverterToString, IEnumerable<string> needles, out T result, out string[] ambiguous)
     {
+        ambiguous = null;
         foreach(var (kind, match) in PartialMatchers)
         {
             var hits = haystack.Where(x => needles.Any(n => match(haystackConverterToString(x), n))).ToList();
@@ -300,7 +317,8 @@ internal static unsafe partial class Utils
             }
             if(hits.Count > 1)
             {
-                var texts = string.Join("／", hits.Select(haystackConverterToString));
+                ambiguous = [.. hits.Select(haystackConverterToString)];
+                var texts = string.Join("／", ambiguous);
                 var key = $"{kind}|{string.Join("／", needles)}|{texts}";
                 var now = Environment.TickCount64;
                 // 呼叫端每幀重試：同一組結果 10 秒內只記一次。

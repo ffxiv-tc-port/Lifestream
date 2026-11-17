@@ -17,6 +17,23 @@ internal static class TaskTryTpToAethernetDestination
     /// <summary>傳送後備遇到暫時性不能傳送時最多等多久；要短於任務逾時（30 秒），等不到就照舊報錯。</summary>
     private const long TpFallbackWaitMs = 10000;
 
+    /// <summary>
+    /// 回 true＝這一層已有結論、不再往下找（部分比對／傳送後備）：找到時 <paramref name="name"/> 為目的地名；
+    /// 部分比對命中多項時為 null（已提示、不傳送，免得落到付費傳送的模糊比對）。
+    /// </summary>
+    private static bool TryPickLocalDestination<T>(IEnumerable<T> aetherytes, Func<T, string> nameOf, string targetName, out string name)
+    {
+        if(Utils.TryFindEqualsOrUniquePartial(aetherytes, nameOf, [targetName], out var hit, out var ambiguous))
+        {
+            name = nameOf(hit);
+            return true;
+        }
+        name = null;
+        if(ambiguous == null) return false;
+        ChatQueue.Orange($"[Lifestream] {"?? has no exact match and partially matches ?? aethernet destinations (??), so no teleport was made. Please enter the full name.".Loc(targetName, ambiguous.Length, string.Join(" / ", ambiguous))}");
+        return true;
+    }
+
     public static void Enqueue(string targetName, bool allowPartial = false, bool allowTpFallback = false)
     {
         var tpWaitStartedAt = -1L;
@@ -29,20 +46,20 @@ internal static class TaskTryTpToAethernetDestination
         // 本地網路裡沒有這個目的地（或區域表查不到）時不能停在這裡，要落到下面的部分比對／傳送後備。
         else if(S.Data.CustomAethernet.ActiveAetheryte != null
             && S.Data.CustomAethernet.ZoneInfo.TryGetValue(P.Territory, out var customZone)
-            && Utils.TryFindEqualsOrContains(customZone.Aetherytes, x => x.Name, targetName, out var customDestination))
+            && TryPickLocalDestination(customZone.Aetherytes, x => x.Name, targetName, out var customDestination))
         {
-            if(customDestination.Name.Contains(targetName, StringComparison.OrdinalIgnoreCase))
+            if(customDestination != null && customDestination.Contains(targetName, StringComparison.OrdinalIgnoreCase))
             {
-                TaskAethernetTeleport.Enqueue(customDestination.Name);
+                TaskAethernetTeleport.Enqueue(customDestination);
             }
         }
         else if(S.Data.ResidentialAethernet.ActiveAetheryte != null
             && S.Data.ResidentialAethernet.ZoneInfo.TryGetValue(S.Data.ResidentialAethernet.ActiveAetheryte.Value.TerritoryType, out var residentialZone)
-            && Utils.TryFindEqualsOrContains(residentialZone.Aetherytes, x => x.Name, targetName, out var residentialDestination))
+            && TryPickLocalDestination(residentialZone.Aetherytes, x => x.Name, targetName, out var residentialDestination))
         {
-            if(residentialDestination.Name.Contains(targetName, StringComparison.OrdinalIgnoreCase))
+            if(residentialDestination != null && residentialDestination.Contains(targetName, StringComparison.OrdinalIgnoreCase))
             {
-                TaskAethernetTeleport.Enqueue(residentialDestination.Name);
+                TaskAethernetTeleport.Enqueue(residentialDestination);
             }
         }
         else

@@ -244,6 +244,7 @@ public class CustomAliasCommand
         {
             var stringMiss = new OptionMismatchLog("SelectString");
             var iconStringMiss = new OptionMismatchLog("SelectIconString");
+            var ambiguousNotified = false;
             LogBlankParsedOptions(aliasName);
             P.TaskManager.Enqueue(() =>
             {
@@ -253,9 +254,10 @@ public class CustomAliasCommand
                     {
                         if(AddonPressGuard.AnyTextUnstable("SelectString", m.Entries.Select(x => x.Text))) return false;
                         var options = ParsedSelectOptions();
-                        if(!Utils.TryFindEqualsOrContains(m.Entries, e => e.Text, options, out var e))
+                        if(!Utils.TryFindEqualsOrUniquePartial(m.Entries, e => e.Text, options, out var e, out var ambiguous))
                         {
-                            stringMiss.Report(m.Entries.Select(x => x.Text), options);
+                            if(ambiguous != null) NotifyAmbiguousOption(aliasName, options, ambiguous, ref ambiguousNotified);
+                            else stringMiss.Report(m.Entries.Select(x => x.Text), options);
                         }
                         else if(EzThrottler.Throttle($"CustomCommandSelectString_{ID}", 200) && AddonPressGuard.TryPressOnce("SelectString", m, $"CustomAlias.SelectListOption({ID})", paramKey: e.Index.ToString()))
                         {
@@ -269,9 +271,10 @@ public class CustomAliasCommand
                     {
                         if(AddonPressGuard.AnyTextUnstable("SelectIconString", m.Entries.Select(x => x.Text))) return false;
                         var options = ParsedSelectOptions();
-                        if(!Utils.TryFindEqualsOrContains(m.Entries, e => e.Text, options, out var e))
+                        if(!Utils.TryFindEqualsOrUniquePartial(m.Entries, e => e.Text, options, out var e, out var ambiguous))
                         {
-                            iconStringMiss.Report(m.Entries.Select(x => x.Text), options);
+                            if(ambiguous != null) NotifyAmbiguousOption(aliasName, options, ambiguous, ref ambiguousNotified);
+                            else iconStringMiss.Report(m.Entries.Select(x => x.Text), options);
                         }
                         else if(EzThrottler.Throttle($"CustomCommandSelectString_{ID}", 200) && AddonPressGuard.TryPressOnce("SelectIconString", m, $"CustomAlias.SelectListOption({ID})", paramKey: e.Index.ToString()))
                         {
@@ -327,6 +330,14 @@ public class CustomAliasCommand
             if(raw.Length == 0 || !string.IsNullOrWhiteSpace(Utils.ParseSheetPattern(raw))) continue;
             PluginLog.Information($"[CustomAlias] 別名「{aliasName ?? "?"}」的 {Kind} 選項「{raw}」解析後是空白，已略過（空白會比中任何選項與確認框）");
         }
+    }
+
+    // 部分比對命中多項＝不按；聊天提示每次排入這一步只說一次（這一步會每幀重試到逾時）。
+    private static void NotifyAmbiguousOption(string aliasName, string[] options, string[] candidates, ref bool notified)
+    {
+        if(notified) return;
+        notified = true;
+        ChatQueue.Orange($"[Lifestream] {"Custom alias ??: list option ?? has no exact match and partially matches ?? options (??), so nothing was selected. Edit the alias and change the option text to the full name of one of them.".Loc(aliasName ?? "?", string.Join(" / ", options), candidates.Length, string.Join(" / ", candidates))}");
     }
 
     /// <summary>
