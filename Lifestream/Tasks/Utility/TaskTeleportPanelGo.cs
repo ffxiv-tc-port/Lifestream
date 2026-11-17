@@ -72,7 +72,7 @@ public static unsafe class TaskTeleportPanelGo
         // (重新傳送一次讓自己回到儲存的位置)。沒開修補就先講清楚，不要排一條註定沉默失敗的佇列。
         if(!entry.IsAetheryte && !SameAethernetTeleportPatch.IsApplied && IsStandingAt(entry))
         {
-            DuoLog.Warning("You are already at this aethernet shard - the game refuses this teleport. See the Teleport Panel settings if you want to allow it.".Loc());
+            DuoLog.Warning("You are already at this aethernet shard, so the game will not teleport you to the same place. Just walk to where you want to go.".Loc());
             return;
         }
 
