@@ -1,11 +1,11 @@
 [submodule "ECommons"]
 	path = ECommons
 	url = https://github.com/ffxiv-tc-port/ECommons.git
-	branch = pin-wrathcombo-tc-api13
+	branch = tc-7.30
 [submodule "AutoRetainerAPI"]
 	path = AutoRetainerAPI
 	url = https://github.com/ffxiv-tc-port/AutoRetainerAPI.git
-	branch = feat/retainer-slots
+	branch = tc-7.30
 [submodule "OtterGui"]
 	path = OtterGui
 	url = https://github.com/ffxiv-tc-port/OtterGui.git
@@ -13,7 +13,7 @@
 [submodule "NightmareUI"]
 	path = NightmareUI
 	url = https://github.com/ffxiv-tc-port/NightmareUI.git
-	branch = tw-worldselector-public-fix
+	branch = tc-7.30
 [submodule "NightmareUI.OtterGuiWrapper"]
 	path = NightmareUI.OtterGuiWrapper
 	url = https://github.com/ffxiv-tc-port/NightmareUI.OtterGuiWrapper.git
@@ -21,4 +21,4 @@
 [submodule "FFXIVClientStructs"]
 	path = FFXIVClientStructs
 	url = https://github.com/ffxiv-tc-port/FFXIVClientStructs.git
-	branch = tc-7.20-tcbase
+	branch = tc-7.30
