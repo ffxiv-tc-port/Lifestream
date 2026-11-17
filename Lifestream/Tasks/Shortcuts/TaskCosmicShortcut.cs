@@ -2,78 +2,153 @@ using ECommons.Automation;
 using Callback = ECommons.Automation.Callback;
 using ECommons.Automation.NeoTaskManager;
 using ECommons.Automation.NeoTaskManager.Tasks;
+using ECommons.Automation.UIInput;
 using ECommons.ChatMethods;
 using ECommons.GameHelpers;
 using ECommons.Throttlers;
+using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.UI;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lifestream.Data;
+using Lifestream.IPC;
 using Lifestream.Schedulers;
 using Lifestream.Tasks.SameWorld;
 
 namespace Lifestream.Tasks.Shortcuts;
 
 /// <summary>
-/// <c>/li cosmic</c>(別名 <c>ardorum</c>／<c>moon</c>)前往渴望灣(宇宙探索,區域 1237)。
+/// 宇宙探索的直達：<c>/li cosmic</c>(別名 <c>ardorum</c>／<c>moon</c>)前往渴望灣(1237)、<c>/li phaenna</c> 前往行星法恩娜(1291)。
 ///
 /// <para>兩條路線都從「傳送到嘆息海『最佳威兔洞』乙太之光(175)」開始,差別只在後半段:</para>
 /// <list type="bullet">
-/// <item><b>快版(這裡)</b>:互動乙太之光 → 選「前往渴望灣」→(多副本區時)選副本區。</item>
-/// <item><b>舊版</b>(<see cref="StaticAlias.CosmicExploration"/>):騎馬 → 繞路走到入口物件
-///   (EObj 1052581)→ 兩層選單。騎馬跑那一段就是舊版大部分的耗時。</item>
+/// <item><b>快版(這裡)</b>:互動乙太之光 → 選「前往渴望灣」／「前往行星法恩娜」→ 後續視窗(副本區、目的地選擇、確認)。</item>
+/// <item><b>入口物件路線</b>:<see cref="StaticAlias.CosmicExploration"/> 的騎馬 → 走到入口物件(EObj 1052581)那幾步,
+///   之後由這裡選入口選單(舊的「前往渴望灣」或 7.3 的「移動到探索區域」)並處理後續視窗。</item>
 /// </list>
 ///
 /// <para>⚠️ 快版**不是** <see cref="TaskSinusArdorumTeleport.Enqueue"/>。那一個是浮動視窗按鈕與
-/// <c>/li 渴望灣</c> 用的,它從 <see cref="WorldChange.TargetValidAetheryte"/> 起手、**完全沒有傳送步驟**,
-/// 前提是「人已經站在乙太之光 175 旁邊」(按鈕本身也只在 <c>P.ActiveAetheryte.ID == 175</c> 時才畫出來)。
-/// 指令可以在任何地方下,所以這裡走的是 <see cref="TaskAetheryteAethernetTeleport"/> 那一套
-/// 「條件式傳送 → 鎖定走位 → 互動 → 選單項」(<c>/li goto</c> 進渴望灣用的也是它),
-/// 只是每一步都改成**逾時不中止**,好讓失敗時佇列還能走到退路
-/// (預設的 <c>AbortOnTimeout=true</c> 會把整條佇列清掉,退路就永遠不會執行)。</para>
+/// <c>/li 渴望灣</c> 用的,它從 <see cref="WorldChange.TargetValidAetheryte"/> 起手、**完全沒有傳送步驟**。
+/// 這裡每一步都**逾時不中止**,好讓失敗時佇列還能走到退路(預設的 <c>AbortOnTimeout=true</c> 會連退路一起清掉)。</para>
 ///
-/// <para>兩條路線的**前提完全相同**:都要已解鎖乙太之光 175(否則第一步的傳送就過不了)、
-/// 都要在原伺服器(指令會先把人送回原伺服器)、都要已解鎖宇宙探索(否則乙太之光選單與入口物件對話
-/// 都不會有那一項)。離線查不出任何「快版會失敗但舊版會成功」的情境,所以退路是防未知用的;
-/// 代價是失敗時多等一段逾時,換到的是「不會從『慢但會到』變成『快但有時候到不了』」。</para>
+/// <para>退路有兩個觸發點:連玄關乙太之光都沒站到(立刻退);站到了、但最後人不在目的地(走完快版才退)。
+/// 例外:乙太之光選單有渴望灣卻沒有法恩娜＝尚未解鎖,直接停下並提示,不走退路。</para>
 ///
-/// <para>退路有兩個觸發點,對應兩種失敗:</para>
-/// <list type="number">
-/// <item>連玄關乙太之光都沒站到(傳送沒成功)——立刻退,不必把後面每一步都空等到逾時。</item>
-/// <item>站到了、但最後人不在渴望灣——走完快版才退。</item>
-/// </list>
+/// <para>選單與視窗一律依遊戲表的文字辨識、不按位置;認不出來就不按。單一佇列、入口有 <see cref="Utils.IsBusy"/> 擋重入,
+/// 所以狀態用靜態欄位,每次 <see cref="Enqueue(Destination)"/> 重設。只在框架執行緒使用。</para>
 /// </summary>
 public static unsafe class TaskCosmicShortcut
 {
-    /// <summary>
-    /// 逾時不中止。快版的每一步都必須用它:任何一步失敗都要讓佇列繼續走到
-    /// <see cref="VerifyArrivalOrFallBack"/>,不能整條 Abort 掉——那會連退路一起清掉。
-    /// </summary>
+    /// <summary>可以直達的探索區域。</summary>
+    public sealed class Destination
+    {
+        /// <summary>log 用的英文名。</summary>
+        public readonly string Name;
+        public readonly uint Territory;
+        internal readonly bool IsSinusArdorum;
+        private string planetName;
+
+        private Destination(string name, uint territory, bool isSinusArdorum)
+        {
+            Name = name;
+            Territory = territory;
+            IsSinusArdorum = isSinusArdorum;
+        }
+
+        public static readonly Destination SinusArdorum = new("Sinus Ardorum", TaskAetheryteAethernetTeleport.SinusArdorumTerritoryId, true);
+        public static readonly Destination Phaenna = new("Phaenna", TaskAetheryteAethernetTeleport.PhaennaTerritoryId, false);
+
+        /// <summary>遊戲裡的地名(TerritoryType → PlaceName),讀不到就用英文名。目的地選擇視窗也是拿它比對。</summary>
+        public string PlanetName
+        {
+            get
+            {
+                if(planetName != null) return planetName;
+                string name = null;
+                try
+                {
+                    name = Svc.Data.GetExcelSheet<Lumina.Excel.Sheets.TerritoryType>().GetRowOrDefault(Territory)?.PlaceName.ValueNullable?.Name.ExtractText()?.Trim();
+                }
+                catch(Exception e)
+                {
+                    e.Log();
+                }
+                planetName = string.IsNullOrEmpty(name) ? Name : name;
+                return planetName;
+            }
+        }
+
+        // 渴望灣沿用原本的字串陣列比對(行為不變);法恩娜只認遊戲表,不寫死中文。
+        internal int FindAetheryteEntry(List<string> entries)
+            => IsSinusArdorum ? entries.FindIndex(x => x.EqualsAny(Lang.TravelToSinusArdorum)) : Lang.TravelToPhaenna.FindIndex(entries, LegacyMatch.EqualsAny);
+
+        internal bool TrySelectAetheryteEntry()
+            => IsSinusArdorum
+            ? Utils.TrySelectSpecificEntry(Lang.TravelToSinusArdorum, () => EzThrottler.Throttle("SelectString"))
+            : Utils.TrySelectSpecificEntry(Lang.TravelToPhaenna, () => EzThrottler.Throttle("SelectString"));
+
+        internal string DescribeAetheryteEntry() => IsSinusArdorum ? Lang.TravelToSinusArdorum.Print(" | ") : Lang.TravelToPhaenna.Describe();
+    }
+
+    private enum Outcome { Pending, NotUnlocked, HandedOver }
+
+    private const uint EntranceObjectId = 1052581;
+
+    /// <summary>乙太之光選單有渴望灣、沒有法恩娜的狀態要持續這麼久才判定尚未解鎖(選單剛開那幾幀可能還沒填完)。</summary>
+    private const long NotUnlockedSettleMs = 1500;
+
+    // WKSPlanetSelect 的 ULD 節點 ID(台服 7.3 的 .uld 解出):17＝目前目的地名稱、14／13＝移動到空閒副本區／移動、8／9＝切換鈕。
+    private const uint PlanetLabelNodeId = 17;
+    private static readonly (uint Node, uint AddonRow)[] PlanetMoveButtons = [(14, 17008), (13, 17007)];
+    private static readonly uint[] PlanetSwitchButtons = [8, 9];
+    private const int MaxSwitchPresses = 4;
+    private const long SwitchSettleMs = 800;
+    private const long PlanetGiveUpMs = 8000;
+
     private static TaskManagerConfiguration Lenient(int ms) => new(timeLimitMS: ms, abortOnTimeout: false);
 
-    /// <summary>
-    /// 「前往渴望灣」那一項到底有沒有被選到。用來讓後面的等待步驟短路:沒選到就不會有轉場,
-    /// 空等 60 秒只是讓使用者多站著發呆。單一佇列、指令入口有 <see cref="Utils.IsBusy"/> 擋重入,
-    /// 所以用靜態欄位是安全的;每次 <see cref="Enqueue"/> 都會重設。
-    /// </summary>
-    private static bool SelectedSinusArdorumEntry;
+    private static Destination Target = Destination.SinusArdorum;
+    /// <summary>目的地那一項到底有沒有被選到;沒選到就不會有轉場,後面的等待直接短路。</summary>
+    private static bool SelectedEntry;
+    private static Outcome Result;
+    private static string LastMenuLog;
+    private static long MenuMismatchSince;
+    private static nint PlanetAddon;
+    private static string PlanetLastLabel;
+    private static long PlanetSeenAt;
+    private static long PlanetLastSwitchAt;
+    private static int PlanetSwitchPresses;
+    private static bool PlanetMovePressed;
+    private static bool LoggedForeignYesno;
+    private static bool LoggedYesAlreadyActive;
 
     /// <summary>
-    /// <c>/li cosmic</c> 與傳送面板「直接進渴望灣」共用：不在原始世界就先回去，再走 <see cref="Enqueue"/>。
+    /// <c>/li cosmic</c>、<c>/li phaenna</c> 與傳送面板的直達按鈕共用:不在原始世界就先回去,再走 <see cref="Enqueue(Destination)"/>。
     /// 呼叫端自己先判 <see cref="Utils.IsBusy"/>。
     /// </summary>
-    public static void EnqueueReturnHomeFirst()
+    public static void EnqueueReturnHomeFirst() => EnqueueReturnHomeFirst(Destination.SinusArdorum);
+
+    /// <inheritdoc cref="EnqueueReturnHomeFirst()"/>
+    public static void EnqueueReturnHomeFirst(Destination destination)
     {
         if(!Player.IsInHomeWorld)
         {
             P.TPAndChangeWorld(Player.HomeWorld, !Player.IsInHomeDC, null, true, null, false, false);
         }
         P.TaskManager.Enqueue(() => Player.Interactable && Player.IsInHomeWorld && IsScreenReady());
-        Enqueue();
+        Enqueue(destination);
     }
 
-    public static void Enqueue()
+    public static void Enqueue() => Enqueue(Destination.SinusArdorum);
+
+    public static void Enqueue(Destination destination)
     {
-        SelectedSinusArdorumEntry = false;
-        PluginLog.Information($"[Cosmic] Taking the aetheryte-menu route: teleport to aetheryte {TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId} -> interact -> select [{Lang.TravelToSinusArdorum.Print(" | ")}].");
+        Target = destination ?? Destination.SinusArdorum;
+        SelectedEntry = false;
+        Result = Outcome.Pending;
+        LastMenuLog = null;
+        MenuMismatchSince = 0;
+        ResetPlanetSelect();
+        PluginLog.Information($"[Cosmic] Destination {Target.Name} \"{Target.PlanetName}\" (territory {Target.Territory}). Taking the aetheryte-menu route: teleport to aetheryte {TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId} -> interact -> select [{Target.DescribeAetheryteEntry()}].");
         TaskRemoveAfkStatus.Enqueue();
 
         // 1) 需要時才傳送到玄關乙太之光(人已經站在它旁邊就跳過)。判定條件與 TaskAetheryteAethernetTeleport 相同。
@@ -94,13 +169,10 @@ public static unsafe class TaskCosmicShortcut
             }
         }, "CosmicConditionalTeleportToGatewayAetheryte");
 
-        // 2) 等真的站到玄關乙太之光旁。⚠️ 不能只看一幀就判定:讀取畫面結束(IsScreenReady)與
-        //    乙太之光物件變成可鎖定之間有幾幀的落差,只查一次會在「其實傳送成功了」的情況下誤判成失敗,
-        //    白白退回慢版。逾時不中止——逾時就是下一步要處理的失敗訊號。
+        // 2) 讀取畫面結束與乙太之光變成可鎖定之間有幾幀落差,只查一次會把成功誤判成失敗。逾時就是下一步要處理的失敗訊號。
         P.TaskManager.Enqueue(() => Player.Interactable && IsAtGatewayAetheryte(), "CosmicWaitAtGatewayAetheryte", Lenient(10000));
 
-        // 3) 傳送成功才排後面的步驟。沒成功就直接退路——後面每一步都會失敗,一步一步空等到逾時
-        //    要花好幾分鐘,而使用者只會看到角色站著不動。
+        // 3) 傳送成功才排後面的步驟;沒成功就直接退路,不讓每一步空等到逾時。
         P.TaskManager.Enqueue(RouteDecision, "CosmicRouteDecision");
     }
 
@@ -118,27 +190,15 @@ public static unsafe class TaskCosmicShortcut
             return true;
         }
 
-        // ⚠️ 用 InsertStack 而不是在 Enqueue() 裡就排好:這些步驟是「執行途中」才確定要走的,
-        // 而 Enqueue 會排到佇列尾端。這一刻後面剛好沒有別的任務,但只要將來有人在
-        // TaskCosmicShortcut.Enqueue 之後再加步驟,用 Enqueue 就會靜默錯序。
+        // 執行途中才確定要走的步驟一律 InsertStack:Enqueue 會排到佇列尾端,將來有人在後面加步驟就會靜默錯序。
         P.TaskManager.InsertStack(() =>
         {
-            // 鎖定並確保站進互動距離(與 TaskAetheryteAethernetTeleport 同一套)。
             P.TaskManager.EnqueueDelay(10, true);
             P.TaskManager.Enqueue(WorldChange.TargetReachableMasterAetheryte, "CosmicTargetAetheryte", Lenient(15000));
             P.TaskManager.Enqueue(ConditionalWalkToAetheryte, "CosmicConditionalLockon");
             P.TaskManager.Enqueue(WorldChange.InteractWithTargetedAetheryte, "CosmicInteractAetheryte", Lenient(15000));
-
-            // 選「前往渴望灣」。找不到那一項時會把當下的選單內容寫進 log。
-            P.TaskManager.Enqueue(SelectTravelToSinusArdorum, "CosmicSelectTravelToSinusArdorum", Lenient(20000));
-
-            // 多副本區的區域會再跳一個「切換副本區」選單,單副本區則直接轉場。沿用既有處理(逾時不中止)。
-            TaskSinusArdorumTeleport.EnqueueSelectAnyInstance();
-
-            // 等真的抵達渴望灣。逾時不中止——逾時本身就是「快版沒成功」的訊號。
-            P.TaskManager.Enqueue(WaitArrival, "CosmicWaitArrival", Lenient(60000));
-
-            // 到了就收工;沒到就整包退回舊的別名流程。
+            P.TaskManager.Enqueue(SelectTravelTo, "CosmicSelectTravelTo", Lenient(20000));
+            P.TaskManager.Enqueue(FollowUp, "CosmicFollowUpAndWaitArrival", Lenient(70000));
             P.TaskManager.Enqueue(VerifyArrivalOrFallBack, "CosmicVerifyArrivalOrFallBack");
         });
         return true;
@@ -162,86 +222,378 @@ public static unsafe class TaskCosmicShortcut
     }
 
     /// <summary>
-    /// 選「前往渴望灣」,順便在等不到那一項時定期寫診斷。
-    /// 顯示文字是執行期從表解析的(見 <see cref="Lang.TravelToSinusArdorum"/>),不是寫死的字串。
-    /// ⚠️ 選單剛開的那一兩幀 EntryCount 會是 0,那時不能當成「沒有這一項」——只是還沒填好。
+    /// 在乙太之光選單選目的地那一項。⚠️ 選單剛開的那一兩幀 EntryCount 會是 0,那時不能當成「沒有這一項」。
+    /// 法恩娜:選單有渴望灣、沒有法恩娜並持續 <see cref="NotUnlockedSettleMs"/> ＝ 尚未解鎖,關掉選單並停下。
     /// </summary>
-    private static bool? SelectTravelToSinusArdorum()
+    private static bool? SelectTravelTo()
     {
         if(!Player.Available) return false;
-        if(TryGetAddonByName<AddonSelectString>("SelectString", out var addon) && IsAddonReady(&addon->AtkUnitBase))
+        if(!TryGetAddonByName<AddonSelectString>("SelectString", out var addon) || !IsAddonReady(&addon->AtkUnitBase))
         {
-            var entries = Utils.GetEntries(addon);
-            if(entries.Count > 0 && !entries.Any(x => x.EqualsAny(Lang.TravelToSinusArdorum)) && EzThrottler.Throttle("CosmicMenuMismatchLog", 5000))
-            {
-                PluginLog.Information($"[Cosmic] The aetheryte menu is open but has no Sinus Ardorum entry. Looked for [{Lang.TravelToSinusArdorum.Print(" | ")}], menu shows [{entries.Print(" | ")}].");
-            }
+            MenuMismatchSince = 0;
+            if(EzThrottler.Throttle("CosmicMenuWaitLog", 5000)) PluginLog.Information("[Cosmic] Waiting for the aetheryte menu to open.");
+            return false;
         }
-        else if(EzThrottler.Throttle("CosmicMenuWaitLog", 5000))
-        {
-            PluginLog.Information("[Cosmic] Waiting for the aetheryte menu to open.");
-        }
+        var entries = Utils.GetEntries(addon);
+        if(entries.Count == 0 || AddonPressGuard.AnyTextUnstable("SelectString", entries)) return false;
+        LogMenuOnce("Aetheryte menu", entries);
 
-        if(Utils.TrySelectSpecificEntry(Lang.TravelToSinusArdorum, () => EzThrottler.Throttle("SelectString")))
+        var index = Target.FindAetheryteEntry(entries);
+        if(index < 0)
         {
-            SelectedSinusArdorumEntry = true;
-            return true;
+            if(EzThrottler.Throttle("CosmicMenuMismatchLog", 5000))
+            {
+                PluginLog.Information($"[Cosmic] The aetheryte menu is open but has no {Target.Name} entry. Looked for [{Target.DescribeAetheryteEntry()}], menu shows [{entries.Print(" | ")}].");
+            }
+            if(!Target.IsSinusArdorum && entries.Any(x => x.EqualsAny(Lang.TravelToSinusArdorum)))
+            {
+                var now = Environment.TickCount64;
+                if(MenuMismatchSince == 0) MenuMismatchSince = now;
+                else if(now - MenuMismatchSince >= NotUnlockedSettleMs)
+                {
+                    Result = Outcome.NotUnlocked;
+                    PluginLog.Information($"[Cosmic] The aetheryte menu lists Sinus Ardorum but not {Target.Name} [{entries.Print(" | ")}]: treating {Target.Name} as not unlocked yet, closing the menu and stopping (no fallback).");
+                    ChatQueue.Orange($"[Lifestream] {"The aetheryte menu has no option for ??, so you have probably not unlocked it yet. Lifestream has stopped.".Loc(Target.PlanetName)}");
+                    CloseLeftoverSelectString();
+                    return true;
+                }
+            }
+            return false;
         }
+        MenuMismatchSince = 0;
+        if(!Target.TrySelectAetheryteEntry()) return false;
+        SelectedEntry = true;
+        PluginLog.Information($"[Cosmic] Aetheryte menu: selected entry #{index} \"{entries[index]}\" for {Target.Name}.");
+        return true;
+    }
+
+    /// <summary>
+    /// 選完目的地後的視窗,一直處理到抵達:副本區清單選「隨意」、7.3 目的地選擇視窗(WKSPlanetSelect)、移動確認框。
+    /// 只按文字認得出來的;交給使用者或判定未解鎖後就收手。
+    /// </summary>
+    private static bool? FollowUp()
+    {
+        if(!SelectedEntry || Result != Outcome.Pending) return true;
+        if(IsArrived()) return true;
+        if(!Player.Available || !IsScreenReady()) return false;
+        if(SelectAnyInstance()) return false;
+        if(HandlePlanetSelect()) return false;
+        if(Result != Outcome.Pending) return true;
+        ConfirmMove();
         return false;
     }
 
-    private static bool? WaitArrival()
+    private static bool IsArrived()
+        => P.Territory == Target.Territory && Player.Interactable && !Svc.Condition[ConditionFlag.BetweenAreas];
+
+    private static bool SelectAnyInstance()
     {
-        // 選單項根本沒選到就不會有轉場,別空等滿 60 秒才去走退路。
-        if(!SelectedSinusArdorumEntry) return true;
-        return P.Territory == TaskAetheryteAethernetTeleport.SinusArdorumTerritoryId
-            && Player.Interactable
-            && !Svc.Condition[ConditionFlag.BetweenAreas];
+        if(!Utils.TrySelectSpecificEntry(Lang.AnyInstance, () => EzThrottler.Throttle("SelectString"))) return false;
+        PluginLog.Information($"[Cosmic] Instance menu: selected \"{Lang.AnyInstance.FirstOrDefault()}\".");
+        return true;
     }
 
-    /// <summary>快版的收尾:到了就結束,沒到就走退路並寫明為什麼。</summary>
+    /// <summary>
+    /// 7.3 的「選擇目的地」視窗:名稱(節點 17)是目標就按「移動到空閒副本區」(沒有就「移動」);不是就按切換鈕再看,
+    /// 最多 <see cref="MaxSwitchPresses"/> 次。認不出名稱、找不到能按的鈕、或切換完都不是目標 ⇒ 交給使用者。
+    /// </summary>
+    /// <returns>這一幀按了東西。</returns>
+    private static bool HandlePlanetSelect()
+    {
+        if(!TryGetAddonByName<AtkUnitBase>("WKSPlanetSelect", out var addon) || !IsAddonReady(addon)) return false;
+        var now = Environment.TickCount64;
+        if((nint)addon != PlanetAddon)
+        {
+            ResetPlanetSelect();
+            PlanetAddon = (nint)addon;
+            PlanetSeenAt = now;
+            PluginLog.Information($"[Cosmic] Destination-select window (WKSPlanetSelect) is open, looking for \"{Target.PlanetName}\". Texts: {DescribeTexts(addon)}");
+        }
+        if(PlanetMovePressed) return false;
+
+        if(!TryGetNodeText(FindNode(addon, PlanetLabelNodeId), out var label) || string.IsNullOrWhiteSpace(label))
+        {
+            if(now - PlanetSeenAt > PlanetGiveUpMs) HandOver($"could not read the destination name (node {PlanetLabelNodeId})");
+            return false;
+        }
+        if(label != PlanetLastLabel)
+        {
+            PlanetLastLabel = label;
+            PluginLog.Information($"[Cosmic] Destination-select window shows \"{label}\" (target \"{Target.PlanetName}\").");
+        }
+        if(now - PlanetLastSwitchAt < SwitchSettleMs) return false;
+
+        if(IsTargetPlanet(label))
+        {
+            foreach(var (node, addonRow) in PlanetMoveButtons)
+            {
+                var button = addon->GetComponentButtonById(node);
+                if(!IsUsable(button)) continue;
+                if(!AddonPressGuard.TryPressOnce("WKSPlanetSelect", addon, "TaskCosmicShortcut.PlanetMove")) return false;
+                button->ClickAddonButton(addon);
+                PlanetMovePressed = true;
+                PluginLog.Information($"[Cosmic] Destination-select window: \"{label}\" is the target, pressed button node {node} (\"{AddonText(addonRow)}\").");
+                return true;
+            }
+            if(now - PlanetSeenAt > PlanetGiveUpMs) HandOver($"\"{label}\" is shown but none of its move buttons can be pressed (it may not be unlocked yet)");
+            return false;
+        }
+
+        if(PlanetSwitchPresses >= MaxSwitchPresses)
+        {
+            HandOver($"still showing \"{label}\" after {PlanetSwitchPresses} presses of the switch button (it may not be unlocked yet)");
+            return false;
+        }
+        foreach(var node in PlanetSwitchButtons)
+        {
+            var button = addon->GetComponentButtonById(node);
+            if(!IsUsable(button)) continue;
+            if(!AddonPressGuard.TryPressOnce("WKSPlanetSelect", addon, "TaskCosmicShortcut.PlanetSwitch", paramKey: $"switch{PlanetSwitchPresses}", escapeIsRoutine: true)) return false;
+            button->ClickAddonButton(addon);
+            PlanetSwitchPresses++;
+            PlanetLastSwitchAt = now;
+            PluginLog.Information($"[Cosmic] Destination-select window: \"{label}\" is not the target, pressed switch button node {node} ({PlanetSwitchPresses}/{MaxSwitchPresses}).");
+            return true;
+        }
+        HandOver($"\"{label}\" is not the target and no switch button can be pressed");
+        return false;
+    }
+
+    /// <summary>移動確認框:文字與 Addon 17015／17016 相同才按「是」;YesAlready 沒讓位就不按。</summary>
+    private static void ConfirmMove()
+    {
+        if(!TryGetAddonMaster<AddonMaster.SelectYesno>(out var m) || !m.IsAddonReady) return;
+        var text = m.Text;
+        if(AddonPressGuard.IsTextUnstable("SelectYesno", text)) return;
+        var flat = text.ReplaceLineEndings(" ");
+        if(!Lang.WksConfirmMove.Matches(text, LegacyMatch.EqualsAny))
+        {
+            if(!LoggedForeignYesno)
+            {
+                LoggedForeignYesno = true;
+                PluginLog.Information($"[Cosmic] A confirmation box is open that is not the destination move: \"{flat}\" - not pressing it. Expected [{Lang.WksConfirmMove.Describe()}].");
+            }
+            return;
+        }
+        if(YesAlreadyManager.IsEnabled())
+        {
+            if(!LoggedYesAlreadyActive)
+            {
+                LoggedYesAlreadyActive = true;
+                PluginLog.Information("[Cosmic] YesAlready has not yielded yet, not pressing the move confirmation this frame.");
+            }
+            return;
+        }
+        if(!AddonPressGuard.TryPressOnce("SelectYesno", m, "TaskCosmicShortcut.ConfirmMove")) return;
+        m.Yes();
+        PluginLog.Information($"[Cosmic] Confirmed \"{flat}\".");
+    }
+
+    private static void HandOver(string reason)
+    {
+        Result = Outcome.HandedOver;
+        PluginLog.Information($"[Cosmic] Destination-select window: {reason}. Lifestream stops here and leaves the window to you.");
+        ChatQueue.Orange($"[Lifestream] {"Could not pick ?? in the destination window, it may not be unlocked yet. Choose it yourself or close the window; Lifestream has stopped.".Loc(Target.PlanetName)}");
+    }
+
+    private static void ResetPlanetSelect()
+    {
+        PlanetAddon = 0;
+        PlanetLastLabel = null;
+        PlanetSeenAt = 0;
+        PlanetLastSwitchAt = 0;
+        PlanetSwitchPresses = 0;
+        PlanetMovePressed = false;
+        LoggedForeignYesno = false;
+        LoggedYesAlreadyActive = false;
+    }
+
+    private static bool IsTargetPlanet(string label)
+    {
+        var target = GameTextPattern.Normalize(Target.PlanetName);
+        return target.Length > 0 && GameTextPattern.Normalize(label).Contains(target, StringComparison.Ordinal);
+    }
+
+    private static bool IsUsable(AtkComponentButton* button)
+        => IsButtonEnabled(button) && button->AtkComponentBase.OwnerNode->AtkResNode.NodeFlags.HasFlag(NodeFlags.Visible);
+
+    /// <summary>依節點 ID 在根節點清單裡找(純讀 NodeList,不呼叫原生查找)。</summary>
+    private static AtkResNode* FindNode(AtkUnitBase* addon, uint nodeId)
+    {
+        for(var i = 0; i < addon->UldManager.NodeListCount; i++)
+        {
+            var node = GetNodeSafe(&addon->UldManager, i);
+            if(node != null && node->NodeId == nodeId) return node;
+        }
+        return null;
+    }
+
+    private static string DescribeTexts(AtkUnitBase* addon)
+    {
+        var parts = new List<string>();
+        for(var i = 0; i < addon->UldManager.NodeListCount; i++)
+        {
+            var node = GetNodeSafe(&addon->UldManager, i);
+            if(node == null || node->Type != NodeType.Text) continue;
+            if(TryGetNodeText(node, out var text) && !string.IsNullOrWhiteSpace(text)) parts.Add($"#{node->NodeId}=\"{text.ReplaceLineEndings(" ")}\"");
+        }
+        return parts.Count == 0 ? "(none)" : string.Join(" ", parts);
+    }
+
+    private static string AddonText(uint row)
+    {
+        try
+        {
+            return Svc.Data.GetExcelSheet<Lumina.Excel.Sheets.Addon>().GetRowOrDefault(row)?.Text.ExtractText() ?? $"Addon#{row}";
+        }
+        catch(Exception e)
+        {
+            e.Log();
+            return $"Addon#{row}";
+        }
+    }
+
+    private static void LogMenuOnce(string kind, List<string> entries)
+    {
+        var line = $"{kind} shows [{entries.Print(" | ")}]";
+        if(line == LastMenuLog) return;
+        LastMenuLog = line;
+        PluginLog.Information($"[Cosmic] {line}.");
+    }
+
+    /// <summary>快版的收尾:到了就結束;判定未解鎖或已交給使用者就停;其餘走入口物件路線。</summary>
     private static bool? VerifyArrivalOrFallBack()
     {
-        if(P.Territory == TaskAetheryteAethernetTeleport.SinusArdorumTerritoryId)
+        if(P.Territory == Target.Territory)
         {
-            PluginLog.Information("[Cosmic] Arrived at Sinus Ardorum through the aetheryte menu.");
+            PluginLog.Information($"[Cosmic] Arrived at {Target.Name} through the aetheryte menu.");
+            return true;
+        }
+        if(Result != Outcome.Pending)
+        {
+            PluginLog.Information($"[Cosmic] Stopped without reaching {Target.Name} ({Result}); not falling back.");
             return true;
         }
 
-        PluginLog.Information($"[Cosmic] The aetheryte-menu route did not get us to Sinus Ardorum ({DescribeFailure()}).");
+        PluginLog.Information($"[Cosmic] The aetheryte-menu route did not get us to {Target.Name} ({DescribeFailure()}).");
         FallBackToEntranceObjectRoute();
         return true;
     }
 
+    /// <summary>
+    /// 入口物件路線:沿用 <see cref="StaticAlias.CosmicExploration"/> 走到入口物件並互動的那幾步,入口選單起改由這裡處理。
+    /// 別名形狀對不上時,渴望灣退回整份別名(舊行為),法恩娜停下(那份別名的選單項是渴望灣專用)。
+    /// </summary>
     private static void FallBackToEntranceObjectRoute()
     {
-        PluginLog.Information("[Cosmic] Falling back to the entrance-object route: teleport to the gateway aetheryte, mount up, ride to the entrance object and use its menu.");
-        ChatQueue.Green($"[Lifestream] {"The quick route to Sinus Ardorum did not work, falling back to the long one.".Loc()}");
+        PluginLog.Information($"[Cosmic] Falling back to the entrance-object route for {Target.Name}: teleport to the gateway aetheryte, mount up, ride to the entrance object and use its menu.");
+        ChatQueue.Green($"[Lifestream] {(Target.IsSinusArdorum ? "The quick route to Sinus Ardorum did not work, falling back to the long one.".Loc() : "The quick route to ?? did not work, falling back to the long one.".Loc(Target.PlanetName))}");
         CloseLeftoverSelectString();
-        // 同 RouteDecision 的理由:退路是執行途中才決定要走的,一律用 InsertStack 插到佇列最前面。
-        P.TaskManager.InsertStack(() => StaticAlias.CosmicExploration.Enqueue(true));
+
+        var alias = StaticAlias.CosmicExploration;
+        var menuStep = alias.Commands.FindIndex(c => c.Kind == CustomAliasKind.Select_List_Option);
+        if(menuStep <= 0 || alias.Commands[menuStep - 1].Kind != CustomAliasKind.Interact || alias.Commands[menuStep - 1].DataID != EntranceObjectId)
+        {
+            PluginLog.Information($"[Cosmic] The built-in entrance route does not have the expected shape (menu step {menuStep}).");
+            if(Target.IsSinusArdorum)
+            {
+                P.TaskManager.InsertStack(() => alias.Enqueue(true));
+            }
+            else
+            {
+                Result = Outcome.HandedOver;
+                ChatQueue.Orange($"[Lifestream] {"Could not reach ??. Please continue manually.".Loc(Target.PlanetName)}");
+            }
+            return;
+        }
+
+        SelectedEntry = false;
+        LastMenuLog = null;
+        ResetPlanetSelect();
+        P.TaskManager.InsertStack(() =>
+        {
+            alias.Enqueue(true, 0, menuStep);
+            P.TaskManager.Enqueue(SelectEntranceMenu, "CosmicSelectEntranceMenu", Lenient(15000));
+            P.TaskManager.Enqueue(FollowUp, "CosmicEntranceFollowUpAndWaitArrival", Lenient(70000));
+            P.TaskManager.Enqueue(ReportEntranceRoute, "CosmicEntranceRouteResult");
+        });
+    }
+
+    /// <summary>入口物件的選單:渴望灣先找舊的「前往渴望灣」,再找 7.3 的「移動到探索區域」;法恩娜只找後者。</summary>
+    private static bool? SelectEntranceMenu()
+    {
+        if(!Player.Available) return false;
+        if(!TryGetAddonByName<AddonSelectString>("SelectString", out var addon) || !IsAddonReady(&addon->AtkUnitBase))
+        {
+            if(EzThrottler.Throttle("CosmicEntranceMenuWaitLog", 5000)) PluginLog.Information("[Cosmic] Waiting for the entrance menu to open.");
+            return false;
+        }
+        var entries = Utils.GetEntries(addon);
+        if(entries.Count == 0 || AddonPressGuard.AnyTextUnstable("SelectString", entries)) return false;
+        LogMenuOnce("Entrance menu", entries);
+
+        GameTextMatcher matcher = null;
+        var index = -1;
+        if(Target.IsSinusArdorum)
+        {
+            index = Lang.WksEntranceTravelToSinusArdorum.FindIndex(entries, LegacyMatch.EqualsAny);
+            if(index >= 0) matcher = Lang.WksEntranceTravelToSinusArdorum;
+        }
+        if(index < 0)
+        {
+            index = Lang.WksEntranceMoveToExplorationArea.FindIndex(entries, LegacyMatch.EqualsAny);
+            if(index >= 0) matcher = Lang.WksEntranceMoveToExplorationArea;
+        }
+        if(matcher == null)
+        {
+            if(EzThrottler.Throttle("CosmicEntranceMenuMismatchLog", 5000))
+            {
+                var wanted = Target.IsSinusArdorum ? $"{Lang.WksEntranceTravelToSinusArdorum.Describe()} | {Lang.WksEntranceMoveToExplorationArea.Describe()}" : Lang.WksEntranceMoveToExplorationArea.Describe();
+                PluginLog.Information($"[Cosmic] The entrance menu has none of [{wanted}], menu shows [{entries.Print(" | ")}].");
+            }
+            return false;
+        }
+        if(!Utils.TrySelectSpecificEntry(matcher, () => EzThrottler.Throttle("SelectString"))) return false;
+        SelectedEntry = true;
+        PluginLog.Information($"[Cosmic] Entrance menu: selected entry #{index} \"{entries[index]}\" for {Target.Name}.");
+        return true;
+    }
+
+    private static bool? ReportEntranceRoute()
+    {
+        if(P.Territory == Target.Territory)
+        {
+            PluginLog.Information($"[Cosmic] Arrived at {Target.Name} through the entrance object.");
+        }
+        else if(Result != Outcome.Pending)
+        {
+            PluginLog.Information($"[Cosmic] Entrance-object route stopped without reaching {Target.Name} ({Result}).");
+        }
+        else
+        {
+            PluginLog.Information($"[Cosmic] The entrance-object route did not get us to {Target.Name} either ({DescribeFailure()}).");
+            ChatQueue.Orange($"[Lifestream] {"Could not reach ??. Please continue manually.".Loc(Target.PlanetName)}");
+        }
+        return true;
     }
 
     private static string DescribeFailure()
     {
         if(TryGetAddonByName<AddonSelectString>("SelectString", out var addon) && IsAddonReady(&addon->AtkUnitBase))
         {
-            return $"still in territory {P.Territory}, selectedMenuEntry={SelectedSinusArdorumEntry}, a SelectString is open showing [{Utils.GetEntries(addon).Print(" | ")}]";
+            return $"still in territory {P.Territory}, selectedMenuEntry={SelectedEntry}, a SelectString is open showing [{Utils.GetEntries(addon).Print(" | ")}]";
         }
-        return $"still in territory {P.Territory}, selectedMenuEntry={SelectedSinusArdorumEntry}, no aetheryte menu open, ActiveAetheryte={(P.ActiveAetheryte == null ? "null" : $"{P.ActiveAetheryte.Value.Name}({P.ActiveAetheryte.Value.ID})")}";
+        var planetOpen = TryGetAddonByName<AtkUnitBase>("WKSPlanetSelect", out var planet) && IsAddonReady(planet);
+        return $"still in territory {P.Territory}, selectedMenuEntry={SelectedEntry}, destinationWindowOpen={planetOpen}, lastDestinationShown=\"{PlanetLastLabel}\", ActiveAetheryte={(P.ActiveAetheryte == null ? "null" : $"{P.ActiveAetheryte.Value.Name}({P.ActiveAetheryte.Value.ID})")}";
     }
 
-    /// <summary>
-    /// 快版失敗最可能的形狀就是「選單開著但沒有那一項」——這時選單還開著,
-    /// 退路的騎馬/走位會被占用狀態擋住。先取消掉它再走退路。
-    /// </summary>
+    /// <summary>選單開著時退路的騎馬/走位會被占用狀態擋住,先取消它。</summary>
     private static void CloseLeftoverSelectString()
     {
         if(TryGetAddonByName<AddonSelectString>("SelectString", out var addon) && IsAddonReady(&addon->AtkUnitBase))
         {
-            // 這扇窗是本外掛沒按過的(按到了就不會走退路),守衛在這裡幾乎必放行;接上是為了「同一扇窗的所有按法都過同一個守衛」。
             if(!AddonPressGuard.TryPressOnce("SelectString", &addon->AtkUnitBase, nameof(CloseLeftoverSelectString))) return;
-            PluginLog.Information("[Cosmic] Cancelling the leftover aetheryte menu before falling back.");
+            PluginLog.Information("[Cosmic] Cancelling the leftover menu.");
             Callback.Fire(&addon->AtkUnitBase, true, -1);
         }
     }

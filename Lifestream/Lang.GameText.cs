@@ -81,4 +81,22 @@ internal static partial class Lang
     internal static readonly GameTextMatcher ToReduceCongestion = GameTextMatcher.Template(nameof(ToReduceCongestion),
         [GameTextSource.AddonRow(2090)],
         []);
+
+    // Cosmic Exploration destinations added for TC 7.3: game text only, no built-in strings.
+    internal static readonly GameTextMatcher TravelToPhaenna = GameTextMatcher.Exact(nameof(TravelToPhaenna),
+        [GameTextSource.Dialogue("transport/AetheryteBestwaysBurrow", "TEXT_AETHERYTEBESTWAYSBURROW_SYSTEM_C1W2")],
+        []);
+
+    internal static readonly GameTextMatcher WksEntranceTravelToSinusArdorum = GameTextMatcher.Exact(nameof(WksEntranceTravelToSinusArdorum),
+        [GameTextSource.Dialogue("custom/009/CtsWksEntrance_00921", "TEXT_CTSWKSENTRANCE_00921_SYSTEM_000_001")],
+        []);
+
+    internal static readonly GameTextMatcher WksEntranceMoveToExplorationArea = GameTextMatcher.Exact(nameof(WksEntranceMoveToExplorationArea),
+        [GameTextSource.Dialogue("custom/009/CtsWksEntrance_00921", "TEXT_CTSWKSENTRANCE_00921_SYSTEM_000_005")],
+        []);
+
+    // "Move to the selected destination?" / "Move to an automatically assigned instance?" of the destination window.
+    internal static readonly GameTextMatcher WksConfirmMove = GameTextMatcher.Exact(nameof(WksConfirmMove),
+        [GameTextSource.AddonRow(17015), GameTextSource.AddonRow(17016)],
+        []);
 }

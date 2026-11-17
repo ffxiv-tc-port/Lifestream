@@ -6,7 +6,7 @@ using Lifestream.Tasks.SameWorld;
 namespace Lifestream.Tasks.Shortcuts;
 
 /// <summary>
-/// 傳送面板／我的最愛的「直接進無人島」「直接進渴望灣」：使用者按下才排入與 <c>/li island</c>、<c>/li cosmic</c>
+/// 傳送面板／我的最愛的「直接進無人島」「直接進渴望灣」「直接進行星法恩娜」：使用者按下才排入與 <c>/li island</c>、<c>/li cosmic</c>、<c>/li phaenna</c>
 /// 完全相同的流程，不另抄步驟；中止一律走既有的佇列中止（右鍵進度條、<c>/li stop</c>、IPC <c>Abort</c>）。
 /// <see cref="Tick"/> 在佇列清空時記一行有沒有抵達。只在框架執行緒使用。
 /// </summary>
@@ -14,6 +14,7 @@ public static class TaskDirectEnter
 {
     private const string IslandTag = "[直接進無人島]";
     private const string CosmicTag = "[直接進渴望灣]";
+    private const string PhaennaTag = "[直接進行星法恩娜]";
 
     private static string ActiveTag;
     private static string ActiveName;
@@ -59,6 +60,24 @@ public static class TaskDirectEnter
         PluginLog.Information($"{CosmicTag} 開始：目前區域 {P.Territory}，{(Player.IsInHomeWorld ? "在原始世界" : "不在原始世界、先回原始世界")}。");
         TaskCosmicShortcut.EnqueueReturnHomeFirst();
         Begin(CosmicTag, "渴望灣", TaskAetheryteAethernetTeleport.SinusArdorumTerritoryId);
+    }
+
+    public static void EnqueuePhaenna()
+    {
+        if(Utils.IsBusy())
+        {
+            Notify.Error("Lifestream is busy".Loc());
+            return;
+        }
+        if(!Player.Available) return;
+        if(P.Territory == TaskAetheryteAethernetTeleport.PhaennaTerritoryId)
+        {
+            Notify.Info("You are already in Phaenna.".Loc());
+            return;
+        }
+        PluginLog.Information($"{PhaennaTag} 開始：目前區域 {P.Territory}，{(Player.IsInHomeWorld ? "在原始世界" : "不在原始世界、先回原始世界")}。");
+        TaskCosmicShortcut.EnqueueReturnHomeFirst(TaskCosmicShortcut.Destination.Phaenna);
+        Begin(PhaennaTag, "行星法恩娜", TaskAetheryteAethernetTeleport.PhaennaTerritoryId);
     }
 
     private static void Begin(string tag, string name, uint territory)

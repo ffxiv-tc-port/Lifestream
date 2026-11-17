@@ -327,6 +327,21 @@ public unsafe class Lifestream : IDalamudPlugin
                 Notify.Error("Lifestream is busy");
             }
         }
+        else if(arguments.EqualsIgnoreCase("phaenna"))
+        {
+            if(Utils.IsBusy())
+            {
+                Notify.Error("Lifestream is busy");
+            }
+            else if(P.Territory == TaskAetheryteAethernetTeleport.PhaennaTerritoryId)
+            {
+                Notify.Info("You are already in Phaenna.".Loc());
+            }
+            else
+            {
+                TaskCosmicShortcut.EnqueueReturnHomeFirst(TaskCosmicShortcut.Destination.Phaenna);
+            }
+        }
         else if(arguments.EqualsIgnoreCase("occult"))
         {
             if(!Utils.IsBusy())

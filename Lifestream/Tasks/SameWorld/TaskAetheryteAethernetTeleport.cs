@@ -26,6 +26,8 @@ internal static class TaskAetheryteAethernetTeleport
     // 目的地區域本身沒有乙太之光,要靠「鄰近區域某座乙太之光的選單項」才進得去的區域。
     internal const uint FirmamentTerritoryId = 886;
     internal const uint SinusArdorumTerritoryId = 1237;
+    /// <summary>行星法恩娜:同一座乙太之光(175)的「前往行星法恩娜」,只給 <c>/li phaenna</c> 與直達按鈕用。</summary>
+    internal const uint PhaennaTerritoryId = 1291;
 
     /// <summary>
     /// 目的地區域 → 進得去它的「玄關乙太之光 + 專用選單項」。

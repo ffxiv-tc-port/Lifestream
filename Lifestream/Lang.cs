@@ -63,6 +63,7 @@ internal static partial class Lang
         "-- Others --".Loc(),
         "",
         "/li cosmic → go to Sinus Ardorum, alias: /li cosmic|moon|ardorum".Loc(),
+        "/li phaenna → go to Phaenna".Loc(),
         "/li island → go to Island Sanctuary".Loc(),
         "/li goto <name> → go to a saved custom destination (teleport + navigation)".Loc(),
         "/li panel → open the teleport panel (search, favorites, remarks, map preview)".Loc(),
