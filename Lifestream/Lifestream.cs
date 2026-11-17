@@ -318,14 +318,9 @@ public unsafe class Lifestream : IDalamudPlugin
         {
             if(!Utils.IsBusy())
             {
-                if(!Player.IsInHomeWorld)
-                {
-                    P.TPAndChangeWorld(Player.HomeWorld, !Player.IsInHomeDC, null, true, null, false, false);
-                }
-                P.TaskManager.Enqueue(() => Player.Interactable && Player.IsInHomeWorld && IsScreenReady());
                 // 走乙太之光 175 的「前往渴望灣」選單項;
                 // 失敗時 TaskCosmicShortcut 會自己退回舊的 StaticAlias.CosmicExploration 流程。
-                TaskCosmicShortcut.Enqueue();
+                TaskCosmicShortcut.EnqueueReturnHomeFirst();
             }
             else
             {
@@ -632,6 +627,7 @@ public unsafe class Lifestream : IDalamudPlugin
         VnavMoveOwner.Tick();
         AutomoveOwner.Tick();
         Tasks.Shortcuts.TaskOccultDirectEnter.Tick();
+        Tasks.Shortcuts.TaskDirectEnter.Tick();
         S.TeleportService?.Tick();
         // IPC 端點 Lifestream.IsBusy 讀的每幀快照。必須排在 followPath?.Update() 之後（理由見 UpdateBusySnapshot 的註解）。
         // 這支只讀兩個計數、不碰原生記憶體，所以不另外包 try —— 它擲例外的唯一可能是

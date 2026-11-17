@@ -43,15 +43,14 @@ internal static class TeleportRowUI
         var hasLanding = C.AetheryteLandings.ContainsKey(x.Id);
         var label = GetLabel(x, showZone, isFavorite, hasLanding);
 
-        // 新月島路線那座城內乙太之光的列：右邊留「到蜃景鎮」「直接進島」兩顆的寬度，列本身的行為不變。
-        // 「直接進島」維持在最右邊，新按鈕插在它左邊，既有按鈕的位置不動。
-        var occultButton = TaskOccultDirectEnter.IsEntryRow(x) ? "Enter island".Loc() : null;
-        var mirageButton = occultButton != null ? "To the Mirage town".Loc() : null;
+        // 入口列（新月島那座城內乙太之光、無人島與渴望灣的玄關主水晶）右邊留按鈕寬度，列本身的行為不變。
+        var entryButtons = GetEntryButtons(x);
         var rowSize = default(Vector2);
-        if(occultButton != null)
+        if(entryButtons != null)
         {
             var style = ImGui.GetStyle();
-            var buttons = ImGui.CalcTextSize(occultButton).X + ImGui.CalcTextSize(mirageButton).X + (style.FramePadding.X * 2 + style.ItemSpacing.X) * 2;
+            var buttons = 0f;
+            foreach(var b in entryButtons) buttons += ImGui.CalcTextSize(ButtonText(b)).X + style.FramePadding.X * 2 + style.ItemSpacing.X;
             rowSize.X = Math.Max(1f, ImGui.GetContentRegionAvail().X - buttons);
         }
 
@@ -78,32 +77,67 @@ internal static class TeleportRowUI
         }
 
         DrawContextMenu(x);
-        if(occultButton != null)
+        if(entryButtons != null)
         {
-            DrawOccultButton(mirageButton, true);
-            DrawOccultButton(occultButton, false);
+            foreach(var b in entryButtons) DrawEntryButton(b);
         }
 
         ImGui.PopID();
         return clicked;
     }
 
-    private static void DrawOccultButton(string text, bool stopAtMirageTown)
+    private enum EntryButton { MirageTown, OccultCrescent, IslandSanctuary, SinusArdorum }
+
+    // 新月島的「直接進島」維持在最右邊、「到蜃景鎮」在它左邊，既有按鈕的位置不動。
+    private static readonly EntryButton[] OccultButtons = [EntryButton.MirageTown, EntryButton.OccultCrescent];
+    private static readonly EntryButton[] IslandButtons = [EntryButton.IslandSanctuary];
+    private static readonly EntryButton[] CosmicButtons = [EntryButton.SinusArdorum];
+
+    private static EntryButton[] GetEntryButtons(TeleportPanelEntry x)
+    {
+        if(TaskOccultDirectEnter.IsEntryRow(x)) return OccultButtons;
+        if(TaskDirectEnter.IsIslandEntryRow(x)) return IslandButtons;
+        if(TaskDirectEnter.IsCosmicEntryRow(x)) return CosmicButtons;
+        return null;
+    }
+
+    private static string ButtonText(EntryButton b) => b switch
+    {
+        EntryButton.MirageTown => "To the Mirage town".Loc(),
+        EntryButton.OccultCrescent => "Enter island".Loc(),
+        EntryButton.IslandSanctuary => "Enter Island Sanctuary".Loc(),
+        _ => "Enter Sinus Ardorum".Loc(),
+    };
+
+    private static string ButtonTooltip(EntryButton b) => b switch
+    {
+        EntryButton.MirageTown => "Same route as Enter island, but stop once you arrive in the Mirage town: teleport to Tuliyollal, take the aethernet, walk to the ferry and take it. It does not talk to Jeffroy or enter the island. Right-click the progress bar to stop.".Loc(),
+        EntryButton.OccultCrescent => "Go all the way into the Occult Crescent: teleport to Tuliyollal, take the aethernet, walk to the ferry and talk to Jeffroy. If you are already in the Mirage town it continues from there. Clicking the row itself still only takes you to the aethernet shard. Right-click the progress bar to stop.".Loc(),
+        EntryButton.IslandSanctuary => "Go all the way to your Island Sanctuary (same as /li island): return to your home world if needed, teleport to Moraby Drydocks, walk to Baldin and travel to your island, then walk to the Tactful Taskmaster. Clicking the row itself still only teleports you to the aetheryte. Right-click the progress bar to stop.".Loc(),
+        _ => "Go all the way to Sinus Ardorum for Cosmic Exploration (same as /li cosmic): return to your home world if needed, teleport to Bestways Burrow and pick Sinus Ardorum from the aetheryte menu; if that does not work it falls back to riding to the entrance. Clicking the row itself still only teleports you to the aetheryte. Right-click the progress bar to stop.".Loc(),
+    };
+
+    private static void DrawEntryButton(EntryButton b)
     {
         ImGui.SameLine();
         var busy = Utils.IsBusy();
         if(busy) ImGui.BeginDisabled();
-        var pressed = ImGui.SmallButton(text);
+        var pressed = ImGui.SmallButton(ButtonText(b));
         if(busy) ImGui.EndDisabled();
         // 說明畫在 EndDisabled 之後：停用時也看得到，也不會跟著停用的半透明變淡。
         if(ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
         {
-            var tip = stopAtMirageTown
-                ? "Same route as Enter island, but stop once you arrive in the Mirage town: teleport to Tuliyollal, take the aethernet, walk to the ferry and take it. It does not talk to Jeffroy or enter the island. Right-click the progress bar to stop.".Loc()
-                : "Go all the way into the Occult Crescent: teleport to Tuliyollal, take the aethernet, walk to the ferry and talk to Jeffroy. If you are already in the Mirage town it continues from there. Clicking the row itself still only takes you to the aethernet shard. Right-click the progress bar to stop.".Loc();
+            var tip = ButtonTooltip(b);
             ImGui.SetTooltip(busy ? $"{"Lifestream is busy".Loc()}\n{tip}" : tip);
         }
-        if(pressed) TaskOccultDirectEnter.Enqueue(stopAtMirageTown);
+        if(!pressed) return;
+        switch(b)
+        {
+            case EntryButton.MirageTown: TaskOccultDirectEnter.Enqueue(true); break;
+            case EntryButton.OccultCrescent: TaskOccultDirectEnter.Enqueue(false); break;
+            case EntryButton.IslandSanctuary: TaskDirectEnter.EnqueueIsland(); break;
+            case EntryButton.SinusArdorum: TaskDirectEnter.EnqueueCosmic(); break;
+        }
     }
 
     /// <summary>

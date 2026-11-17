@@ -56,6 +56,20 @@ public static unsafe class TaskCosmicShortcut
     /// </summary>
     private static bool SelectedSinusArdorumEntry;
 
+    /// <summary>
+    /// <c>/li cosmic</c> 與傳送面板「直接進渴望灣」共用：不在原始世界就先回去，再走 <see cref="Enqueue"/>。
+    /// 呼叫端自己先判 <see cref="Utils.IsBusy"/>。
+    /// </summary>
+    public static void EnqueueReturnHomeFirst()
+    {
+        if(!Player.IsInHomeWorld)
+        {
+            P.TPAndChangeWorld(Player.HomeWorld, !Player.IsInHomeDC, null, true, null, false, false);
+        }
+        P.TaskManager.Enqueue(() => Player.Interactable && Player.IsInHomeWorld && IsScreenReady());
+        Enqueue();
+    }
+
     public static void Enqueue()
     {
         SelectedSinusArdorumEntry = false;
