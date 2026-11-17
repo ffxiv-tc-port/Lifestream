@@ -1,5 +1,3 @@
-using Dalamud.Memory;
-
 namespace Lifestream.Systems;
 
 /// <summary>
@@ -34,7 +32,6 @@ public static unsafe class SameAethernetTeleportPatch
         public readonly string Signature = signature;
         public nint Address;
         public byte OriginalByte;
-        public bool Applied;
     }
 
     private static readonly Site[] Sites =
@@ -49,61 +46,32 @@ public static unsafe class SameAethernetTeleportPatch
     /// <summary>解析失敗的原因，給設定畫面顯示。null = 沒有問題。</summary>
     public static string ResolveError { get; private set; }
 
-    public static bool IsApplied => Sites.All(x => x.Applied);
+    public static bool IsApplied => false;
+
+    internal const string SuspendedReason = "The setting is on, but the patch is suspended pending a decision: it used to write into Dalamud's scan copy of the game module instead of the game, so it never took effect. Nothing is written.";
+    private static bool loggedSuspended;
 
     /// <summary>
-    /// 啟用修補。任何一顆解析或驗證失敗就整組不啟用(不做半套)，並回傳 false。
+    /// 🔴 暫停中：不寫任何記憶體(連 Dalamud 的掃描複本也不寫)、回 false、不改設定值；只在第一次呼叫記一行 Information。
     /// </summary>
+    /// <remarks>
+    /// 停用理由：原本的位址取自 <c>Svc.SigScanner.TextSectionBase</c>，那是 Dalamud 給插件的模組複本、不是遊戲映像，
+    /// 所以從未生效，還改壞了別的插件會掃描的複本。要恢復得改成真實位址並經使用者裁決(記憶體修補)。
+    /// </remarks>
     public static bool Enable()
     {
-        if(IsApplied) return true;
-        if(!Resolve()) return false;
-
-        foreach(var site in Sites)
+        ResolveError = SuspendedReason;
+        if(!loggedSuspended)
         {
-            if(site.Applied) continue;
-            try
-            {
-                var old = MemoryHelper.ChangePermission(site.Address, 1, MemoryProtection.ExecuteReadWrite);
-                *(byte*)site.Address = PatchedByte;
-                MemoryHelper.ChangePermission(site.Address, 1, old);
-                site.Applied = true;
-                PluginLog.Information($"[SameAethernetTeleport] Patch {site.Name} applied at 0x{site.Address:X} ({ExpectedOriginalByte:X2} -> {PatchedByte:X2}).");
-            }
-            catch(Exception e)
-            {
-                ResolveError = $"Failed to write patch {site.Name}: {e.Message}";
-                PluginLog.Error($"[SameAethernetTeleport] {ResolveError}");
-                // 已經寫進去的要收回，不留半套狀態。
-                Disable();
-                return false;
-            }
+            loggedSuspended = true;
+            PluginLog.Information($"[SameAethernetTeleport] {SuspendedReason}");
         }
-        return true;
+        return false;
     }
 
-    /// <summary>
-    /// 還原所有已套用的修補。卸載外掛時一定要呼叫 —— 否則遊戲會帶著被改過的碼繼續跑。
-    /// </summary>
+    /// <summary>暫停中從來沒有寫過任何位元組，沒有要還原的；刻意不碰記憶體。</summary>
     public static void Disable()
     {
-        foreach(var site in Sites)
-        {
-            if(!site.Applied) continue;
-            try
-            {
-                var old = MemoryHelper.ChangePermission(site.Address, 1, MemoryProtection.ExecuteReadWrite);
-                *(byte*)site.Address = site.OriginalByte;
-                MemoryHelper.ChangePermission(site.Address, 1, old);
-                site.Applied = false;
-                PluginLog.Information($"[SameAethernetTeleport] Patch {site.Name} reverted at 0x{site.Address:X} (restored {site.OriginalByte:X2}).");
-            }
-            catch(Exception e)
-            {
-                // 還原失敗只能記錄 —— 這是唯一一種會留下痕跡的失敗，要看得見。
-                PluginLog.Error($"[SameAethernetTeleport] FAILED to revert patch {site.Name} at 0x{site.Address:X}: {e.Message}");
-            }
-        }
     }
 
     /// <summary>

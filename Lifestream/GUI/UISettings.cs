@@ -147,31 +147,24 @@ internal static unsafe class UISettings
             ImGuiEx.TextWrapped(EColor.RedBright, "WARNING - use at your own risk. This is a memory patch: it rewrites two bytes of the game's code so it stops refusing, and the client then sends a teleport request the unmodified client would never send. Off by default.".Loc());
             ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "The \"you have not attuned to this aetheryte\" check is left untouched. The patch is verified before it is written: each signature must match exactly once and the byte found must be the expected conditional jump, otherwise nothing is patched at all. The original bytes are restored when you turn this off or unload the plugin.".Loc());
 
+            ImGuiEx.TextWrapped(EColor.RedBright, SuspendedNotice.Loc());
+
             var enabled = C.SameAethernetTeleport;
             if(ImGui.Checkbox("Allow teleporting to the aethernet shard you are standing on".Loc(), ref enabled))
             {
+                // 暫停中只存設定值：Enable／Disable 都不寫記憶體，也不把使用者的勾選退回。
                 C.SameAethernetTeleport = enabled;
                 EzConfig.Save();
-                if(enabled)
-                {
-                    if(!SameAethernetTeleportPatch.Enable())
-                    {
-                        // 解析或寫入失敗：把設定退回關閉，免得下次啟動又白試一次。
-                        C.SameAethernetTeleport = false;
-                        EzConfig.Save();
-                    }
-                }
-                else
-                {
-                    SameAethernetTeleportPatch.Disable();
-                }
+                if(enabled) SameAethernetTeleportPatch.Enable();
+                else SameAethernetTeleportPatch.Disable();
             }
+            if(ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip(SuspendedNotice.Loc());
 
             if(SameAethernetTeleportPatch.IsApplied)
             {
                 ImGuiEx.Text(ImGuiColors.HealerGreen, "Patch active.".Loc());
             }
-            else if(SameAethernetTeleportPatch.ResolveError != null)
+            else if(SameAethernetTeleportPatch.ResolveError != null && SameAethernetTeleportPatch.ResolveError != SameAethernetTeleportPatch.SuspendedReason)
             {
                 ImGuiEx.TextWrapped(EColor.RedBright, $"{"Patch not applied:".Loc()} {SameAethernetTeleportPatch.ResolveError}");
                 ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, "This usually means the game updated and the signature moved. Nothing was written - the feature is simply off.".Loc());
@@ -179,6 +172,8 @@ internal static unsafe class UISettings
         })
         .Draw();
     }
+
+    private const string SuspendedNotice = "Currently has no effect - suspended pending a decision. It used to write to the wrong place in memory and never worked, so it is turned off for now; your choice here is kept.";
 
     // 坐騎名稱表在執行中不會變（語言不在執行中切換），第一次畫設定頁時建一次。
     private static Dictionary<int, string> MountNames;

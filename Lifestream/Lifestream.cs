@@ -92,8 +92,7 @@ public unsafe class Lifestream : IDalamudPlugin
             TerritoryWatcher.Initialize();
             Config = EzConfig.Init<Config>();
             Utils.CheckConfigMigration();
-            // 「允許傳送到目前所在的乙太之光」記憶體修補。預設關；開著才會去解析特徵碼。
-            // 解析失敗(命中數不是 1)時只會寫一行 log 並維持未修補狀態，不影響其餘功能。
+            // 「允許傳送到目前所在的乙太之光」記憶體修補。預設關；目前暫停，開著也只記一行 Information、不寫記憶體。
             if(Config.SameAethernetTeleport) GenericHelpers.Safe(() => SameAethernetTeleportPatch.Enable());
             ImGuiStackWatch.AttachBefore();
             EzConfigGui.Init(MainGui.Draw);
