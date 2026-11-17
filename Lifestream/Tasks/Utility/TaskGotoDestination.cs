@@ -21,7 +21,8 @@ namespace Lifestream.Tasks.Utility;
 ///    沒有比主水晶近的城內以太之光時才直接傳送到主水晶;
 /// 2) vnavmesh IPC 尋路走過去(軟依賴);
 /// 3) 未安裝 vnavmesh 時改為標記地圖旗點並開地圖,提示手動前往。
-/// 紅線:不做任何記憶體改座標瞬移(DR 版的 TPSmart/TPPlayerAddress 不抄)。
+/// 本流程不做記憶體改座標瞬移(DR 版的 TPSmart/TPPlayerAddress 不抄);
+/// 唯一的直接寫座標是傳送面板落點的使用者選項,見 TaskTeleportPanelGo.TryDirectWrite。
 /// </summary>
 /// <remarks>📌 兩個進入點共用同一段「抵達目的區域」的編排(<see cref="EnqueueTravelToZone"/>):
 ///    <list type="bullet">

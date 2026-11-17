@@ -674,7 +674,6 @@ public unsafe class Lifestream : IDalamudPlugin
         }
         if(P.TaskManager.IsBusy)
         {
-            if(EzThrottler.Throttle("EnsureEnhancedLoginIsOff")) Utils.EnsureEnhancedLoginIsOff();
             // 🔴 「Trade 存在就每幀送 -1」會從 addon 剛配置到按下取消後正在關閉的每一幀都再送;
             //    對關閉中的窗再送 callback 是攔不到的 AccessViolation。
             //    所以先過 IsAddonReady,再經 AddonPressGuard:同一扇窗只送一次,窗消失後才會對下一扇再送。
