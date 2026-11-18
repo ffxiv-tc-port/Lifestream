@@ -27,6 +27,7 @@ public class Config : IEzConfig
     public WorldChangeAetheryte WorldChangeAetheryte = WorldChangeAetheryte.Uldah;
     public bool Firmament = true;
     public bool SinusArdorum = true;
+    public bool Phaenna = true;
     public bool WalkToAetheryte = true;
     public bool LeavePartyBeforeWorldChange = true;
     public bool AllowDcTransfer = true;

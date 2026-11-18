@@ -307,7 +307,7 @@ public class TeleportFavoritesWindow : Window
     /// <remarks>⚠️ <see cref="Data.Config.Favorites"/> 是好幾個互不相干、範圍不重疊的 id 空間共用同一個 HashSet(既有的資料模型，不在這裡改)：
     ///   - <c>Aetheryte</c> 表：0..238 —— 傳送面板管的主力。列不出來＝還沒共鳴。
     ///   - <c>HousingAethernet</c> 表：1966080..1966162 —— 住宅區乙太之光，由浮動視窗管。
-    ///   - 蒼天街 69420000..69420007 與玄關目的地(<c>uint.MaxValue</c>、<c>uint.MaxValue - 1</c>)：**傳送面板也管**，只有對應設定關掉時才會落到這裡。
+    ///   - 蒼天街 69420000..69420007 與玄關目的地(<c>uint.MaxValue</c> 往下數，見 <c>TaskAetheryteAethernetTeleport.GatewayRoutes</c>)：**傳送面板也管**，只有對應設定關掉時才會落到這裡。
     ///   - Lifestream 自訂 · 優雷卡/南方博茲雅/扎杜諾爾/新月島：69420100 起 —— 由浮動視窗管。
     /// 不屬於本視窗的那些**不是**「無法使用」，只是不歸這裡管，所以只報數量、不逐筆列，
     /// 更**不提供刪除** —— 在這裡刪掉會把使用者浮動視窗上的最愛弄不見。

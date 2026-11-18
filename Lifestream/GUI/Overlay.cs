@@ -9,6 +9,7 @@ using Lifestream.Tasks;
 using Lifestream.Tasks.CrossDC;
 using Lifestream.Tasks.CrossWorld;
 using Lifestream.Tasks.SameWorld;
+using Lifestream.Tasks.Shortcuts;
 using System.Runtime.CompilerServices;
 
 namespace Lifestream.GUI;
@@ -249,17 +250,25 @@ public class Overlay : Window
             DrawGatewayButton(TaskAetheryteAethernetTeleport.SinusArdorumAethernetId,
                 TaskAetheryteAethernetTeleport.SinusArdorumTerritoryId, "Sinus Ardorum".Loc(), TaskSinusArdorumTeleport.Enqueue);
         }
+
+        if(P.ActiveAetheryte.Value.ID == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId && C.Phaenna)
+        {
+            // 走 /li phaenna 同一個入口;它自己判忙碌並移除離席,所以不先排離席移除(排了就會被判成忙碌)。
+            DrawGatewayButton(TaskAetheryteAethernetTeleport.PhaennaAethernetId,
+                TaskAetheryteAethernetTeleport.PhaennaTerritoryId, "Phaenna".Loc(), TaskDirectEnter.EnqueuePhaenna, removeAfk: false);
+        }
     }
 
     /// <summary>
-    /// 玄關目的地(蒼天街/渴望灣)的按鈕。與上面一般乙太之光的按鈕一樣支援星號、備註與隱藏，
+    /// 玄關目的地(蒼天街/渴望灣/行星法恩娜)的按鈕。與上面一般乙太之光的按鈕一樣支援星號、備註與隱藏，
     /// 因為它們跟傳送面板共用同一個我的最愛鍵。
     /// </summary>
     /// <param name="id">Lifestream 給這個目的地的偽 id，也是我的最愛/備註/隱藏的鍵。</param>
     /// <param name="territory">目的地區域。只用來填 <see cref="IAetheryte"/>，右鍵選單本身只認 id。</param>
     /// <param name="defaultName">沒有備註時顯示的名稱(已在地化)。</param>
     /// <param name="enqueue">按下去要排的傳送流程。</param>
-    private void DrawGatewayButton(uint id, uint territory, string defaultName, Action enqueue)
+    /// <param name="removeAfk">false＝<paramref name="enqueue"/> 自己處理離席狀態(且會因佇列非空而拒絕)。</param>
+    private void DrawGatewayButton(uint id, uint territory, string defaultName, Action enqueue, bool removeAfk = true)
     {
         if(C.Hidden.Contains(id)) return;
         var name = (C.Favorites.Contains(id) ? Lang.Symbols.HighQuality + " " : "")
@@ -267,7 +276,7 @@ public class Overlay : Window
         ResizeButton($"{Pad}{name}");
         if(ImGui.Button($"{Pad}{name}", ButtonSizeAetheryte))
         {
-            TaskRemoveAfkStatus.Enqueue();
+            if(removeAfk) TaskRemoveAfkStatus.Enqueue();
             enqueue();
         }
         Popup(new CustomAetheryte(default, territory, defaultName, id));

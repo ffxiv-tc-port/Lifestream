@@ -28,8 +28,12 @@ public static class TaskDirectEnter
 
     public static bool IsIslandEntryRow(TeleportPanelEntry x) => x.IsAetheryte && x.SubIndex == 0 && x.Id != 0 && x.Id == IslandAetheryteId;
 
-    /// <summary>渴望灣的玄關主水晶（最佳威兔洞）。渴望灣那一列本身點下去已經會走乙太之光選單，所以按鈕畫在玄關這列。</summary>
+    /// <summary>渴望灣的玄關主水晶（最佳威兔洞）那一列。</summary>
     public static bool IsCosmicEntryRow(TeleportPanelEntry x) => x.IsAetheryte && x.SubIndex == 0 && x.Id == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId;
+
+    /// <summary>渴望灣／行星法恩娜的玄關目的地那一列（偽 id）：使用者常只把它收進我的最愛、沒收最佳威兔洞，按鈕也要畫在這裡。</summary>
+    public static bool IsCosmicGatewayRow(TeleportPanelEntry x) => !x.IsAetheryte && x.SubIndex == 0
+        && (x.Id == TaskAetheryteAethernetTeleport.SinusArdorumAethernetId || x.Id == TaskAetheryteAethernetTeleport.PhaennaAethernetId);
 
     public static void EnqueueIsland()
     {

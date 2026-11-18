@@ -48,6 +48,9 @@ internal static class TaskAethernetRoute
     /// 免得沿用到上一條路線留下的值。</summary>
     internal static void ExpectAethernetTransition() => RouteUsesAethernet = true;
 
+    /// <summary>自己已經等到抵達的玄關路線(行星法恩娜)在執行當下呼叫,讓呼叫端跳過轉場等待。</summary>
+    internal static void ExpectNoAethernetTransition() => RouteUsesAethernet = false;
+
     /// <summary>
     /// 排入「前往 <paramref name="shard"/>」的完整流程。</summary>
     /// <remarks>決策順序(每一層失敗都往下一層退):<list type="number">

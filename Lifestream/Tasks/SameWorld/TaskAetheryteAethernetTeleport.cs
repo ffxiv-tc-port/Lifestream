@@ -26,8 +26,10 @@ internal static class TaskAetheryteAethernetTeleport
     // 目的地區域本身沒有乙太之光,要靠「鄰近區域某座乙太之光的選單項」才進得去的區域。
     internal const uint FirmamentTerritoryId = 886;
     internal const uint SinusArdorumTerritoryId = 1237;
-    /// <summary>行星法恩娜:同一座乙太之光(175)的「前往行星法恩娜」,只給 <c>/li phaenna</c> 與直達按鈕用。</summary>
+    /// <summary>行星法恩娜:同一座乙太之光(175)的「前往行星法恩娜」。</summary>
     internal const uint PhaennaTerritoryId = 1291;
+    /// <summary>行星法恩娜的偽 id(我的最愛/備註/自訂落點的鍵)。走法不經 <see cref="EnqueueInner"/>,見 <see cref="EnqueuePhaenna"/>。</summary>
+    internal const uint PhaennaAethernetId = uint.MaxValue - 2;
 
     /// <summary>
     /// 目的地區域 → 進得去它的「玄關乙太之光 + 專用選單項」。
@@ -37,7 +39,7 @@ internal static class TaskAetheryteAethernetTeleport
     /// 而真正有「前往渴望灣」那一項的是 175(最佳威兔洞);<c>Warp</c> 表只有蒼天街另一個入口物件那一筆;
     /// <c>Level</c> 表查不到這兩座乙太之光,<c>TerritoryAethernet</c> 表是空的。所以沿用本檔的建模(選單文字仍是執行期從表解析,見 Lang)。
     /// <para>
-    /// ⚠️ 涵蓋範圍只有上面兩個區域。其他沒有自己乙太之光的區域(優雷卡三區、南方博茲雅、扎杜諾爾、
+    /// ⚠️ 涵蓋範圍只有 <see cref="GatewayRoutes"/> 列出的區域。其他沒有自己乙太之光的區域(優雷卡三區、南方博茲雅、扎杜諾爾、
     /// 新月島…)進去的方式是任務搜尋器而不是乙太之光選單,不在此列:
     /// <c>/li goto</c> 對那些區域回報「目標區域沒有已解鎖的乙太之光」後放棄。</para>
     /// </remarks>
@@ -75,6 +77,7 @@ internal static class TaskAetheryteAethernetTeleport
     [
         new(FirmamentTerritoryId, FirmamentRootAetheryteId, FirmamentAethernetId, () => C.Firmament),
         new(SinusArdorumTerritoryId, SinusArdorumRootAetheryteId, SinusArdorumAethernetId, () => C.SinusArdorum),
+        new(PhaennaTerritoryId, SinusArdorumRootAetheryteId, PhaennaAethernetId, () => C.Phaenna),
     ];
 
     internal static bool TryGetGatewayRouteByTerritory(uint destinationTerritory, out GatewayRoute route)
@@ -127,6 +130,16 @@ internal static class TaskAetheryteAethernetTeleport
             return;
         }
 
+        if(aethernetId == PhaennaAethernetId)
+        {
+            if(rootAetheryteId != SinusArdorumRootAetheryteId)
+            {
+                throw new Exception($"Special Phaenna aethernet {PhaennaAethernetId} must be teleported from root aetheryte {SinusArdorumRootAetheryteId}");
+            }
+            EnqueuePhaenna();
+            return;
+        }
+
         if(!S.Data.DataStore.Aetherytes.Keys.TryGetFirst(a => a.ID == rootAetheryteId, out var rootAetheryte))
         {
             throw new Exception($"Root aetheryte {rootAetheryteId} not found");
@@ -152,6 +165,31 @@ internal static class TaskAetheryteAethernetTeleport
                 throw new Exception($"Could not find aetheryte {aethernetId} under root aetheryte {rootAetheryteId}");
             }
         }
+    }
+
+    /// <summary>
+    /// 行星法恩娜的玄關路線(傳送面板那一列、<c>/li goto</c>、地圖點):排入與 <c>/li phaenna</c> 相同的
+    /// <see cref="Shortcuts.TaskCosmicShortcut.Enqueue(Shortcuts.TaskCosmicShortcut.Destination)"/>(含未解鎖判定與退路),
+    /// 再接一步「沒到就中止整條佇列」——該流程失敗時不中止佇列,呼叫端後面的落點/導航不能在錯的區域跑。
+    /// </summary>
+    /// <remarks>刻意不先回原始世界:呼叫端已排了步驟,<c>TPAndChangeWorld</c> 見佇列忙碌會直接拒絕。</remarks>
+    private static void EnqueuePhaenna()
+    {
+        PluginLog.Information($"[Gateway] 行星法恩娜：走與 /li phaenna 相同的乙太之光 {SinusArdorumRootAetheryteId} 選單流程（目前區域 {P.Territory}、{(Player.IsInHomeWorld ? "在原始世界" : "不在原始世界")}）。");
+        Shortcuts.TaskCosmicShortcut.Enqueue(Shortcuts.TaskCosmicShortcut.Destination.Phaenna);
+        P.TaskManager.Enqueue(() =>
+        {
+            if(P.Territory == PhaennaTerritoryId)
+            {
+                // 到達判定已含讀取畫面結束,呼叫端不必再等一次轉場。
+                TaskAethernetRoute.ExpectNoAethernetTransition();
+                PluginLog.Information("[Gateway] 行星法恩娜：已抵達，繼續後面的步驟。");
+                return true;
+            }
+            PluginLog.Information($"[Gateway] 行星法恩娜：沒有抵達（目前區域 {P.Territory}，原因見上方 [Cosmic] 記錄），後面的步驟全部取消。");
+            P.TaskManager.Abort();
+            return true;
+        }, "PhaennaGatewayVerifyArrival");
     }
 
     /// <summary>

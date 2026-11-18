@@ -44,6 +44,8 @@ internal static unsafe partial class UISettings
             ImGuiEx.HelpMarker("Also lists the Firmament and its eight city aethernet shards in the teleport panel, grouped under the Foundation aetheryte - that is what lets you add them to your favorites.".Loc());
             ImGui.Checkbox("Add Sinus Ardorum location into Bestways Burrow aetheryte".Loc(), ref C.SinusArdorum);
             ImGuiEx.HelpMarker("Also lists Sinus Ardorum in the teleport panel, grouped under the Bestways Burrow aetheryte - that is what lets you add it to your favorites.".Loc());
+            ImGui.Checkbox("Add Phaenna location into Bestways Burrow aetheryte".Loc(), ref C.Phaenna);
+            ImGuiEx.HelpMarker("Also lists Phaenna in the teleport panel, grouped under the Bestways Burrow aetheryte - that is what lets you add it to your favorites - and shows a Phaenna button on the overlay next to that aetheryte.".Loc());
             ImGui.Checkbox("Automatically leave non cross-world party upon changing world".Loc(), ref C.LeavePartyBeforeWorldChange);
             ImGui.Checkbox("Show teleport destination in chat".Loc(), ref C.DisplayChatTeleport);
             ImGui.Checkbox("Show teleport destination in popup notifications".Loc(), ref C.DisplayPopupNotifications);

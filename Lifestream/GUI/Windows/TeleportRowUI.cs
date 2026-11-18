@@ -43,7 +43,7 @@ internal static class TeleportRowUI
         var hasLanding = C.AetheryteLandings.ContainsKey(x.Id);
         var label = GetLabel(x, showZone, isFavorite, hasLanding);
 
-        // 入口列（新月島那座城內乙太之光、無人島與渴望灣的玄關主水晶）右邊留按鈕寬度，列本身的行為不變。
+        // 入口列（新月島那座城內乙太之光、無人島與渴望灣的玄關主水晶、渴望灣／行星法恩娜的玄關目的地）右邊留按鈕寬度，列本身的行為不變。
         var entryButtons = GetEntryButtons(x);
         var rowSize = default(Vector2);
         if(entryButtons != null)
@@ -86,19 +86,22 @@ internal static class TeleportRowUI
         return clicked;
     }
 
-    private enum EntryButton { MirageTown, OccultCrescent, IslandSanctuary, SinusArdorum, Phaenna }
+    // SinusArdorumOnGateway 與 SinusArdorum 動作相同，只差說明：玄關目的地那一列點下去本身就會進渴望灣。
+    private enum EntryButton { MirageTown, OccultCrescent, IslandSanctuary, SinusArdorum, Phaenna, SinusArdorumOnGateway }
 
     // 新月島的「直接進島」維持在最右邊、「到蜃景鎮」在它左邊，既有按鈕的位置不動。
     private static readonly EntryButton[] OccultButtons = [EntryButton.MirageTown, EntryButton.OccultCrescent];
     private static readonly EntryButton[] IslandButtons = [EntryButton.IslandSanctuary];
     // 「直接進渴望灣」維持在最右邊，法恩娜放它左邊。
     private static readonly EntryButton[] CosmicButtons = [EntryButton.Phaenna, EntryButton.SinusArdorum];
+    private static readonly EntryButton[] CosmicGatewayButtons = [EntryButton.Phaenna, EntryButton.SinusArdorumOnGateway];
 
     private static EntryButton[] GetEntryButtons(TeleportPanelEntry x)
     {
         if(TaskOccultDirectEnter.IsEntryRow(x)) return OccultButtons;
         if(TaskDirectEnter.IsIslandEntryRow(x)) return IslandButtons;
         if(TaskDirectEnter.IsCosmicEntryRow(x)) return CosmicButtons;
+        if(TaskDirectEnter.IsCosmicGatewayRow(x)) return CosmicGatewayButtons;
         return null;
     }
 
@@ -116,6 +119,7 @@ internal static class TeleportRowUI
         EntryButton.MirageTown => "Same route as Enter island, but stop once you arrive in the Mirage town: teleport to Tuliyollal, take the aethernet, walk to the ferry and take it. It does not talk to Jeffroy or enter the island. Right-click the progress bar to stop.".Loc(),
         EntryButton.OccultCrescent => "Go all the way into the Occult Crescent: teleport to Tuliyollal, take the aethernet, walk to the ferry and talk to Jeffroy. If you are already in the Mirage town it continues from there. Clicking the row itself still only takes you to the aethernet shard. Right-click the progress bar to stop.".Loc(),
         EntryButton.IslandSanctuary => "Go all the way to your Island Sanctuary (same as /li island): return to your home world if needed, teleport to Moraby Drydocks, walk to Baldin and travel to your island, then walk to the Tactful Taskmaster. Clicking the row itself still only teleports you to the aetheryte. Right-click the progress bar to stop.".Loc(),
+        EntryButton.SinusArdorumOnGateway => "Go all the way to Sinus Ardorum for Cosmic Exploration (same as /li cosmic): return to your home world if needed, teleport to Bestways Burrow and pick Sinus Ardorum from the aetheryte menu; if that does not work it falls back to riding to the entrance. Unlike clicking the row itself, it does not walk to the row's custom landing afterwards. Right-click the progress bar to stop.".Loc(),
         EntryButton.Phaenna => "Go all the way to Phaenna for Cosmic Exploration (same as /li phaenna): return to your home world if needed, teleport to Bestways Burrow and pick Phaenna from the aetheryte menu; if that does not work it falls back to riding to the entrance and picking Phaenna in the destination window. If Phaenna is not unlocked yet it stops and tells you. Right-click the progress bar to stop.".Loc(),
         _ => "Go all the way to Sinus Ardorum for Cosmic Exploration (same as /li cosmic): return to your home world if needed, teleport to Bestways Burrow and pick Sinus Ardorum from the aetheryte menu; if that does not work it falls back to riding to the entrance. Clicking the row itself still only teleports you to the aetheryte. Right-click the progress bar to stop.".Loc(),
     };
@@ -139,7 +143,8 @@ internal static class TeleportRowUI
             case EntryButton.MirageTown: TaskOccultDirectEnter.Enqueue(true); break;
             case EntryButton.OccultCrescent: TaskOccultDirectEnter.Enqueue(false); break;
             case EntryButton.IslandSanctuary: TaskDirectEnter.EnqueueIsland(); break;
-            case EntryButton.SinusArdorum: TaskDirectEnter.EnqueueCosmic(); break;
+            case EntryButton.SinusArdorum:
+            case EntryButton.SinusArdorumOnGateway: TaskDirectEnter.EnqueueCosmic(); break;
             case EntryButton.Phaenna: TaskDirectEnter.EnqueuePhaenna(); break;
         }
     }
