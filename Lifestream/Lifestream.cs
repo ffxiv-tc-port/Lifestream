@@ -698,14 +698,14 @@ public unsafe class Lifestream : IDalamudPlugin
             }
         }
         // 目標可能被別的執行緒（IPC Abort）清成 0：整段用同一份快照，關遊戲前再確認一次沒被解除。
-        var shutdownTarget = TabUtility.TargetWorldID;
+        var shutdownTarget = ShutdownOnArrival.TargetWorldID;
         if(shutdownTarget != 0)
         {
             if(Player.Available && Player.Object.CurrentWorld.RowId == shutdownTarget && IsScreenReady())
             {
                 if(EzThrottler.Throttle("TerminateGame", 60000))
                 {
-                    if(TabUtility.TargetWorldID == shutdownTarget) Environment.Exit(0);
+                    if(ShutdownOnArrival.TargetWorldID == shutdownTarget) Environment.Exit(0);
                 }
                 else
                 {

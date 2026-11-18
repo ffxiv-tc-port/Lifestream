@@ -51,7 +51,7 @@ public partial class IPCProvider
         // 「stop」會中止任務鏈；呼叫端只認得出在它自己的執行緒上，所以在進閘門之前先認。
         var abortSource = arguments == "stop" ? $"IPC ExecuteCommand(「stop」)（呼叫端＝{TryIdentifyIpcCaller()}）" : null;
         // 關機目標在進閘門前就解除：閘門逾時（讀取畫面中）或卸載期會整段不跑。
-        if(abortSource != null) GUI.TabUtility.DisarmShutdown(abortSource);
+        if(abortSource != null) Movement.ShutdownOnArrival.Disarm(abortSource);
         IpcFrameworkGate.Run(nameof(ExecuteCommand), () => ExecuteCommandCore(arguments, abortSource));
     }
 
@@ -153,7 +153,7 @@ public partial class IPCProvider
         var busy = Svc.Framework.IsInFrameworkUpdateThread ? IsBusyCore() : IsBusySnapshot;
         var caller = busy ? TryIdentifyIpcCaller() : null;
         // 關機目標在進閘門前就解除：閘門逾時（讀取畫面中）或卸載期會整段不跑。
-        GUI.TabUtility.DisarmShutdown($"IPC Lifestream.Abort（呼叫端＝{caller ?? "不明"}）");
+        Movement.ShutdownOnArrival.Disarm($"IPC Lifestream.Abort（呼叫端＝{caller ?? "不明"}）");
         IpcFrameworkGate.Run(nameof(Abort), () => AbortCore(caller));
     }
 

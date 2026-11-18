@@ -16,7 +16,7 @@ internal static class TravelStop
         AutomoveOwner.StopIfOurs(source);
         P.TaskManager.Abort();
         P.followPath?.Stop();
-        if(disarmShutdown) GUI.TabUtility.DisarmShutdown(source);
+        if(disarmShutdown) ShutdownOnArrival.Disarm(source);
     }
 
     /// <summary>
