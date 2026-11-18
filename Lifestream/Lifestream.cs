@@ -315,31 +315,13 @@ public unsafe class Lifestream : IDalamudPlugin
         }
         else if(arguments.EqualsIgnoreCaseAny("cosmic", "ardorum", "moon"))
         {
-            if(!Utils.IsBusy())
-            {
-                // 走乙太之光 175 的「前往渴望灣」選單項;
-                // 失敗時 TaskCosmicShortcut 會自己退回舊的 StaticAlias.CosmicExploration 流程。
-                TaskCosmicShortcut.EnqueueReturnHomeFirst();
-            }
-            else
-            {
-                Notify.Error("Lifestream is busy");
-            }
+            // 走乙太之光 175 的「前往渴望灣」選單項;
+            // 失敗時 TaskCosmicShortcut 會自己退回舊的 StaticAlias.CosmicExploration 流程。
+            EnqueueCosmicShortcutCommand(TaskCosmicShortcut.Destination.SinusArdorum);
         }
         else if(arguments.EqualsIgnoreCase("phaenna"))
         {
-            if(Utils.IsBusy())
-            {
-                Notify.Error("Lifestream is busy");
-            }
-            else if(P.Territory == TaskAetheryteAethernetTeleport.PhaennaTerritoryId)
-            {
-                Notify.Info("You are already in Phaenna.".Loc());
-            }
-            else
-            {
-                TaskCosmicShortcut.EnqueueReturnHomeFirst(TaskCosmicShortcut.Destination.Phaenna);
-            }
+            EnqueueCosmicShortcutCommand(TaskCosmicShortcut.Destination.Phaenna);
         }
         else if(arguments.EqualsIgnoreCase("occult"))
         {
@@ -485,6 +467,12 @@ public unsafe class Lifestream : IDalamudPlugin
                     Utils.DisplayInfo($"Random world from {Svc.Data.GetExcelSheet<WorldDCGroupType>().GetRow(dc).Name}: {world}");
                     TPAndChangeWorld(world, Player.Object.CurrentWorld.ValueNullable?.DataCenter.RowId != dc, gateway: gateway);
                 }
+                else if(TaskTryTpToAethernetDestination.MatchCosmicGatewayShortcut(primary, P.ActiveAetheryte?.ID, C.SinusArdorum, C.Phaenna, "Sinus Ardorum".Loc(), "Phaenna".Loc(), TaskTryTpToAethernetDestination.CosmicGatewayCompetingNames()) is var cosmicGateway and not 0)
+                {
+                    var destination = cosmicGateway == TaskAetheryteAethernetTeleport.PhaennaAethernetId ? TaskCosmicShortcut.Destination.Phaenna : TaskCosmicShortcut.Destination.SinusArdorum;
+                    PluginLog.Information($"[Gateway] 「{primary}」比對到 {destination.Name}，不在乙太之光 {TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId} 旁，改走與 /li cosmic／/li phaenna 相同的直達流程。");
+                    EnqueueCosmicShortcutCommand(destination);
+                }
                 else
                 {
                     TaskTryTpToAethernetDestination.Enqueue(primary, true, true);
@@ -492,6 +480,23 @@ public unsafe class Lifestream : IDalamudPlugin
 
                 ProcessAdditionalCommand(additionalCommand);
             }
+        }
+    }
+
+    /// <summary><c>/li cosmic</c>、<c>/li phaenna</c> 與 <c>/li 渴望灣</c> 等名稱共用：忙碌時報錯、已在行星法恩娜時提示，否則走 <see cref="TaskCosmicShortcut.EnqueueReturnHomeFirst(TaskCosmicShortcut.Destination)"/>。</summary>
+    private static void EnqueueCosmicShortcutCommand(TaskCosmicShortcut.Destination destination)
+    {
+        if(Utils.IsBusy())
+        {
+            Notify.Error("Lifestream is busy");
+        }
+        else if(destination == TaskCosmicShortcut.Destination.Phaenna && P.Territory == TaskAetheryteAethernetTeleport.PhaennaTerritoryId)
+        {
+            Notify.Info("You are already in Phaenna.".Loc());
+        }
+        else
+        {
+            TaskCosmicShortcut.EnqueueReturnHomeFirst(destination);
         }
     }
 

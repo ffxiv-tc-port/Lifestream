@@ -31,6 +31,38 @@ internal static class TaskTryTpToAethernetDestination
     }
 
     /// <summary>
+    /// <c>/li</c> 不站在 175 旁時：輸入明確指向渴望灣或行星法恩娜就回偽 id（呼叫端改走 <c>/li cosmic</c>／<c>/li phaenna</c> 的直達流程），否則 0。
+    /// 站在 175 旁一律回 0，交給 <see cref="MatchCosmicGatewayName"/> 的舊路線。英文名要整個相等；在地化名要 ≥2 字的子字串，
+    /// 且不能也是 <paramref name="otherNames"/>（地名、自訂改名；與玄關同名的略過）任一項的一部分，免得搶走一般地名。
+    /// <paramref name="otherNames"/> 只在在地化名比中時才列舉。
+    /// </summary>
+    internal static uint MatchCosmicGatewayShortcut(string targetName, uint? activeAetheryteId, bool sinusArdorum, bool phaenna, string sinusArdorumLocalized, string phaennaLocalized, IEnumerable<string> otherNames)
+    {
+        var t = targetName?.Trim();
+        if(string.IsNullOrEmpty(t) || activeAetheryteId == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId) return 0;
+        if(sinusArdorum && t.Equals("Sinus Ardorum", StringComparison.OrdinalIgnoreCase)) return TaskAetheryteAethernetTeleport.SinusArdorumAethernetId;
+        if(phaenna && t.Equals("Phaenna", StringComparison.OrdinalIgnoreCase)) return TaskAetheryteAethernetTeleport.PhaennaAethernetId;
+        if(t.Length < 2) return 0;
+        var gateway = sinusArdorum && sinusArdorumLocalized?.Contains(t, StringComparison.OrdinalIgnoreCase) == true ? TaskAetheryteAethernetTeleport.SinusArdorumAethernetId
+            : phaenna && phaennaLocalized?.Contains(t, StringComparison.OrdinalIgnoreCase) == true ? TaskAetheryteAethernetTeleport.PhaennaAethernetId
+            : 0u;
+        if(gateway == 0 || otherNames == null) return gateway;
+        foreach(var n in otherNames)
+        {
+            if(string.IsNullOrEmpty(n) || n.Equals(sinusArdorumLocalized, StringComparison.OrdinalIgnoreCase) || n.Equals(phaennaLocalized, StringComparison.OrdinalIgnoreCase)) continue;
+            if(n.Contains(t, StringComparison.OrdinalIgnoreCase)) return 0;
+        }
+        return gateway;
+    }
+
+    /// <summary><see cref="MatchCosmicGatewayShortcut"/> 的 otherNames：PlaceName 全表＋使用者的乙太之光改名，延遲列舉。</summary>
+    internal static IEnumerable<string> CosmicGatewayCompetingNames()
+    {
+        foreach(var row in Svc.Data.GetExcelSheet<Lumina.Excel.Sheets.PlaceName>()) yield return row.Name.GetText();
+        foreach(var rename in C.Renames.Values) yield return rename;
+    }
+
+    /// <summary>
     /// 回 true＝這一層已有結論、不再往下找（部分比對／傳送後備）：找到時 <paramref name="name"/> 為目的地名；
     /// 部分比對命中多項時為 null（已提示、不傳送，免得落到付費傳送的模糊比對）。
     /// </summary>
