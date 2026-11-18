@@ -195,6 +195,15 @@ public class Config : IEzConfig
     /// </remarks>
     public int MovementStuckMaxRecoveries = 6;
 
+    /// <summary>
+    /// 使用者主動下的 <c>/li</c> 鏈只剩最後一段自動步行時，使用者自己持續移動約半秒就結束這趟（同進度條右鍵）。
+    /// </summary>
+    /// <remarks>
+    /// 預設開；EzConfig 反序列化缺鍵時保留這個欄位初始值，既有設定檔也拿到開。
+    /// 判斷與收尾在 <see cref="Movement.UserTakeover"/>。
+    /// </remarks>
+    public bool EndFinalWalkOnUserMovement = true;
+
     // ── 抵達提醒 ────────────────────────────────────────────────────────────────
 
     /// <summary>

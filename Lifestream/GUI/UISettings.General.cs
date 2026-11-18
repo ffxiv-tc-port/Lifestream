@@ -281,6 +281,11 @@ internal static unsafe partial class UISettings
                 ImGui.Unindent();
             }
         })
+        .Widget(() =>
+        {
+            ImGui.Checkbox("End the final walk when you start moving yourself".Loc(), ref C.EndFinalWalkOnUserMovement);
+            ImGuiEx.HelpMarker("Only for the last stretch of a trip you started yourself, when nothing is left but walking to the destination. Hold a movement key or the stick for about half a second and Lifestream stops walking and ends the trip, the same as right-clicking the progress bar. Short taps to adjust direction do not count. Loading screens, teleport menus, walks with further steps after them and trips started by other plugins are not affected.".Loc());
+        })
 
         .Section("Arrival Announcement".Loc())
         .Widget(() =>

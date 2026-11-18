@@ -64,6 +64,8 @@ internal static class TaskAnnounceArrival
     /// <param name="queuedBefore">執行指令<b>之前</b>的 <c>NumQueuedTasks</c>。</param>
     internal static void EnqueueIfChainStarted(int queuedBefore)
     {
+        // 接手偵測只套用在會掛哨兵的入口（使用者主動下的指令），所以借這裡標記；要在開關判斷之前。
+        Movement.UserTakeover.NoteUserChain(queuedBefore);
         if(!C.TataruPraiseOnArrival) return;
         // 純開關視窗類的指令(/li panel、/li fav…)不會排任何任務,不該通知。
         // /li stop 會把佇列清空,數字只會變小,同樣不會走到下面。

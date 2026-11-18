@@ -643,6 +643,7 @@ public unsafe class Lifestream : IDalamudPlugin
         YesAlreadyManager.Tick();
         TextAdvanceManager.Tick();
         followPath?.Update();
+        UserTakeover.Tick();
         VnavMoveOwner.Tick();
         AutomoveOwner.Tick();
         Tasks.Shortcuts.TaskOccultDirectEnter.Tick();

@@ -92,6 +92,7 @@ public unsafe class OverrideMovement : IDisposable
         try
         {
             // TODO: we really need to introduce some extra checks that PlayerMoveController::readInput does - sometimes it skips reading input, and returning something non-zero breaks stuff...
+            if(bAdditiveUnk == 0) NoteUserInput(*sumLeft != 0 || *sumForward != 0);
             var movementAllowed = bAdditiveUnk == 0 && !Svc.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.BeingMoved];
             if(movementAllowed && (IgnoreUserInput || *sumLeft == 0 && *sumForward == 0) && DirectionToDestination(false) is var relDir && relDir != null)
             {
@@ -112,6 +113,7 @@ public unsafe class OverrideMovement : IDisposable
         try
         {
             // TODO: we really need to introduce some extra checks that PlayerMoveController::readInput does - sometimes it skips reading input, and returning something non-zero breaks stuff...
+            NoteUserInput(result->Forward != 0 || result->Left != 0 || result->Up != 0);
             if((IgnoreUserInput || result->Forward == 0 && result->Left == 0 && result->Up == 0) && DirectionToDestination(true) is var relDir && relDir != null)
             {
                 var dir = relDir.Value.h.ToDirection();
@@ -124,6 +126,27 @@ public unsafe class OverrideMovement : IDisposable
         {
             OnDetourError(ex);
         }
+    }
+
+    // 使用者自己的移動輸入＝原函式寫出、我們覆寫之前的值，判準與上面「讓使用者蓋掉」的同一條。
+    // 攔截點只在啟用（有航點要走）時被呼叫，停用期間不更新 ⇒ 讀的一方自然歸零。只在遊戲主執行緒讀寫。
+    private const long UserInputGapMs = 200;
+    private long _userInputSince;
+    private long _userInputLastAt;
+
+    private void NoteUserInput(bool present)
+    {
+        if(!present) return;
+        var now = Environment.TickCount64;
+        if(now - _userInputLastAt > UserInputGapMs) _userInputSince = now;
+        _userInputLastAt = now;
+    }
+
+    /// <summary>使用者到現在連續手動移動了多久（毫秒）；放手超過 <see cref="UserInputGapMs"/> 就是 0。</summary>
+    public long UserInputHeldMs()
+    {
+        var now = Environment.TickCount64;
+        return now - _userInputLastAt > UserInputGapMs ? 0 : now - _userInputSince;
     }
 
     private (Angle h, Angle v)? DirectionToDestination(bool allowVertical)

@@ -17,6 +17,9 @@ public class FollowPath : IDisposable
     private OverrideMovement _movement = new();
     private long TimeoutAt = 0;
 
+    /// <summary>自動移動期間，使用者連續手動移動了多久（毫秒）；沒在自動移動時恆為 0。</summary>
+    public long UserInputHeldMs => _movement.UserInputHeldMs();
+
     /// <summary>
     /// 最後一次自動移動是不是「還沒走到就被收掉」（逾時、或偵測到 vnavmesh 自己在動）。
     /// </summary>
