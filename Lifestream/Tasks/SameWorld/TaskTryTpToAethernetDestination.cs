@@ -18,6 +18,19 @@ internal static class TaskTryTpToAethernetDestination
     private const long TpFallbackWaitMs = 10000;
 
     /// <summary>
+    /// 站在最佳威兔洞（175）旁時，<paramref name="targetName"/> 是渴望灣或行星法恩娜（英文名或在地化名的子字串）就回它的偽 id，否則 0。
+    /// 渴望灣先比：兩者都中的輸入維持舊行為（進渴望灣）。各自只在對應開關開著時比。
+    /// </summary>
+    internal static uint MatchCosmicGatewayName(string targetName, bool sinusArdorum, bool phaenna, string sinusArdorumLocalized, string phaennaLocalized)
+    {
+        if(sinusArdorum && ((string[])["Sinus Ardorum", sinusArdorumLocalized]).Any(n => n != null && n.ContainsAny(StringComparison.OrdinalIgnoreCase, targetName)))
+            return TaskAetheryteAethernetTeleport.SinusArdorumAethernetId;
+        if(phaenna && ((string[])["Phaenna", phaennaLocalized]).Any(n => n != null && n.ContainsAny(StringComparison.OrdinalIgnoreCase, targetName)))
+            return TaskAetheryteAethernetTeleport.PhaennaAethernetId;
+        return 0;
+    }
+
+    /// <summary>
     /// 回 true＝這一層已有結論、不再往下找（部分比對／傳送後備）：找到時 <paramref name="name"/> 為目的地名；
     /// 部分比對命中多項時為 null（已提示、不傳送，免得落到付費傳送的模糊比對）。
     /// </summary>
@@ -197,16 +210,24 @@ internal static class TaskTryTpToAethernetDestination
                 }
             }
 
-            // 比照蒼天街:站在「最佳威兔洞」(175)旁時 /li 渴望灣 直達
-            if(P.ActiveAetheryte.Value.ID == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId && C.SinusArdorum)
+            // 比照蒼天街:站在「最佳威兔洞」(175)旁時 /li 渴望灣、/li 法恩娜 直達
+            if(P.ActiveAetheryte.Value.ID == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId && (C.SinusArdorum || C.Phaenna))
             {
-                if(((string[])["Sinus Ardorum", "Sinus Ardorum".Loc()]).Any(n => n.ContainsAny(StringComparison.OrdinalIgnoreCase, targetName)))
+                var gateway = MatchCosmicGatewayName(targetName, C.SinusArdorum, C.Phaenna, "Sinus Ardorum".Loc(), "Phaenna".Loc());
+                if(gateway == TaskAetheryteAethernetTeleport.SinusArdorumAethernetId)
                 {
                     P.TaskManager.InsertStack(() =>
                     {
                         TaskRemoveAfkStatus.Enqueue();
                         TaskSinusArdorumTeleport.Enqueue();
                     });
+                    return;
+                }
+                if(gateway == TaskAetheryteAethernetTeleport.PhaennaAethernetId)
+                {
+                    // 走玄關路線（含未解鎖判定、沒到就中止佇列）；離席移除由該流程自己排。
+                    PluginLog.Information($"[Gateway] 「{targetName}」比對到行星法恩娜，走最佳威兔洞的選單。");
+                    P.TaskManager.InsertStack(() => TaskAetheryteAethernetTeleport.Enqueue(TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId, TaskAetheryteAethernetTeleport.PhaennaAethernetId));
                     return;
                 }
             }

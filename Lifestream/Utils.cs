@@ -265,6 +265,7 @@ internal static unsafe partial class Utils
                             dict[x.Key.ID] = Svc.Data.GetExcelSheet<Aetheryte>().GetRowOrDefault(x.Key.ID)?.PlaceName.ValueNullable?.Name.GetText() ?? x.Key.ID.ToString();
                         }
                         dict[TaskAetheryteAethernetTeleport.SinusArdorumAethernetId] = "Sinus Ardorum";
+                        dict[TaskAetheryteAethernetTeleport.PhaennaAethernetId] = "Phaenna";
                     }
                 }
                 foreach(var x in S.Data.ResidentialAethernet.ZoneInfo)

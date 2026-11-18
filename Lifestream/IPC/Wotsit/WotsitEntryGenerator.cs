@@ -249,6 +249,12 @@ public static class WotsitEntryGenerator
                 var placeName = Svc.Data.GetExcelSheet<PlaceName>().GetRow(5219).Name.ToDalamudString().GetText();
                 yield return WotsitEntry.AetheryteAethernetTeleport(townName, placeName, rootAetheryte.ID, TaskAetheryteAethernetTeleport.SinusArdorumAethernetId);
             }
+
+            if(C.Phaenna && rootAetheryte.ID == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId)
+            {
+                var placeName = Tasks.Shortcuts.TaskCosmicShortcut.Destination.Phaenna.PlanetName;
+                yield return WotsitEntry.AetheryteAethernetTeleport(townName, placeName, rootAetheryte.ID, TaskAetheryteAethernetTeleport.PhaennaAethernetId);
+            }
         }
     }
 

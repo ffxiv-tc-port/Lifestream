@@ -184,7 +184,9 @@ public class CustomAliasCommand
                     TaskTryTpToAethernetDestination.Enqueue(aethernetPoint);
                 });
             }, $"{Kind}: Teleport to aethernet destination");
-            P.TaskManager.Enqueue(() => !IsScreenReady(), $"{Kind}: Wait until screen is not ready");
+            // 行星法恩娜的玄關流程自己等到抵達才結束，這時已經沒有轉場可等。
+            bool arrivedAtPhaenna() => Aetheryte == TaskAetheryteAethernetTeleport.PhaennaAethernetId && P.Territory == TaskAetheryteAethernetTeleport.PhaennaTerritoryId && IsScreenReady();
+            P.TaskManager.Enqueue(() => !IsScreenReady() || arrivedAtPhaenna(), $"{Kind}: Wait until screen is not ready");
             P.TaskManager.Enqueue(IsScreenReady, $"{Kind}: Wait until screen is ready");
         }
         else if(Kind == CustomAliasKind.Circular_movement)
