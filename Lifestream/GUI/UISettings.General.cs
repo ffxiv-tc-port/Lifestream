@@ -118,7 +118,7 @@ internal static unsafe partial class UISettings
             ImGuiEx.Text("\"/li auto\" command priority:".Loc());
             ImGui.SameLine();
             if(ImGui.SmallButton("Reset".Loc())) C.PropertyPrio.Clear();
-            var dragDrop = Ref<ImGuiEx.RealtimeDragDrop<AutoPropertyData>>.Get(() => new("apddd", x => x.Type.ToString()));
+            var dragDrop = Ref<ImGuiEx.RealtimeDragDrop<AutoPropertyData>>.Get("LifestreamAutoPropertyPrio", () => new("apddd", x => x.Type.ToString()));
             C.PropertyPrio.AddRange(Enum.GetValues<TaskPropertyShortcut.PropertyType>().Where(x => x != TaskPropertyShortcut.PropertyType.Auto && !C.PropertyPrio.Any(s => s.Type == x)).Select(x => new AutoPropertyData(false, x)));
             dragDrop.Begin();
             for(var i = 0; i < C.PropertyPrio.Count; i++)

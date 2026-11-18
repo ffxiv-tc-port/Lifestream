@@ -100,7 +100,7 @@ public static unsafe class TabAddressBook
     {
         if(!readOnly)
         {
-            ImGuiEx.LineCentered(() =>
+            ImGuiEx.LineCentered("LifestreamAddressBookButtons", () =>
             {
                 if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add New".Loc()))
                 {

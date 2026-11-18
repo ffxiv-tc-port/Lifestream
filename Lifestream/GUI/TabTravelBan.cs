@@ -14,7 +14,7 @@ public static class TabTravelBan
         ImGui.SameLine();
         ImGuiEx.TextWrapped(EColor.RedBright, "Be mindful that this function is meant to be the last chance to avoid unrecoverable mistakes. Using this function may break other plugins that rely on Lifestream. Blocking travel in a specific direction will block it only via Lifestream. You can still travel manually.".Loc());
 
-        ImGuiEx.LineCentered(() =>
+        ImGuiEx.LineCentered("LifestreamTravelBanAdd", () =>
         {
             if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Plus, "Add new entry".Loc()))
             {
@@ -44,7 +44,8 @@ public static class TabTravelBan
                 ImGui.TableNextColumn();
                 ImGui.Checkbox("##en", ref entry.IsEnabled);
                 ImGui.TableNextColumn();
-                ImGuiEx.InputWithRightButtonsArea(() =>
+                // 各列共用一個寬度鍵，與不給 id 時相同（右側寬度每列一樣）。
+                ImGuiEx.InputWithRightButtonsArea("LifestreamTravelBanCharaRow", () =>
                 {
                     ImGui.InputTextWithHint("##chara", "Character name".Loc(), ref entry.CharaName, 30);
                 }, () =>

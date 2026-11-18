@@ -39,7 +39,7 @@ public static class InputWardDetailDialog
                     if(Entry.AliasEnabled)
                     {
                         ImGui.SameLine();
-                        ImGuiEx.InputWithRightButtonsArea(() => ImGui.InputText($"##aliasname", ref Entry.Alias, 150), () =>
+                        ImGuiEx.InputWithRightButtonsArea("LifestreamWardDetailAlias", () => ImGui.InputText($"##aliasname", ref Entry.Alias, 150), () =>
                         {
                             AddressBookEntry existing = null;
                             if(Entry.Alias != "" && C.AddressBookFolders.Any(b => b.Entries.TryGetFirst(a => a != Entry && a.AliasEnabled && a.Alias.EqualsIgnoreCase(Entry.Alias), out existing)))
@@ -99,7 +99,7 @@ public static class InputWardDetailDialog
 
                     ImGui.EndTable();
                 }
-                ImGuiEx.LineCentered(() =>
+                ImGuiEx.LineCentered("LifestreamWardDetailSave", () =>
                 {
                     if(ImGuiEx.IconButtonWithText(FontAwesomeIcon.Save, "Save and close".Loc()))
                     {

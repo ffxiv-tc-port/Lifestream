@@ -52,7 +52,7 @@ public unsafe class CharaSelectOverlay : EzOverlayWindow
                 ImGuiEx.Text("Character not found: ??".Loc($"{CharaName}@{ExcelWorldHelper.GetName(CharaWorld)}"));
                 return;
             }
-            ImGuiEx.LineCentered(() =>
+            ImGuiEx.LineCentered("LifestreamCharaSelectNoLogin", () =>
             {
                 ImGui.Checkbox("Do not log in after transfer".Loc(), ref NoLogin);
             });

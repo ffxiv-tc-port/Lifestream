@@ -21,7 +21,7 @@ public static unsafe class UIHouseReg
     {
         if(Player.Available)
         {
-            NuiTools.ButtonTabs([[new("Private House".Loc(), DrawPrivate), new("Free Company House".Loc(), DrawFC), new("Custom House".Loc(), DrawCustom), new("Overview".Loc(), DrawOverview)]]);
+            NuiTools.ButtonTabs("LifestreamHouseRegTabs", [[new("Private House".Loc(), DrawPrivate), new("Free Company House".Loc(), DrawFC), new("Custom House".Loc(), DrawCustom), new("Overview".Loc(), DrawOverview)]]);
         }
         else
         {
@@ -43,7 +43,7 @@ public static unsafe class UIHouseReg
 
     private static void DrawOverview()
     {
-        ImGuiEx.InputWithRightButtonsArea(() =>
+        ImGuiEx.InputWithRightButtonsArea("LifestreamHouseRegOverviewSearch", () =>
         {
             ImGui.InputTextWithHint("##search", "Search...".Loc(), ref Search, 50);
         }, () =>
