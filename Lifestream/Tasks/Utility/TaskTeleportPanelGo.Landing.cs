@@ -14,6 +14,10 @@ namespace Lifestream.Tasks.Utility;
 
 public static unsafe partial class TaskTeleportPanelGo
 {
+    /// <summary>與 <see cref="EnqueueLanding"/> 開頭兩道閘門同義：true＝它會排出落點步驟。</summary>
+    private static bool HasActiveLanding(TeleportPanelEntry entry)
+        => C.EnableAetheryteLanding && C.AetheryteLandings.ContainsKey(entry.Id);
+
     /// <summary>
     /// 若該乙太之光設了自訂落點而且功能已啟用，抵達後再前往落點。
     /// 沒設、或功能關著，就什麼都不做 —— 傳送本身完全不受影響。

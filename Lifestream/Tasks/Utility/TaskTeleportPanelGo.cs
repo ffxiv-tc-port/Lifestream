@@ -72,6 +72,15 @@ public static unsafe partial class TaskTeleportPanelGo
         // (重新傳送一次讓自己回到儲存的位置)。沒開修補就先講清楚，不要排一條註定沉默失敗的佇列。
         if(!entry.IsAetheryte && !SameAethernetTeleportPatch.IsApplied && IsStandingAt(entry))
         {
+            // 被拒的只有傳送；落點那段走路與傳送無關，照做（呼叫端如 AR 以「佇列跑完」當抵達訊號）。
+            if(HasActiveLanding(entry))
+            {
+                PluginLog.Information($"[TeleportPanel] 已站在「{entry.DisplayName}」（城內乙太之晶 {entry.Id}、區域 {entry.Territory}）旁，遊戲不會傳送到同一處 ⇒ 略過傳送、直接前往自訂落點。");
+                TravelDiag.Record($"傳送面板：已在「{entry.DisplayName}」({entry.Id}) 旁，只走自訂落點");
+                TaskRemoveAfkStatus.Enqueue();
+                EnqueueLanding(entry);
+                return;
+            }
             DuoLog.Warning("You are already at this aethernet shard, so the game will not teleport you to the same place. Just walk to where you want to go.".Loc());
             return;
         }
