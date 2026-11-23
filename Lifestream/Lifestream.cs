@@ -153,6 +153,22 @@ public unsafe class Lifestream : IDalamudPlugin
         TaskAnnounceArrival.EnqueueIfChainStarted(queuedBefore);
     }
 
+    /// <summary><c>friend</c>／<c>friendhome</c>／<c>friendfc</c>／<c>friendapt</c> 後接好友名字。</summary>
+    private static bool TryParseFriendEstateCommand(string arguments, out string query, out FriendEstateKind? kind)
+    {
+        query = null;
+        kind = null;
+        var space = arguments.IndexOf(' ');
+        var head = space < 0 ? arguments : arguments[..space];
+        if(head.EqualsIgnoreCase("friend")) kind = null;
+        else if(head.EqualsIgnoreCase("friendhome")) kind = FriendEstateKind.Private;
+        else if(head.EqualsIgnoreCase("friendfc")) kind = FriendEstateKind.FreeCompany;
+        else if(head.EqualsIgnoreCase("friendapt")) kind = FriendEstateKind.Apartment;
+        else return false;
+        query = space < 0 ? "" : arguments[(space + 1)..].Trim();
+        return true;
+    }
+
     // abortSource：「stop」中止任務鏈時寫進診斷的來源；null＝使用者自己下的指令。
     internal void ProcessCommandInternal(string command, string arguments, string abortSource = null)
     {
@@ -395,6 +411,10 @@ public unsafe class Lifestream : IDalamudPlugin
             {
                 DuoLog.Error("Lifestream is busy");
             }
+        }
+        else if(TryParseFriendEstateCommand(arguments, out var friendQuery, out var friendKind))
+        {
+            TaskFriendEstateTeleport.Enqueue(friendQuery, friendKind);
         }
         else if(Utils.TryParseAddressBookEntry(arguments, out var entry))
         {

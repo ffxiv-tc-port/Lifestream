@@ -147,17 +147,21 @@ public static unsafe class TaskPropertyShortcut
 
     private static void ExecuteTpAndPathfind(uint id, HousePathData data, HouseEnterMode? mode = null, bool workshop = false) => ExecuteTpAndPathfind(id, 0, data, mode, workshop);
 
-    private static void ExecuteTpAndPathfind(uint id, uint subIndex, HousePathData data, HouseEnterMode? mode = null, bool workshop = false)
+    // teleport=false：人已經在那塊地前（例：好友房屋傳送剛抵達），只排走到門口／進門那段。
+    internal static void ExecuteTpAndPathfind(uint id, uint subIndex, HousePathData data, HouseEnterMode? mode = null, bool workshop = false, bool teleport = true)
     {
         mode ??= data?.GetHouseEnterMode() ?? HouseEnterMode.None;
         if(workshop) mode = HouseEnterMode.Enter_house;
-        PluginLog.Information($"id={id}, data={data}, mode={mode}, cnt={data?.PathToEntrance.Count}");
+        PluginLog.Information($"id={id}, data={data}, mode={mode}, cnt={data?.PathToEntrance.Count}, teleport={teleport}");
         P.TaskManager.BeginStack();
         try
         {
-            P.TaskManager.Enqueue(() => WorldChange.ExecuteTPToAethernetDestination(id, subIndex), $"ExecuteTPToAethernetDestination{id}, {subIndex}");
-            P.TaskManager.Enqueue(() => !IsScreenReady(), "IsScreenNotReady");
-            P.TaskManager.Enqueue(() => IsScreenReady() && Player.Interactable, "IsScreenReady and Interactable");
+            if(teleport)
+            {
+                P.TaskManager.Enqueue(() => WorldChange.ExecuteTPToAethernetDestination(id, subIndex), $"ExecuteTPToAethernetDestination{id}, {subIndex}");
+                P.TaskManager.Enqueue(() => !IsScreenReady(), "IsScreenNotReady");
+                P.TaskManager.Enqueue(() => IsScreenReady() && Player.Interactable, "IsScreenReady and Interactable");
+            }
             if(data != null && data.PathToEntrance.Count != 0 && mode.EqualsAny(HouseEnterMode.Walk_to_door, HouseEnterMode.Enter_house))
             {
                 P.TaskManager.Enqueue(() =>
