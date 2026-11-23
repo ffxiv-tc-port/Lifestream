@@ -70,7 +70,7 @@ public static unsafe partial class TaskTeleportPanelGo
         // (面板不開修補也完全能用)，但確實有一個情境會撞到：站在目標乙太之光旁邊時，遊戲會用
         // LogMessage 1478「此處為目前所在地。」拒絕傳送 —— 而那正是搭配自訂落點時最常做的動作
         // (重新傳送一次讓自己回到儲存的位置)。沒開修補就先講清楚，不要排一條註定沉默失敗的佇列。
-        if(!entry.IsAetheryte && !SameAethernetTeleportPatch.IsApplied && IsStandingAt(entry))
+        if(IsRefusedAsSamePlace(entry))
         {
             // 被拒的只有傳送；落點那段走路與傳送無關，照做（呼叫端如 AR 以「佇列跑完」當抵達訊號）。
             if(HasActiveLanding(entry))
@@ -252,6 +252,13 @@ public static unsafe partial class TaskTeleportPanelGo
     /// 把 Y 算進去會讓不同來源的座標無法公平比較。
     /// </summary>
     private static float DistanceXZ(Vector3 a, Vector3 b) => new Vector2(a.X - b.X, a.Z - b.Z).Length();
+
+    private static bool IsRefusedAsSamePlace(TeleportPanelEntry entry)
+        => !entry.IsAetheryte && !SameAethernetTeleportPatch.IsApplied && IsStandingAt(entry);
+
+    /// <summary><see cref="EnqueueCore"/> 只出警告、什麼都不排的那個情況：遊戲會拒絕傳送到同一處，又沒有啟用中的自訂落點。</summary>
+    internal static bool IsAlreadyThereNoOp(TeleportPanelEntry entry)
+        => entry != null && IsRefusedAsSamePlace(entry) && !HasActiveLanding(entry);
 
     /// <summary>
     /// 人是不是就站在這座乙太之光旁邊。只比水平距離：乙太之光座標多半是從地圖標記換算來的，
