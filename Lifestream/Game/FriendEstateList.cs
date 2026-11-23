@@ -40,7 +40,19 @@ public static unsafe class FriendEstateList
         entries = [];
         diag = null;
         if(addon == null || addon->AtkValues == null || addon->AtkValuesCount < 1) return FriendEstateReadState.Loading;
-        var values = addon->AtkValues;
+        var module = AgentModule.Instance();
+        var agent = module == null || AgentModule.MemberFunctionPointers.GetAgentByInternalId == null
+            ? null
+            : (byte*)module->GetAgentByInternalId(AgentId.TeleportHousingFriend);
+        return Evaluate(addon->AtkValues, addon->AtkValuesCount, agent, expectedContentId, out entries, out diag);
+    }
+
+    /// <summary>純判讀（不碰任何全域）；<paramref name="agent"/> 可為 null。</summary>
+    internal static FriendEstateReadState Evaluate(AtkValue* values, int valueCount, byte* agent, ulong expectedContentId, out List<FriendEstateEntry> entries, out string diag)
+    {
+        entries = [];
+        diag = null;
+        if(values == null || valueCount < 1) return FriendEstateReadState.Loading;
         if(values[0].Type != AtkValueType.Int)
         {
             diag = $"values[0].Type={values[0].Type}";
@@ -48,19 +60,11 @@ public static unsafe class FriendEstateList
         }
         var count = values[0].Int;
         if(count < 0) return FriendEstateReadState.Loading;
-        if(count > EntryCount || addon->AtkValuesCount < 1 + ValuesPerRow * count)
+        if(count > EntryCount || valueCount < 1 + ValuesPerRow * count)
         {
-            diag = $"count={count}, valueCount={addon->AtkValuesCount}";
+            diag = $"count={count}, valueCount={valueCount}";
             return FriendEstateReadState.Mismatch;
         }
-
-        var module = AgentModule.Instance();
-        if(module == null || AgentModule.MemberFunctionPointers.GetAgentByInternalId == null)
-        {
-            diag = "AgentModule";
-            return FriendEstateReadState.Mismatch;
-        }
-        var agent = (byte*)module->GetAgentByInternalId(AgentId.TeleportHousingFriend);
         if(agent == null)
         {
             diag = "agent=null";
@@ -85,6 +89,7 @@ public static unsafe class FriendEstateList
             diag = $"視窗 {count} 筆、代理人 {fromAgent.Count} 筆";
             return FriendEstateReadState.Mismatch;
         }
+        var seen = 0u;
         for(var k = 0; k < count; k++)
         {
             var flag = values[1 + ValuesPerRow * k];
@@ -94,11 +99,13 @@ public static unsafe class FriendEstateList
                 diag = $"row {k}: types {flag.Type}/{kind.Type}";
                 return FriendEstateReadState.Mismatch;
             }
-            if(!fromAgent.TryGetFirst(x => (uint)x.Kind == kind.UInt, out var match) || match.CanEnter != (flag.UInt != 0))
+            if(kind.UInt >= EntryCount || (seen & (1u << (int)kind.UInt)) != 0
+                || !fromAgent.TryGetFirst(x => (uint)x.Kind == kind.UInt, out var match) || match.CanEnter != (flag.UInt != 0))
             {
                 diag = $"row {k}: kind={kind.UInt}, flag={flag.UInt}";
                 return FriendEstateReadState.Mismatch;
             }
+            seen |= 1u << (int)kind.UInt;
         }
         entries = fromAgent;
         return FriendEstateReadState.Ready;
