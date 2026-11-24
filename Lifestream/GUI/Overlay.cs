@@ -244,11 +244,12 @@ public class Overlay : Window
                 TaskAetheryteAethernetTeleport.FirmamentTerritoryId, "Firmament".Loc(), TaskFirmanentTeleport.Enqueue);
         }
 
-        // 比照蒼天街:站在「最佳威兔洞」(175)旁時提供渴望灣按鈕
+        // 比照蒼天街:站在「最佳威兔洞」(175)旁時提供渴望灣按鈕。走 /li cosmic 同一個入口(選單沒有渴望灣會改走入口物件);
+        // 它自己判忙碌並移除離席,理由同下面的行星法恩娜。
         if(P.ActiveAetheryte.Value.ID == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId && C.SinusArdorum)
         {
             DrawGatewayButton(TaskAetheryteAethernetTeleport.SinusArdorumAethernetId,
-                TaskAetheryteAethernetTeleport.SinusArdorumTerritoryId, "Sinus Ardorum".Loc(), TaskSinusArdorumTeleport.Enqueue);
+                TaskAetheryteAethernetTeleport.SinusArdorumTerritoryId, "Sinus Ardorum".Loc(), TaskDirectEnter.EnqueueCosmic, removeAfk: false);
         }
 
         if(P.ActiveAetheryte.Value.ID == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId && C.Phaenna)

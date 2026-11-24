@@ -166,7 +166,7 @@ public static unsafe partial class TaskGotoDestination
         {
             PluginLog.Information($"[Goto] {name}: {ExcelTerritoryHelper.GetName(territory)} has no aetheryte of its own, entering through the menu of aetheryte {gatewayRoot}.");
             // 沿用既有的「傳送到玄關乙太之光 → 互動 → 選專用選單項」整套流程
-            // (蒼天街走「傳送到蒼天街」,渴望灣走「前往渴望灣」+ 需要時再選副本區)。
+            // (蒼天街走「傳送到蒼天街」;渴望灣／行星法恩娜走 /li cosmic／phaenna 的直達流程,沒到就中止佇列)。
             // 這裡用 Enqueue 排到佇列尾端是對的:此刻佇列裡還沒有這條路線的後續步驟,
             // 下面的等待與導航都是接在它之後才排進去的。
             TaskAetheryteAethernetTeleport.Enqueue(gatewayRoot, gatewayAethernet);

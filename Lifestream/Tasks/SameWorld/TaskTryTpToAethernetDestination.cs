@@ -248,11 +248,9 @@ internal static class TaskTryTpToAethernetDestination
                 var gateway = MatchCosmicGatewayName(targetName, C.SinusArdorum, C.Phaenna, "Sinus Ardorum".Loc(), "Phaenna".Loc());
                 if(gateway == TaskAetheryteAethernetTeleport.SinusArdorumAethernetId)
                 {
-                    P.TaskManager.InsertStack(() =>
-                    {
-                        TaskRemoveAfkStatus.Enqueue();
-                        TaskSinusArdorumTeleport.Enqueue();
-                    });
+                    // 解鎖行星法恩娜後選單不再有「前往渴望灣」⇒ 同樣走玄關路線（選單沒有就改走入口物件、沒到就中止佇列）。
+                    PluginLog.Information($"[Gateway] 「{targetName}」比對到渴望灣，走與 /li cosmic 相同的直達流程。");
+                    P.TaskManager.InsertStack(() => TaskAetheryteAethernetTeleport.Enqueue(TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId, TaskAetheryteAethernetTeleport.SinusArdorumAethernetId));
                     return;
                 }
                 if(gateway == TaskAetheryteAethernetTeleport.PhaennaAethernetId)

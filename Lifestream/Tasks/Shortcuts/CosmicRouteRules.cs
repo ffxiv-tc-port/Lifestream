@@ -38,4 +38,23 @@ internal static class CosmicRouteRules
         if(planetWindowOpen) return "the destination window opened";
         return null;
     }
+
+    internal enum Arrival
+    {
+        /// <summary>還在轉場／讀取,再等一下。零值。</summary>
+        Wait = 0,
+        Arrived = 1,
+        /// <summary>沒到:呼叫端中止後面的步驟,不在錯的區域繼續。</summary>
+        NotArrived = 2,
+    }
+
+    /// <summary>
+    /// 玄關路線跑完後「後面的步驟可不可以接著跑」。<paramref name="settled"/>＝不在轉場、畫面就緒、人能動;
+    /// 轉場中先等,轉場結束或等滿 <paramref name="settleLimitMs"/> 就只看區域。
+    /// </summary>
+    internal static Arrival ClassifyArrival(uint targetTerritory, uint territory, bool settled, long waitedMs, long settleLimitMs)
+    {
+        if(!settled && waitedMs < settleLimitMs) return Arrival.Wait;
+        return territory == targetTerritory ? Arrival.Arrived : Arrival.NotArrived;
+    }
 }

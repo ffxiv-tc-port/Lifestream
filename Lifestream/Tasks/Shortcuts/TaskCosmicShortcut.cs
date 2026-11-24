@@ -27,8 +27,8 @@ namespace Lifestream.Tasks.Shortcuts;
 ///   之後由這裡選入口選單(舊的「前往渴望灣」或 7.3 的「移動到探索區域」)並處理後續視窗。</item>
 /// </list>
 ///
-/// <para>⚠️ 快版**不是** <see cref="TaskSinusArdorumTeleport.Enqueue"/>。那一個是浮動視窗按鈕與
-/// <c>/li 渴望灣</c> 用的,它從 <see cref="WorldChange.TargetValidAetheryte"/> 起手、**完全沒有傳送步驟**。
+/// <para>⚠️ 快版**不是** <see cref="TaskSinusArdorumTeleport.Enqueue"/>(只會選「前往渴望灣」、沒有退路,已無路線使用)。
+/// 所有渴望灣入口都走這裡;要接著做事的呼叫端經 <see cref="TaskAetheryteAethernetTeleport"/> 的玄關路線加抵達檢查。
 /// 這裡每一步都**逾時不中止**,好讓失敗時佇列還能走到退路(預設的 <c>AbortOnTimeout=true</c> 會連退路一起清掉)。</para>
 ///
 /// <para>退路觸發點:沒站到玄關乙太之光;要去渴望灣、選單卻只列法恩娜(解鎖後只列最新星球);走完快版人不在目的地。

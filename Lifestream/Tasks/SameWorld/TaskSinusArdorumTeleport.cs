@@ -7,6 +7,8 @@ namespace Lifestream.Tasks.SameWorld;
 /// <summary>
 /// 比照 <see cref="TaskFirmanentTeleport"/>:站在嘆息海「最佳威兔洞」乙太之光(175)旁時,
 /// 互動並選「前往渴望灣」選單項直達宇宙探索區域。
+/// ⚠️ 目前沒有路線會走到這裡:解鎖行星法恩娜後乙太之光選單不再有這一項,所有渴望灣入口改走
+/// <see cref="Shortcuts.TaskCosmicShortcut"/>(會改走入口物件)。不要再接回這裡。
 /// </summary>
 internal static class TaskSinusArdorumTeleport
 {

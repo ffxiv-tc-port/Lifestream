@@ -126,7 +126,7 @@ internal static class TaskAetheryteAethernetTeleport
             {
                 throw new Exception($"Special Sinus Ardorum aethernet {SinusArdorumAethernetId} must be teleported from root aetheryte {SinusArdorumRootAetheryteId}");
             }
-            EnqueueInner(SinusArdorumRootAetheryteId, SinusArdorumRootAetheryteTerritoryId, SinusArdorum);
+            EnqueueSinusArdorum();
             return;
         }
 
@@ -192,10 +192,47 @@ internal static class TaskAetheryteAethernetTeleport
         }, "PhaennaGatewayVerifyArrival");
     }
 
+    /// <summary>抵達檢查最多等轉場這麼久;任務本身的時限要比它長,逾時一律中止(不放行到錯的區域)。</summary>
+    private const long SinusArdorumSettleMs = 30000;
+
+    /// <summary>
+    /// 渴望灣的玄關路線(傳送面板那一列、<c>/li goto</c>、地圖點、Wotsit、站在最佳威兔洞旁的 <c>/li 渴望灣</c>、自訂別名):
+    /// 排入與 <c>/li cosmic</c> 相同的 <see cref="Shortcuts.TaskCosmicShortcut.Enqueue(Shortcuts.TaskCosmicShortcut.Destination)"/>,
+    /// 再接一步抵達檢查,沒到就中止整條佇列。解鎖行星法恩娜後乙太之光選單不再有「前往渴望灣」,不能再走 <see cref="EnqueueInner"/>。
+    /// </summary>
+    /// <remarks>刻意不先回原始世界:理由同 <see cref="EnqueuePhaenna"/>。</remarks>
+    private static void EnqueueSinusArdorum()
+    {
+        PluginLog.Information($"[Gateway] 渴望灣：走與 /li cosmic 相同的直達流程（乙太之光 {SinusArdorumRootAetheryteId} 選單，選單沒有渴望灣就改走入口物件；目前區域 {P.Territory}、{(Player.IsInHomeWorld ? "在原始世界" : "不在原始世界")}）。");
+        Shortcuts.TaskCosmicShortcut.Enqueue(Shortcuts.TaskCosmicShortcut.Destination.SinusArdorum);
+        long since = 0;
+        P.TaskManager.Enqueue(() => VerifySinusArdorumArrival(ref since), "SinusArdorumGatewayVerifyArrival", new(timeLimitMS: (int)SinusArdorumSettleMs + 10000));
+    }
+
+    private static bool? VerifySinusArdorumArrival(ref long since)
+    {
+        var now = Environment.TickCount64;
+        if(since == 0) since = now;
+        var settled = !Svc.Condition[ConditionFlag.BetweenAreas] && !Svc.Condition[ConditionFlag.BetweenAreas51] && IsScreenReady() && Player.Interactable;
+        switch(Shortcuts.CosmicRouteRules.ClassifyArrival(SinusArdorumTerritoryId, P.Territory, settled, now - since, SinusArdorumSettleMs))
+        {
+            case Shortcuts.CosmicRouteRules.Arrival.Arrived:
+                TaskAethernetRoute.ExpectNoAethernetTransition();
+                PluginLog.Information("[Gateway] 渴望灣：已抵達，繼續後面的步驟。");
+                return true;
+            case Shortcuts.CosmicRouteRules.Arrival.NotArrived:
+                PluginLog.Information($"[Gateway] 渴望灣：沒有抵達（目前區域 {P.Territory}，{(settled ? "已不在轉場" : $"轉場等了 {SinusArdorumSettleMs / 1000} 秒仍未結束")}，原因見上方 [Cosmic] 記錄），後面的步驟全部取消。");
+                P.TaskManager.Abort();
+                return true;
+            default:
+                return false;
+        }
+    }
+
     /// <summary>
     /// 「傳送到指定的主水晶 → 互動 → 選單」的原始序列。
-    /// 📌 一般情形走 <see cref="Tasks.Utility.TaskAethernetRoute"/>,實際只剩蒼天街與渴望灣
-    /// 這兩條**玄關**路線會進來 —— 它們的選單項只掛在那一座特定的乙太之光上,不能改成「走去同網路的
+    /// 📌 一般情形走 <see cref="Tasks.Utility.TaskAethernetRoute"/>,渴望灣走 <see cref="EnqueueSinusArdorum"/>,實際只剩蒼天街
+    /// 這條**玄關**路線會進來 —— 它的選單項只掛在那一座特定的乙太之光上,不能改成「走去同網路的
     /// 任一節點」。
     /// ⚠️ 底下一般情形的尾段(開乙太網選單 → 選目的地)刻意保留、沒有刪:它是這兩條特例的對照組,
     /// 也是這個方法本身仍然自洽的證明。要改行為請改 <see cref="Tasks.Utility.TaskAethernetRoute"/>。
