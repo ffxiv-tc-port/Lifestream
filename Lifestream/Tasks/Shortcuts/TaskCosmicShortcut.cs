@@ -12,6 +12,7 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lifestream.Data;
 using Lifestream.IPC;
 using Lifestream.Schedulers;
+using Lifestream.Services;
 using Lifestream.Tasks.SameWorld;
 
 namespace Lifestream.Tasks.Shortcuts;
@@ -30,8 +31,8 @@ namespace Lifestream.Tasks.Shortcuts;
 /// <c>/li 渴望灣</c> 用的,它從 <see cref="WorldChange.TargetValidAetheryte"/> 起手、**完全沒有傳送步驟**。
 /// 這裡每一步都**逾時不中止**,好讓失敗時佇列還能走到退路(預設的 <c>AbortOnTimeout=true</c> 會連退路一起清掉)。</para>
 ///
-/// <para>退路有兩個觸發點:連玄關乙太之光都沒站到(立刻退);站到了、但最後人不在目的地(走完快版才退)。
-/// 例外:乙太之光選單有渴望灣卻沒有法恩娜＝尚未解鎖,直接停下並提示,不走退路。</para>
+/// <para>退路觸發點:沒站到玄關乙太之光;要去渴望灣、選單卻只列法恩娜(解鎖後只列最新星球);走完快版人不在目的地。
+/// 例外(停下、不走退路):選單有渴望灣卻沒有法恩娜＝尚未解鎖;還沒替使用者選任何項目就開始轉場＝使用者自己選了。</para>
 ///
 /// <para>選單與視窗一律依遊戲表的文字辨識、不按位置;認不出來就不按。單一佇列、入口有 <see cref="Utils.IsBusy"/> 擋重入,
 /// 所以狀態用靜態欄位,每次 <see cref="Enqueue(Destination)"/> 重設。只在框架執行緒使用。</para>
@@ -89,12 +90,18 @@ public static unsafe class TaskCosmicShortcut
         internal string DescribeAetheryteEntry() => IsSinusArdorum ? Lang.TravelToSinusArdorum.Print(" | ") : Lang.TravelToPhaenna.Describe();
     }
 
-    private enum Outcome { Pending, NotUnlocked, HandedOver }
+    private enum Outcome { Pending, NotUnlocked, HandedOver, UserTookOver }
 
     private const uint EntranceObjectId = 1052581;
 
-    /// <summary>乙太之光選單有渴望灣、沒有法恩娜的狀態要持續這麼久才判定尚未解鎖(選單剛開那幾幀可能還沒填完)。</summary>
+    /// <summary>乙太之光選單「有另一顆星球、沒有目標」的狀態要持續這麼久才下結論(選單剛開那幾幀可能還沒填完)。</summary>
     private const long NotUnlockedSettleMs = 1500;
+
+    /// <summary>退路出發前等「選單／對話關掉、人能動」的上限;逾時就停下交給使用者。</summary>
+    private const long ReadyWaitMs = 15000;
+
+    /// <summary>退路的傳送被遊戲拒絕時,重試到這麼久為止。</summary>
+    private const long TeleportRetryMs = 20000;
 
     // WKSPlanetSelect 的 ULD 節點 ID(台服 7.3 的 .uld 解出):17＝目前目的地名稱、14／13＝移動到空閒副本區／移動、8／9＝切換鈕。
     private const uint PlanetLabelNodeId = 17;
@@ -120,6 +127,15 @@ public static unsafe class TaskCosmicShortcut
     private static bool PlanetMovePressed;
     private static bool LoggedForeignYesno;
     private static bool LoggedYesAlreadyActive;
+    /// <summary>乙太之光選單只列另一顆星球:不是失敗,是直接改走入口物件路線的理由。</summary>
+    private static bool GatewayListsOtherPlanetOnly;
+    private static uint MenuStageTerritory;
+    /// <summary>要關掉的那扇選單的位址,只做等值比較、不解參。</summary>
+    private static nint MenuToClose;
+    /// <summary>自帶期限的等待步驟從何時開始等;0＝還沒開始。</summary>
+    private static long StepSince;
+    private static int EntranceAliasStart;
+    private static int EntranceMenuStep;
 
     /// <summary>
     /// <c>/li cosmic</c>、<c>/li phaenna</c> 與傳送面板的直達按鈕共用:不在原始世界就先回去,再走 <see cref="Enqueue(Destination)"/>。
@@ -147,6 +163,10 @@ public static unsafe class TaskCosmicShortcut
         Result = Outcome.Pending;
         LastMenuLog = null;
         MenuMismatchSince = 0;
+        GatewayListsOtherPlanetOnly = false;
+        MenuStageTerritory = 0;
+        MenuToClose = 0;
+        StepSince = 0;
         ResetPlanetSelect();
         PluginLog.Information($"[Cosmic] Destination {Target.Name} \"{Target.PlanetName}\" (territory {Target.Territory}). Taking the aetheryte-menu route: teleport to aetheryte {TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId} -> interact -> select [{Target.DescribeAetheryteEntry()}].");
         TaskRemoveAfkStatus.Enqueue();
@@ -190,6 +210,7 @@ public static unsafe class TaskCosmicShortcut
             return true;
         }
 
+        MenuStageTerritory = P.Territory;
         // 執行途中才確定要走的步驟一律 InsertStack:Enqueue 會排到佇列尾端,將來有人在後面加步驟就會靜默錯序。
         P.TaskManager.InsertStack(() =>
         {
@@ -223,10 +244,12 @@ public static unsafe class TaskCosmicShortcut
 
     /// <summary>
     /// 在乙太之光選單選目的地那一項。⚠️ 選單剛開的那一兩幀 EntryCount 會是 0,那時不能當成「沒有這一項」。
-    /// 法恩娜:選單有渴望灣、沒有法恩娜並持續 <see cref="NotUnlockedSettleMs"/> ＝ 尚未解鎖,關掉選單並停下。
+    /// 沒有目標那一項的處置見 <see cref="CosmicRouteRules.ClassifyMissingEntry"/>,要持續 <see cref="NotUnlockedSettleMs"/> 才算數。
     /// </summary>
     private static bool? SelectTravelTo()
     {
+        if(Result == Outcome.UserTookOver) return TransitionSettled();
+        if(UserChoseDestination("Aetheryte menu", MenuStageTerritory)) return false;
         if(!Player.Available) return false;
         if(!TryGetAddonByName<AddonSelectString>("SelectString", out var addon) || !IsAddonReady(&addon->AtkUnitBase))
         {
@@ -245,20 +268,26 @@ public static unsafe class TaskCosmicShortcut
             {
                 PluginLog.Information($"[Cosmic] The aetheryte menu is open but has no {Target.Name} entry. Looked for [{Target.DescribeAetheryteEntry()}], menu shows [{entries.Print(" | ")}].");
             }
-            if(!Target.IsSinusArdorum && entries.Any(x => x.EqualsAny(Lang.TravelToSinusArdorum)))
+            var verdict = CosmicRouteRules.ClassifyMissingEntry(Target.IsSinusArdorum,
+                menuHasSinusArdorum: entries.Any(x => x.EqualsAny(Lang.TravelToSinusArdorum)),
+                menuHasPhaenna: Lang.TravelToPhaenna.FindIndex(entries, LegacyMatch.EqualsAny) >= 0);
+            if(verdict == CosmicRouteRules.MissingEntry.KeepWaiting) return false;
+            var now = Environment.TickCount64;
+            if(MenuMismatchSince == 0) MenuMismatchSince = now;
+            if(now - MenuMismatchSince < NotUnlockedSettleMs) return false;
+            if(verdict == CosmicRouteRules.MissingEntry.NotUnlocked)
             {
-                var now = Environment.TickCount64;
-                if(MenuMismatchSince == 0) MenuMismatchSince = now;
-                else if(now - MenuMismatchSince >= NotUnlockedSettleMs)
-                {
-                    Result = Outcome.NotUnlocked;
-                    PluginLog.Information($"[Cosmic] The aetheryte menu lists Sinus Ardorum but not {Target.Name} [{entries.Print(" | ")}]: treating {Target.Name} as not unlocked yet, closing the menu and stopping (no fallback).");
-                    ChatQueue.Orange($"[Lifestream] {"The aetheryte menu has no option for ??, so you have probably not unlocked it yet. Lifestream has stopped.".Loc(Target.PlanetName)}");
-                    CloseLeftoverSelectString();
-                    return true;
-                }
+                Result = Outcome.NotUnlocked;
+                PluginLog.Information($"[Cosmic] The aetheryte menu lists Sinus Ardorum but not {Target.Name} [{entries.Print(" | ")}]: treating {Target.Name} as not unlocked yet, closing the menu and stopping (no fallback).");
+                ChatQueue.Orange($"[Lifestream] {"The aetheryte menu has no option for ??, so you have probably not unlocked it yet. Lifestream has stopped.".Loc(Target.PlanetName)}");
             }
-            return false;
+            else
+            {
+                GatewayListsOtherPlanetOnly = true;
+                PluginLog.Information($"[Cosmic] The aetheryte menu lists Phaenna but not {Target.Name} [{entries.Print(" | ")}]: once Phaenna is unlocked the gateway aetheryte only offers the newest planet. Closing the menu and taking the entrance-object route now instead of waiting for the timeout.");
+            }
+            CloseLeftoverSelectString();
+            return true;
         }
         MenuMismatchSince = 0;
         if(!Target.TrySelectAetheryteEntry()) return false;
@@ -475,7 +504,10 @@ public static unsafe class TaskCosmicShortcut
             return true;
         }
 
-        PluginLog.Information($"[Cosmic] The aetheryte-menu route did not get us to {Target.Name} ({DescribeFailure()}).");
+        if(!GatewayListsOtherPlanetOnly)
+        {
+            PluginLog.Information($"[Cosmic] The aetheryte-menu route did not get us to {Target.Name} ({DescribeFailure()}).");
+        }
         FallBackToEntranceObjectRoute();
         return true;
     }
@@ -487,7 +519,14 @@ public static unsafe class TaskCosmicShortcut
     private static void FallBackToEntranceObjectRoute()
     {
         PluginLog.Information($"[Cosmic] Falling back to the entrance-object route for {Target.Name}: teleport to the gateway aetheryte, mount up, ride to the entrance object and use its menu.");
-        ChatQueue.Green($"[Lifestream] {(Target.IsSinusArdorum ? "The quick route to Sinus Ardorum did not work, falling back to the long one.".Loc() : "The quick route to ?? did not work, falling back to the long one.".Loc(Target.PlanetName))}");
+        if(GatewayListsOtherPlanetOnly)
+        {
+            ChatQueue.Green($"[Lifestream] {"The aetheryte menu no longer lists Sinus Ardorum, going through the entrance object instead.".Loc()}");
+        }
+        else
+        {
+            ChatQueue.Green($"[Lifestream] {(Target.IsSinusArdorum ? "The quick route to Sinus Ardorum did not work, falling back to the long one.".Loc() : "The quick route to ?? did not work, falling back to the long one.".Loc(Target.PlanetName))}");
+        }
         CloseLeftoverSelectString();
 
         var alias = StaticAlias.CosmicExploration;
@@ -509,19 +548,153 @@ public static unsafe class TaskCosmicShortcut
 
         SelectedEntry = false;
         LastMenuLog = null;
+        StepSince = 0;
         ResetPlanetSelect();
+        // 別名的第一步是「傳送到 175」就由這裡的可重試版本取代;別名那一步被拒約 3 秒就中止整條鏈。
+        var first = alias.Commands[0];
+        EntranceAliasStart = first.Kind == CustomAliasKind.Teleport_to_Aetheryte && first.Aetheryte == TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId ? 1 : 0;
+        EntranceMenuStep = menuStep;
         P.TaskManager.InsertStack(() =>
         {
-            alias.Enqueue(true, 0, menuStep);
+            P.TaskManager.Enqueue(WaitReadyForEntranceRoute, "CosmicEntranceWaitReady", Lenient((int)ReadyWaitMs + 10000));
+            P.TaskManager.Enqueue(TeleportToGatewayForEntranceRoute, "CosmicEntranceTeleport", Lenient((int)TeleportRetryMs + 10000));
+            P.TaskManager.Enqueue(StartEntranceRide, "CosmicEntranceStart");
+        });
+    }
+
+    /// <summary>退路出發前:等選單、確認框、對話都關掉、人能動;上一步留下的乙太之光選單由這裡關。逾時就停下交給使用者。</summary>
+    private static bool? WaitReadyForEntranceRoute()
+    {
+        if(Result == Outcome.UserTookOver) return TransitionSettled();
+        if(Result != Outcome.Pending) return true;
+        if(UserChoseDestination("Before the entrance-object route", 0)) return false;
+        var now = Environment.TickCount64;
+        if(StepSince == 0) StepSince = now;
+        var blocker = DescribeBlocker();
+        if(blocker == null)
+        {
+            StepSince = 0;
+            return true;
+        }
+        if(now - StepSince < ReadyWaitMs)
+        {
+            if(EzThrottler.Throttle("CosmicEntranceReadyLog", 5000)) PluginLog.Information($"[Cosmic] Entrance-object route: waiting before setting off ({blocker}).");
+            return false;
+        }
+        StepSince = 0;
+        Result = Outcome.HandedOver;
+        PluginLog.Information($"[Cosmic] Entrance-object route: still not free to set off after {ReadyWaitMs / 1000} s ({blocker}); stopping here.");
+        ChatQueue.Orange($"[Lifestream] {"A window or conversation is still open, so Lifestream cannot continue. Please continue manually.".Loc()}");
+        return true;
+    }
+
+    /// <returns>擋住退路出發的原因;null＝可以出發。</returns>
+    private static string DescribeBlocker()
+    {
+        if(TryGetAddonByName<AddonSelectString>("SelectString", out var menu) && IsAddonReady(&menu->AtkUnitBase))
+        {
+            if((nint)menu == MenuToClose) CloseLeftoverSelectString();
+            return "a menu is open";
+        }
+        if(TryGetAddonByName<AtkUnitBase>("SelectYesno", out var yesno) && IsAddonReady(yesno)) return "a confirmation box is open";
+        if(!Player.Interactable || !IsScreenReady()) return "the character cannot act yet";
+        if(IsOccupied()) return "the character is occupied (conversation, event, zone change, ...)";
+        return null;
+    }
+
+    /// <summary>退路的傳送:人已在 175 旁邊就跳過;遊戲暫時拒絕就重試到 <see cref="TeleportRetryMs"/>,不整條中止。</summary>
+    private static bool? TeleportToGatewayForEntranceRoute()
+    {
+        if(Result == Outcome.UserTookOver) return TransitionSettled();
+        if(Result != Outcome.Pending) return true;
+        var aetheryte = TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteId;
+        if(IsAtGatewayAetheryte())
+        {
+            StepSince = 0;
+            PluginLog.Information($"[Cosmic] Entrance-object route: already next to aetheryte {aetheryte}, no teleport needed.");
+            return true;
+        }
+        if(UserChoseDestination("Before the entrance-object route", 0)) return false;
+        var now = Environment.TickCount64;
+        if(StepSince == 0) StepSince = now;
+        if(TeleportService.CanTeleport(out var error) && S.TeleportService.TeleportToAetheryte(aetheryte, abortChainWhenRefused: false))
+        {
+            StepSince = 0;
+            PluginLog.Information($"[Cosmic] Entrance-object route: teleporting to aetheryte {aetheryte} from territory {P.Territory}.");
+            P.TaskManager.InsertMulti(
+                new(Utils.WaitForScreenFalse, "CosmicEntranceWaitTeleportStart", Lenient(30000)),
+                new(Utils.WaitForScreen, "CosmicEntranceWaitTeleportEnd", Lenient(60000)),
+                new(() => Player.Interactable && IsAtGatewayAetheryte(), "CosmicEntranceWaitAtGateway", Lenient(10000))
+                );
+            return true;
+        }
+        if(now - StepSince < TeleportRetryMs)
+        {
+            if(EzThrottler.Throttle("CosmicEntranceTeleportLog", 5000)) PluginLog.Information($"[Cosmic] Entrance-object route: cannot teleport to aetheryte {aetheryte} yet ({error ?? "aetheryte not in the teleport list"}), retrying.");
+            return false;
+        }
+        StepSince = 0;
+        Result = Outcome.HandedOver;
+        PluginLog.Information($"[Cosmic] Entrance-object route: teleport to aetheryte {aetheryte} still refused after {TeleportRetryMs / 1000} s ({error ?? "aetheryte not in the teleport list"}); stopping here.");
+        ChatQueue.Orange($"[Lifestream] {"Could not teleport to the gateway aetheryte. Please continue manually.".Loc()}");
+        return true;
+    }
+
+    /// <summary>傳送完確認人在嘆息海才騎過去;不在就停下,不在錯的區域繞圈。</summary>
+    private static bool? StartEntranceRide()
+    {
+        if(Result != Outcome.Pending)
+        {
+            PluginLog.Information($"[Cosmic] Entrance-object route not started ({Result}).");
+            return true;
+        }
+        if(P.Territory != TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteTerritoryId)
+        {
+            Result = Outcome.HandedOver;
+            PluginLog.Information($"[Cosmic] Entrance-object route: not in territory {TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteTerritoryId} after the teleport (currently {P.Territory}); stopping here.");
+            ChatQueue.Orange($"[Lifestream] {"Could not reach ??. Please continue manually.".Loc(Target.PlanetName)}");
+            return true;
+        }
+        var alias = StaticAlias.CosmicExploration;
+        P.TaskManager.InsertStack(() =>
+        {
+            alias.Enqueue(true, EntranceAliasStart, EntranceMenuStep);
             P.TaskManager.Enqueue(SelectEntranceMenu, "CosmicSelectEntranceMenu", Lenient(15000));
             P.TaskManager.Enqueue(FollowUp, "CosmicEntranceFollowUpAndWaitArrival", Lenient(70000));
             P.TaskManager.Enqueue(ReportEntranceRoute, "CosmicEntranceRouteResult");
         });
+        return true;
     }
+
+    /// <summary>
+    /// 還沒替使用者選任何項目,卻開始轉場、區域變了、或出現目的地視窗＝使用者自己選了目的地。
+    /// 標記後不再按任何東西、不走退路;記一行 Information 並在聊天欄提示。
+    /// </summary>
+    /// <param name="stage">log 用的階段名。</param>
+    /// <param name="stageTerritory">這一段開始時的區域;0＝不比區域。</param>
+    private static bool UserChoseDestination(string stage, uint stageTerritory)
+    {
+        if(SelectedEntry || Result != Outcome.Pending) return false;
+        var signal = CosmicRouteRules.UserChoiceSignal(
+            betweenAreas: Svc.Condition[ConditionFlag.BetweenAreas] || Svc.Condition[ConditionFlag.BetweenAreas51],
+            stageTerritory, P.Territory,
+            planetWindowOpen: TryGetAddonByName<AtkUnitBase>("WKSPlanetSelect", out var planet) && IsAddonReady(planet));
+        if(signal == null) return false;
+        Result = Outcome.UserTookOver;
+        PluginLog.Information($"[Cosmic] {stage}: {signal} although Lifestream had not chosen anything, so the destination was picked by hand. Lifestream stops here (no fallback, nothing else is pressed).");
+        ChatQueue.Orange($"[Lifestream] {"You chose a destination yourself, so Lifestream has stopped.".Loc()}");
+        return true;
+    }
+
+    /// <summary>使用者自己選了之後,等轉場結束再交棒,讓後面的到達判定看到真正的區域。</summary>
+    private static bool? TransitionSettled()
+        => !Svc.Condition[ConditionFlag.BetweenAreas] && !Svc.Condition[ConditionFlag.BetweenAreas51] && IsScreenReady() && Player.Interactable;
 
     /// <summary>入口物件的選單:渴望灣先找舊的「前往渴望灣」,再找 7.3 的「移動到探索區域」;法恩娜只找後者。</summary>
     private static bool? SelectEntranceMenu()
     {
+        if(Result == Outcome.UserTookOver) return TransitionSettled();
+        if(UserChoseDestination("Entrance menu", TaskAetheryteAethernetTeleport.SinusArdorumRootAetheryteTerritoryId)) return false;
         if(!Player.Available) return false;
         if(!TryGetAddonByName<AddonSelectString>("SelectString", out var addon) || !IsAddonReady(&addon->AtkUnitBase))
         {
@@ -592,6 +765,7 @@ public static unsafe class TaskCosmicShortcut
     {
         if(TryGetAddonByName<AddonSelectString>("SelectString", out var addon) && IsAddonReady(&addon->AtkUnitBase))
         {
+            MenuToClose = (nint)addon;
             if(!AddonPressGuard.TryPressOnce("SelectString", &addon->AtkUnitBase, nameof(CloseLeftoverSelectString))) return;
             PluginLog.Information("[Cosmic] Cancelling the leftover menu.");
             Callback.Fire(&addon->AtkUnitBase, true, -1);
