@@ -57,4 +57,29 @@ internal static class CosmicRouteRules
         if(!settled && waitedMs < settleLimitMs) return Arrival.Wait;
         return territory == targetTerritory ? Arrival.Arrived : Arrival.NotArrived;
     }
+
+    internal enum EntranceReach
+    {
+        /// <summary>照原本直接和入口物件互動。零值。</summary>
+        Interact = 0,
+        /// <summary>入口物件還沒列進物件表，再等一下。</summary>
+        Wait = 1,
+        /// <summary>等滿了還是找不到入口物件：停下交給使用者。</summary>
+        HandOver = 2,
+        /// <summary>內建座標沒騎到入口物件旁：改用 vnavmesh 走到入口物件現在的位置。</summary>
+        Navigate = 3,
+        /// <summary>同 <see cref="Navigate"/> 的情況但 vnavmesh 沒載入：照原本的方式試著互動。</summary>
+        InteractWithoutNavmesh = 4,
+    }
+
+    /// <summary>
+    /// 入口物件路線用內建座標騎完之後，要不要改走 vnavmesh。<paramref name="inInteractRange"/>＝遊戲的互動距離判定，null＝問不到；
+    /// 問不到又沒有移動失敗時照原本直接互動，不因為問不到就多走一段。
+    /// </summary>
+    internal static EntranceReach ClassifyEntranceReach(bool entranceFound, bool? inInteractRange, bool movementFailed, bool vnavmeshLoaded, long missingMs, long missingSettleMs)
+    {
+        if(!entranceFound) return missingMs < missingSettleMs ? EntranceReach.Wait : EntranceReach.HandOver;
+        if(!movementFailed && inInteractRange != false) return EntranceReach.Interact;
+        return vnavmeshLoaded ? EntranceReach.Navigate : EntranceReach.InteractWithoutNavmesh;
+    }
 }

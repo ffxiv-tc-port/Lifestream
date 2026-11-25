@@ -1,3 +1,4 @@
+using Dalamud.Game.ClientState.Objects.Types;
 using ECommons.Automation;
 using Callback = ECommons.Automation.Callback;
 using ECommons.Automation.NeoTaskManager;
@@ -7,6 +8,7 @@ using ECommons.ChatMethods;
 using ECommons.GameHelpers;
 using ECommons.Throttlers;
 using ECommons.UIHelpers.AddonMasterImplementations;
+using FFXIVClientStructs.FFXIV.Client.Game.Event;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lifestream.Data;
@@ -14,6 +16,8 @@ using Lifestream.IPC;
 using Lifestream.Schedulers;
 using Lifestream.Services;
 using Lifestream.Tasks.SameWorld;
+using Lifestream.Tasks.Utility;
+using GameObjectStruct = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 
 namespace Lifestream.Tasks.Shortcuts;
 
@@ -103,6 +107,12 @@ public static unsafe class TaskCosmicShortcut
     /// <summary>退路的傳送被遊戲拒絕時,重試到這麼久為止。</summary>
     private const long TeleportRetryMs = 20000;
 
+    /// <summary>內建座標騎完後，入口物件要連續這麼久都不在物件表裡才停下（剛停下那幾幀可能還沒列出來）。</summary>
+    private const int EntranceMissingSettleMs = 3000;
+
+    /// <summary>改用 vnavmesh 走到入口物件時，走路這一步的上限；逾時就照原本的方式試著互動。</summary>
+    private const int EntranceNavWalkMs = 60000;
+
     // WKSPlanetSelect 的 ULD 節點 ID(台服 7.3 的 .uld 解出):17＝目前目的地名稱、14／13＝移動到空閒副本區／移動、8／9＝切換鈕。
     private const uint PlanetLabelNodeId = 17;
     private static readonly (uint Node, uint AddonRow)[] PlanetMoveButtons = [(14, 17008), (13, 17007)];
@@ -136,6 +146,8 @@ public static unsafe class TaskCosmicShortcut
     private static long StepSince;
     private static int EntranceAliasStart;
     private static int EntranceMenuStep;
+    /// <summary>vnavmesh 沒給出路徑；收尾時不再重複記「還是摸不到」。</summary>
+    private static bool EntranceNavNoPath;
 
     /// <summary>
     /// <c>/li cosmic</c>、<c>/li phaenna</c> 與傳送面板的直達按鈕共用:不在原始世界就先回去,再走 <see cref="Enqueue(Destination)"/>。
@@ -656,14 +668,146 @@ public static unsafe class TaskCosmicShortcut
             return true;
         }
         var alias = StaticAlias.CosmicExploration;
+        StepSince = 0;
+        // 別名的移動步驟與互動步驟分開排，中間插一道「真的到入口物件旁了嗎」的檢查；兩段合起來與原本整段相同。
         P.TaskManager.InsertStack(() =>
         {
-            alias.Enqueue(true, EntranceAliasStart, EntranceMenuStep);
-            P.TaskManager.Enqueue(SelectEntranceMenu, "CosmicSelectEntranceMenu", Lenient(15000));
-            P.TaskManager.Enqueue(FollowUp, "CosmicEntranceFollowUpAndWaitArrival", Lenient(70000));
-            P.TaskManager.Enqueue(ReportEntranceRoute, "CosmicEntranceRouteResult");
+            alias.Enqueue(true, EntranceAliasStart, EntranceMenuStep - 1);
+            P.TaskManager.Enqueue(CheckEntranceReach, "CosmicEntranceCheckReach", Lenient(EntranceMissingSettleMs + 10000));
         });
         return true;
+    }
+
+    /// <summary>入口物件互動、入口選單、後續視窗與結果回報；走到入口物件旁之後才排。</summary>
+    private static void EnqueueEntranceInteractAndMenu()
+    {
+        StaticAlias.CosmicExploration.Enqueue(true, EntranceMenuStep - 1, EntranceMenuStep);
+        P.TaskManager.Enqueue(SelectEntranceMenu, "CosmicSelectEntranceMenu", Lenient(15000));
+        P.TaskManager.Enqueue(FollowUp, "CosmicEntranceFollowUpAndWaitArrival", Lenient(70000));
+        P.TaskManager.Enqueue(ReportEntranceRoute, "CosmicEntranceRouteResult");
+    }
+
+    /// <summary>
+    /// 內建座標騎完之後：已在入口物件的互動範圍（或問不到遊戲）就照原本直接互動；
+    /// 騎到逾時、或停下的位置摸不到入口物件，就改用 vnavmesh 走到入口物件<b>現在</b>的位置（每次重查物件表，不寫死新座標）。
+    /// 找不到入口物件＝停下交給使用者。
+    /// </summary>
+    private static bool? CheckEntranceReach()
+    {
+        if(Result != Outcome.Pending) return true;
+        if(!Player.Available) return false;
+        var walkFailed = P.followPath?.LastMovementFailed == true;
+        var entrance = FindEntranceObject();
+        var reach = entrance == null ? null : IsWithinInteractRange(entrance);
+        var now = Environment.TickCount64;
+        if(entrance == null && StepSince == 0) StepSince = now;
+        var verdict = CosmicRouteRules.ClassifyEntranceReach(entrance != null, reach, walkFailed, TaskGotoDestination.IsVnavmeshLoaded(),
+            entrance == null ? now - StepSince : 0, EntranceMissingSettleMs);
+        if(verdict == CosmicRouteRules.EntranceReach.Wait) return false;
+        StepSince = 0;
+        if(verdict == CosmicRouteRules.EntranceReach.HandOver)
+        {
+            Result = Outcome.HandedOver;
+            PluginLog.Information($"[Cosmic] Entrance-object route: after the built-in ride (movement failed={walkFailed}) there is no targetable entrance object {EntranceObjectId} nearby at {Player.Position:F1} in territory {P.Territory}; stopping here.");
+            ChatQueue.Orange($"[Lifestream] {"Could not reach ??. Please continue manually.".Loc(Target.PlanetName)}");
+            return true;
+        }
+        if(verdict == CosmicRouteRules.EntranceReach.Interact)
+        {
+            P.TaskManager.InsertStack(EnqueueEntranceInteractAndMenu);
+            return true;
+        }
+        var target = entrance.Position;
+        var why = $"the built-in ride ended {Player.DistanceTo(entrance):F1}y from entrance object {EntranceObjectId} at {Player.Position:F1} (movement failed={walkFailed}, in interaction range={reach?.ToString() ?? "unknown"})";
+        if(verdict == CosmicRouteRules.EntranceReach.InteractWithoutNavmesh)
+        {
+            PluginLog.Information($"[Cosmic] Entrance-object route: {why}; vnavmesh is not loaded, so trying to interact from here as before.");
+            P.TaskManager.InsertStack(EnqueueEntranceInteractAndMenu);
+            return true;
+        }
+        PluginLog.Information($"[Cosmic] Entrance-object route: {why}; walking to the entrance object's current position {target:F1} with vnavmesh instead of the built-in coordinates.");
+        P.followPath?.Stop();
+        P.TaskManager.InsertMulti(
+            // null（IPC 叫不動）也放行：下一步自己再問一次，叫不動就照原本的方式互動，不中止整條佇列。
+            new(() => S.Ipc.VnavmeshIPC.IsReady() != false, "CosmicEntranceNavWaitReady", Lenient(120000)),
+            new(() => StartNavToEntrance(target), "CosmicEntranceNavStart")
+            );
+        return true;
+    }
+
+    /// <returns>這一段一律接到入口互動（失敗也照原本的方式試一次），只差多記一行原因。</returns>
+    private static bool? StartNavToEntrance(Vector3 target)
+    {
+        if(Result != Outcome.Pending) return true;
+        EntranceNavNoPath = false;
+        var task = S.Ipc.VnavmeshIPC.IsReady() == true ? S.Ipc.VnavmeshIPC.Pathfind(Player.Position, target, false) : null;
+        if(task == null)
+        {
+            PluginLog.Information("[Cosmic] Entrance-object route: vnavmesh is not ready or returned no pathfinding task; trying to interact from here as before.");
+            P.TaskManager.InsertStack(EnqueueEntranceInteractAndMenu);
+            return true;
+        }
+        P.TaskManager.InsertMulti(
+            new(() => task.IsCompleted, "CosmicEntranceNavWaitPath", Lenient(60000)),
+            new(() => BeginNavToEntrance(task), "CosmicEntranceNavBeginWalk"),
+            new(() => IsEntranceInReach() || P.FollowPath.Waypoints.Count == 0, "CosmicEntranceNavWalk", Lenient(EntranceNavWalkMs)),
+            new(AfterNavToEntrance, "CosmicEntranceNavDone")
+            );
+        return true;
+    }
+
+    private static bool? BeginNavToEntrance(Task<List<Vector3>> task)
+    {
+        // 空路徑不是「距離 0」：vnavmesh 找不到路時回空清單、不擲例外。
+        if(!task.IsCompletedSuccessfully || task.Result == null || task.Result.Count == 0)
+        {
+            var detail = task.IsCompleted ? task.Exception?.InnerException?.Message ?? "empty path" : "pathfinding still running";
+            EntranceNavNoPath = true;
+            PluginLog.Information($"[Cosmic] Entrance-object route: vnavmesh found no path to the entrance object ({detail}); trying to interact from here as before.");
+            return true;
+        }
+        P.FollowPath.Stop();
+        P.FollowPath.Move([.. task.Result], true);
+        return true;
+    }
+
+    private static bool? AfterNavToEntrance()
+    {
+        P.FollowPath.Stop();
+        if(Result != Outcome.Pending) return true;
+        if(!EntranceNavNoPath && !IsEntranceInReach())
+        {
+            var entrance = FindEntranceObject();
+            PluginLog.Information($"[Cosmic] Entrance-object route: after walking with vnavmesh the entrance object is still not in interaction range ({(entrance == null ? "not found" : $"{Player.DistanceTo(entrance):F1}y away")}); trying to interact anyway.");
+        }
+        P.TaskManager.InsertStack(EnqueueEntranceInteractAndMenu);
+        return true;
+    }
+
+    /// <summary>每次重查物件表，回傳值只在這一幀用、不保存。</summary>
+    private static IGameObject FindEntranceObject()
+        => Player.Available ? Svc.Objects.Where(x => x.IsTargetable && x.BaseId == EntranceObjectId).OrderBy(Player.DistanceTo).FirstOrDefault() : null;
+
+    private static bool IsEntranceInReach()
+    {
+        var entrance = FindEntranceObject();
+        return entrance != null && IsWithinInteractRange(entrance) == true;
+    }
+
+    /// <returns>遊戲的答案；null＝問不到（函式沒解析到或單例還沒建立）。</returns>
+    private static bool? IsWithinInteractRange(IGameObject target)
+    {
+        if(EventFramework.MemberFunctionPointers.CheckInteractRange == null || !Player.Available) return null;
+        try
+        {
+            var framework = EventFramework.Instance();
+            if(framework == null) return null;
+            return framework->CheckInteractRange((GameObjectStruct*)Player.Object.Address, (GameObjectStruct*)target.Address, 1, false);
+        }
+        catch(InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
