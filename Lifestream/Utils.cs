@@ -444,6 +444,8 @@ internal static unsafe partial class Utils
         {
             ret.Add(x);
         }
+        // 台服不能跨區旅行到大洋洲（國際服才有「任何地區都能去大洋洲」的規則）。
+        if(PublicWorlds.IsTaiwanWorld(source)) return ret;
         foreach(var x in PublicWorlds.Travelable(PublicWorlds.Get(ExcelWorldHelper.Region.OC)))
         {
             if(!ret.Contains(x)) ret.Add(x);
@@ -539,7 +541,10 @@ internal static unsafe partial class Utils
 
     internal static WorldDCGroupType GetDataCenter(string world)
     {
-        return Svc.Data.GetExcelSheet<World>().First(x => x.Name == world).DataCenter.Value;
+        // 同名世界（「巴哈姆特」＝退役 row 1160 與台服 4033）先取現役世界；查不到才退回整張表第一筆。
+        var match = PublicWorlds.Get().FirstOrNull(x => x.Name == world)
+            ?? Svc.Data.GetExcelSheet<World>().First(x => x.Name == world);
+        return match.DataCenter.Value;
     }
 
     internal static int Minutes(this int min)
